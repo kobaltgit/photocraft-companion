@@ -367,7 +367,7 @@ impl eframe::App for CompanionOverlayApp {
                         .frame(egui::Frame::new().fill(palette.bg_fill).inner_margin(0))
                         .show(ctx, |ui| {
                             self.manager
-                                .render_peekit_window(ui, &palette, &mut self.show_manager);
+                                .render_settings_window(ui, &palette, &mut self.show_manager);
                         });
                 },
             );

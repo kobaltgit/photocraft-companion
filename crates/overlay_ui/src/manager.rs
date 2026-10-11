@@ -135,7 +135,7 @@ impl PluginManagerApp {
         Ok(())
     }
 
-    /// Renders top horizontal tabs in PeekIt Preferences style
+    /// Renders top horizontal tabs
     pub fn render_tabs_header(&mut self, ui: &mut Ui, palette: &ThemePalette) {
         let tabs = [
             (ActiveTab::General, self.t("General", "Общие")),
@@ -767,8 +767,8 @@ impl PluginManagerApp {
         );
     }
 
-    /// Master render function in strict PeekIt Preferences layout with pinned bottom buttons
-    pub fn render_peekit_window(
+    /// Master render function with horizontal tabs and pinned bottom buttons
+    pub fn render_settings_window(
         &mut self,
         ui: &mut Ui,
         palette: &ThemePalette,
@@ -875,7 +875,7 @@ impl eframe::App for PluginManagerApp {
         ui.ctx().set_visuals(palette.to_egui_visuals());
 
         let mut is_open = true;
-        self.render_peekit_window(ui, &palette, &mut is_open);
+        self.render_settings_window(ui, &palette, &mut is_open);
     }
 }
 

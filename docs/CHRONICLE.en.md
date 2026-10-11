@@ -178,7 +178,7 @@ Refactored the Plugin Manager to mirror PhotoCraft's Preferences layout:
 
 ---
 
-## Chapter 9: Self-Contained Plugins, PeekIt Preferences Standard, .pcpl Packages & Offline Mode
+## Chapter 9: Self-Contained Plugins, Tabbed Plugin Manager, .pcpl Packages & Offline Mode
 
 *Timestamp: October 11, 2026, 15:10 (~65 minutes)*
 
@@ -188,8 +188,8 @@ Eliminated hardcoded model paths:
 - Refactored `ai_engine` to enforce a clean resolution hierarchy: local weights in `plugin_dir.join("models")` take top priority.
 - Implemented "Lightweight Git, Full Installer" philosophy: `.onnx` weights excluded from Git via `.gitignore`, download URL and SHA256 checksum added to `plugin.json`, and developer setup script `scripts/fetch_models.ps1` introduced.
 
-### 2. PeekIt Preferences-Style Plugin Manager
-Completely re-engineered the Settings window following the *PeekIt Preferences* reference:
+### 2. Tabbed Plugin Manager Window
+Re-engineered the Settings window with top horizontal tabs:
 - **Top Horizontal Tabs:** `[ General ]`, `[ Plugins ]`, `[ Hotkeys ]`, `[ About ]`.
 - **Card-Group Container:** Active content presented in an 8px rounded dark card (`#1e1e1e` with `#3e3e3e` border stroke).
 - **Bottom Action Bar:** Right-aligned `[ Close ]` and `[ Save ]` buttons with persistent storage in `companion_config.json`.

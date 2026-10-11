@@ -9,7 +9,7 @@
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
 [![Tests: 62 Passing](https://img.shields.io/badge/Tests-62_Passing-success.svg)](crates/)
 
-**Мощная экосистема плагинов, локальных нейросетей и интерактивных оверлей-панелей для графического редактора PhotoCraft.**
+**Экосистема плагинов, локальных нейросетей и оверлей-панелей для графического редактора PhotoCraft.**
 
 [Возможности](#-основные-возможности) • [Быстрый старт](#-быстрый-старт) • [Архитектура](#-архитектура-монорепозитория) • [Пакеты .pcpl](#-пакетный-формат-pcpl) • [Документация](#-документация-проекта) • [Лицензия](#-лицензия)
 
@@ -19,9 +19,9 @@
 
 ## 💡 О проекте
 
-**PhotoCraft Plugins & Companion** решает ключевую задачу расширения графического редактора **PhotoCraft** (open-source reimplementation of Photoshop на Rust):
+**PhotoCraft Plugins & Companion** решает задачу расширения графического редактора **PhotoCraft** (open-source reimplementation of Photoshop на Rust):
 - **Бесшовное исполнение (In-Place Execution):** все операции (вырезание фона нейросетью, фильтры, макросы) выполняются прямо на активном слое в открытом холсте редактора через протокол JSON-RPC (порт 18492) и буфер обмена Windows без ручного сохранения/открытия файлов.
-- **В обход Wasm-песочницы:** редактор PhotoCraft запускает плагины в изолированной песочнице без прямого доступа к локальному GPU и диску. Компаньон снимает это ограничение, предоставляя нативную мощь DirectML и ONNX Runtime.
+- **В обход Wasm-песочницы:** редактор PhotoCraft запускает плагины в изолированной песочнице без прямого доступа к локальному GPU и диску. Компаньон предоставляет нативный доступ к DirectML и ONNX Runtime.
 
 ---
 
@@ -40,7 +40,7 @@
   * Парящий режим: панель не засоряет Панель задач Windows (`.with_taskbar(false)`).
   * Всплывающие независимые тултипы поверх рабочего стола.
 
-* ⚙️ **Менеджер плагинов в стиле *PeekIt Preferences*:**
+* ⚙️ **Менеджер плагинов (Plugin Manager):**
   * Верхние горизонтальные вкладки: `[ General ]`, `[ Plugins ]`, `[ Hotkeys ]`, `[ About ]`.
   * Индикатор связи: пульсирующий статус сокета PhotoCraft (`● Connected` / `○ Offline`).
   * Мультиязычность (i18n): поддержка всех 11 языков редактора с авто-определением из настроек.
@@ -62,10 +62,39 @@
 
 ---
 
-## 🚀 Быстрый старт
+## 📦 Установка и дистрибутивы (Installers & Portable)
+
+Для удобства пользователей проект распространяется в двух форматах для каждой платформы: **готовый установщик (Setup)** и **автономная портабельная версия (Portable)** без необходимости инсталляции:
+
+| Платформа | Установщик (Setup / Installer) | Портабельная версия (Portable) | Описание |
+| :--- | :--- | :--- | :--- |
+| **Windows (x64)** | `PhotoCraft-Companion-Setup-Windows-x64.exe` | `PhotoCraft-Companion-v0.1.0-windows-x64-portable.zip` | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-v0.1.0-macos.dmg` | `PhotoCraft-Companion-v0.1.0-macos-portable.tar.gz` | DMG-образ с перетаскиванием в `/Applications` / Автономный бандл `.app` |
+| **Linux (x86_64)** | `PhotoCraft-Companion-v0.1.0-linux-amd64.deb` | `PhotoCraft-Companion-v0.1.0-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив |
+
+> [!TIP]
+> Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-plugins/releases)** при каждом релизе.
+
+### Локальная сборка установщиков и дистрибутивов
+
+* **Windows:**
+  ```powershell
+  .\scripts\package_release.ps1
+  ```
+  *(Создаёт портабельный архив `.zip` в каталоге `dist/` и компилирует Inno Setup инсталлятор при наличии ISCC).*
+
+* **Linux / macOS:**
+  ```bash
+  chmod +x ./scripts/package_release.sh
+  ./scripts/package_release.sh
+  ```
+
+---
+
+## 🚀 Быстрый старт (для разработчиков)
 
 ### Требования
-* **ОС:** Windows 10 / 11 (x64)
+* **ОС:** Windows 10 / 11 (x64), Linux или macOS
 * **Rust:** Toolchain 1.80+ (версия 2021)
 * **GPU (опционально):** Любая видеокарта с поддержкой DirectX 12 (NVIDIA RTX / AMD Radeon / Intel Arc) для DirectML-ускорения.
 

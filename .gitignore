@@ -1,6 +1,11 @@
 # Rust build artifacts
 /target/
+/dist/
 Cargo.lock.backup
+*.zip
+*.tar.gz
+*.dmg
+*.deb
 
 # Python & Environment
 __pycache__/

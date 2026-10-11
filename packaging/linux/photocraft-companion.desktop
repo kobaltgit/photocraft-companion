@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=PhotoCraft Companion
+GenericName=PhotoCraft Plugin System & Floating Toolstrip
+Comment=Cross-platform companion app for PhotoCraft graphics editor
+Exec=photocraft-companion
+Icon=photocraft-companion
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;
+StartupNotify=true
+Actions=Manager;Daemon;
+
+[Desktop Action Manager]
+Name=Plugin Manager
+Exec=photocraft-companion --manager
+
+[Desktop Action Daemon]
+Name=Start in System Tray
+Exec=photocraft-companion --daemon
