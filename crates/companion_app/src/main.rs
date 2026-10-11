@@ -49,7 +49,9 @@ fn find_plugins_dir() -> PathBuf {
 }
 
 fn find_photocraft_data_dir() -> PathBuf {
-    let hardcoded = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData");
+    let hardcoded = PathBuf::from(
+        r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData",
+    );
     if hardcoded.is_dir() {
         return hardcoded;
     }
@@ -107,7 +109,10 @@ fn main() -> anyhow::Result<()> {
 
     // Scan for No-Code & other declarative plugins in `plugins/`
     let _loaded = registry.scan_and_load()?;
-    println!("  Total registered plugin manifests: {}", registry.list_manifests().len());
+    println!(
+        "  Total registered plugin manifests: {}",
+        registry.list_manifests().len()
+    );
     for m in registry.list_manifests() {
         let p_type = match m.plugin_type {
             PluginType::NoCode => "No-Code Macro",
@@ -116,7 +121,10 @@ fn main() -> anyhow::Result<()> {
             PluginType::ExternalCli => "External CLI Tool",
         };
         let hk = m.default_hotkey.as_deref().unwrap_or("None");
-        println!("  - [{}] [{}] {} (v{}) by {}", hk, p_type, m.name, m.version, m.author);
+        println!(
+            "  - [{}] [{}] {} (v{}) by {}",
+            hk, p_type, m.name, m.version, m.author
+        );
     }
 
     // 2. Setup Hotkeys from Plugins & UI bar
@@ -141,7 +149,7 @@ fn main() -> anyhow::Result<()> {
     let is_conn_init = is_connected.clone();
     rt.block_on(async {
         if client_init.is_alive().await {
-            if let Ok(_) = client_init.connect().await {
+            if client_init.connect().await.is_ok() {
                 is_conn_init.store(true, Ordering::Relaxed);
                 info!("Successfully connected to live PhotoCraft instance on startup!");
                 if let Ok(doc) = client_init.get_document_info().await {
@@ -164,7 +172,7 @@ fn main() -> anyhow::Result<()> {
             let alive = client_monitor.is_alive().await;
             let was_connected = is_conn_monitor.load(Ordering::Relaxed);
             if alive && !was_connected {
-                if let Ok(_) = client_monitor.connect().await {
+                if client_monitor.connect().await.is_ok() {
                     is_conn_monitor.store(true, Ordering::Relaxed);
                     info!("PhotoCraft launched! Successfully connected to socket 18492.");
                 }
@@ -213,6 +221,7 @@ fn main() -> anyhow::Result<()> {
             None
         }
     };
+    #[allow(clippy::arc_with_non_send_sync)]
     let tray_icon_handle = Arc::new(std::sync::Mutex::new(tray_icon));
 
     if is_test_run {
@@ -232,14 +241,29 @@ fn main() -> anyhow::Result<()> {
                 client: client_test.clone(),
             };
 
-            let result = reg_test.execute("ai.photocraft.plugins.remove_bg", &ctx).await?;
-            println!("  Result: {} in {:.2}s", result.message, t0.elapsed().as_secs_f32());
+            let result = reg_test
+                .execute("ai.photocraft.plugins.remove_bg", &ctx)
+                .await?;
+            println!(
+                "  Result: {} in {:.2}s",
+                result.message,
+                t0.elapsed().as_secs_f32()
+            );
 
-            if reg_test.get("macro.photocraft.plugins.black_and_white").is_some() {
+            if reg_test
+                .get("macro.photocraft.plugins.black_and_white")
+                .is_some()
+            {
                 println!("\n>>> Running No-Code Macro Plugin Execution via PluginRegistry <<<");
                 let t1 = Instant::now();
-                let res_macro = reg_test.execute("macro.photocraft.plugins.black_and_white", &ctx).await?;
-                println!("  Result: {} in {:.2}s", res_macro.message, t1.elapsed().as_secs_f32());
+                let res_macro = reg_test
+                    .execute("macro.photocraft.plugins.black_and_white", &ctx)
+                    .await?;
+                println!(
+                    "  Result: {} in {:.2}s",
+                    res_macro.message,
+                    t1.elapsed().as_secs_f32()
+                );
             }
             Ok::<(), anyhow::Error>(())
         })?;
@@ -257,10 +281,12 @@ fn main() -> anyhow::Result<()> {
     rt.spawn(async move {
         while let Some(action_id) = action_rx.recv().await {
             info!("Dispatching action '{}'...", action_id);
-            if action_id.starts_with("engine:") {
-                let cmd = &action_id["engine:".len()..];
+            if let Some(cmd) = action_id.strip_prefix("engine:") {
                 info!("Executing PhotoCraft engine command '{}'...", cmd);
-                match client_exec.execute_command(cmd, serde_json::json!({})).await {
+                match client_exec
+                    .execute_command(cmd, serde_json::json!({}))
+                    .await
+                {
                     Ok(res) => info!("Engine command '{}' executed successfully: {:?}", cmd, res),
                     Err(e) => tracing::error!("Engine command '{}' failed: {}", cmd, e),
                 }
@@ -273,11 +299,17 @@ fn main() -> anyhow::Result<()> {
                 };
                 let reg = registry_exec.lock().await;
                 match reg.execute(&action_id, &ctx).await {
-                    Ok(res) => info!("Action '{}' finished successfully: {}", action_id, res.message),
+                    Ok(res) => info!(
+                        "Action '{}' finished successfully: {}",
+                        action_id, res.message
+                    ),
                     Err(e) => tracing::error!("Action '{}' failed: {}", action_id, e),
                 }
             } else {
-                tracing::warn!("PhotoCraft is not ready or active document not found for action '{}'", action_id);
+                tracing::warn!(
+                    "PhotoCraft is not ready or active document not found for action '{}'",
+                    action_id
+                );
             }
         }
     });
@@ -342,4 +374,3 @@ mod tests {
         apply_win32_menu_theme(3);
     }
 }
-

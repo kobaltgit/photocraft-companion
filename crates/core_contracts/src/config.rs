@@ -98,14 +98,22 @@ mod tests {
 
     #[test]
     fn test_companion_config_save_load() {
-        let temp_dir = std::env::temp_dir().join(format!("cfg_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "cfg_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let cfg_path = temp_dir.join("companion_config.json");
 
-        let mut cfg = CompanionConfig::default();
-        cfg.port = 19999;
-        cfg.theme = "light".to_string();
-        cfg.is_vertical = true;
-        cfg.enabled_plugins.push("test.plugin".to_string());
+        let cfg = CompanionConfig {
+            port: 19999,
+            theme: "light".to_string(),
+            is_vertical: true,
+            enabled_plugins: vec!["test.plugin".to_string()],
+            ..CompanionConfig::default()
+        };
 
         cfg.save(&cfg_path).unwrap();
         assert!(cfg_path.exists());
@@ -143,7 +151,13 @@ mod tests {
 
     #[test]
     fn test_resolve_config_path() {
-        let temp_dir = std::env::temp_dir().join(format!("cfg_resolve_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "cfg_resolve_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = fs::create_dir_all(&temp_dir);
         let resolved = CompanionConfig::resolve_config_path(&temp_dir);
         assert_eq!(resolved, temp_dir.join("companion_config.json"));
@@ -154,4 +168,3 @@ mod tests {
         assert_eq!(fallback, PathBuf::from("companion_config.json"));
     }
 }
-

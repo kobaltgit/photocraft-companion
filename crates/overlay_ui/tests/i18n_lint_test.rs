@@ -7,12 +7,7 @@ fn test_no_unlocalized_cyrillic_in_ui_crates() {
     let src_dir = Path::new(manifest_dir).join("src");
 
     // Files that should never contain any Cyrillic text at all
-    let strictly_latin_files = [
-        "icons.rs",
-        "theme.rs",
-        "toolstrip.rs",
-        "win32_window.rs",
-    ];
+    let strictly_latin_files = ["icons.rs", "theme.rs", "toolstrip.rs", "win32_window.rs"];
 
     for file_name in strictly_latin_files {
         let file_path = src_dir.join(file_name);
@@ -142,8 +137,7 @@ fn test_all_t_translation_pairs_integrity() {
                 assert!(
                     has_latin,
                     "English translation has no Latin characters in {}: '{}'",
-                    file_name,
-                    en
+                    file_name, en
                 );
 
                 // 3. Russian variant must have Cyrillic letters (or be a technical port/IP string)

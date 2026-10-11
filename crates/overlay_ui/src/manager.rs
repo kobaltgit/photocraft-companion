@@ -130,7 +130,10 @@ impl PluginManagerApp {
         info!("Saved settings to {}", self.config_path.display());
 
         self.status_text = self
-            .t("Settings saved successfully!", "Настройки успешно сохранены!")
+            .t(
+                "Settings saved successfully!",
+                "Настройки успешно сохранены!",
+            )
             .to_string();
         Ok(())
     }
@@ -159,10 +162,11 @@ impl PluginManagerApp {
                     palette.text_primary
                 };
 
-                let btn = egui::Button::new(RichText::new(title).size(12.0).strong().color(text_color))
-                    .fill(bg_color)
-                    .corner_radius(6.0)
-                    .min_size(Vec2::new(96.0, 26.0));
+                let btn =
+                    egui::Button::new(RichText::new(title).size(12.0).strong().color(text_color))
+                        .fill(bg_color)
+                        .corner_radius(6.0)
+                        .min_size(Vec2::new(96.0, 26.0));
 
                 if ui.add(btn).clicked() {
                     self.active_tab = tab;
@@ -209,16 +213,22 @@ impl PluginManagerApp {
                     ui.add_space(2.0);
                     if connected {
                         ui.label(
-                            RichText::new(self.t("Connected to PhotoCraft (127.0.0.1:18492)", "Подключено к PhotoCraft (127.0.0.1:18492)"))
-                                .size(12.0)
-                                .strong()
-                                .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
+                            RichText::new(self.t(
+                                "Connected to PhotoCraft (127.0.0.1:18492)",
+                                "Подключено к PhotoCraft (127.0.0.1:18492)",
+                            ))
+                            .size(12.0)
+                            .strong()
+                            .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
                         );
                     } else {
                         ui.label(
-                            RichText::new(self.t("Offline (Waiting for PhotoCraft on port 18492...)", "Офлайн (Ожидание запуска PhotoCraft на порту 18492...)"))
-                                .size(12.0)
-                                .color(Color32::from_rgb(0xea, 0x86, 0x00)),
+                            RichText::new(self.t(
+                                "Offline (Waiting for PhotoCraft on port 18492...)",
+                                "Офлайн (Ожидание запуска PhotoCraft на порту 18492...)",
+                            ))
+                            .size(12.0)
+                            .color(Color32::from_rgb(0xea, 0x86, 0x00)),
                         );
                     }
                 });
@@ -239,8 +249,16 @@ impl PluginManagerApp {
                     .width(180.0)
                     .show_ui(ui, |ui| {
                         ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::TRANSPARENT;
-                        ui.selectable_value(&mut self.current_language, Language::En, "English (EN)");
-                        ui.selectable_value(&mut self.current_language, Language::Ru, "Русский (RU)");
+                        ui.selectable_value(
+                            &mut self.current_language,
+                            Language::En,
+                            "English (EN)",
+                        );
+                        ui.selectable_value(
+                            &mut self.current_language,
+                            Language::Ru,
+                            "Русский (RU)",
+                        );
                     });
                 ui.end_row();
 
@@ -251,9 +269,13 @@ impl PluginManagerApp {
                         .color(palette.text_primary),
                 );
                 let theme_label = match self.current_theme {
-                    ThemeMode::Dark => self.t("Dark (PhotoCraft Graphite)", "Тёмная (Графит PhotoCraft)"),
+                    ThemeMode::Dark => {
+                        self.t("Dark (PhotoCraft Graphite)", "Тёмная (Графит PhotoCraft)")
+                    }
                     ThemeMode::Light => self.t("Light", "Светлая"),
-                    ThemeMode::System => self.t("System (Windows Sync)", "Системная (Синхронизация Windows)"),
+                    ThemeMode::System => {
+                        self.t("System (Windows Sync)", "Системная (Синхронизация Windows)")
+                    }
                 };
                 let label_dark = self.t("Dark", "Тёмная");
                 let label_light = self.t("Light", "Светлая");
@@ -265,7 +287,11 @@ impl PluginManagerApp {
                         ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::TRANSPARENT;
                         ui.selectable_value(&mut self.current_theme, ThemeMode::Dark, label_dark);
                         ui.selectable_value(&mut self.current_theme, ThemeMode::Light, label_light);
-                        ui.selectable_value(&mut self.current_theme, ThemeMode::System, label_system);
+                        ui.selectable_value(
+                            &mut self.current_theme,
+                            ThemeMode::System,
+                            label_system,
+                        );
                     });
                 ui.end_row();
 
@@ -341,10 +367,12 @@ impl PluginManagerApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 // Install .pcpl button
                 let install_btn = egui::Button::new(
-                    RichText::new(self.t("+ Install Plugin (.pcpl)", "+ Установить плагин (.pcpl)"))
-                        .size(11.0)
-                        .strong()
-                        .color(Color32::WHITE),
+                    RichText::new(
+                        self.t("+ Install Plugin (.pcpl)", "+ Установить плагин (.pcpl)"),
+                    )
+                    .size(11.0)
+                    .strong()
+                    .color(Color32::WHITE),
                 )
                 .fill(palette.accent_blue)
                 .corner_radius(4.0)
@@ -359,7 +387,10 @@ impl PluginManagerApp {
                             Ok(m) => {
                                 self.status_text = format!(
                                     "● {}",
-                                    self.t("Plugin installed successfully!", "Плагин успешно установлен!")
+                                    self.t(
+                                        "Plugin installed successfully!",
+                                        "Плагин успешно установлен!"
+                                    )
                                 );
                                 self.manifests.push(m);
                             }
@@ -405,12 +436,7 @@ impl PluginManagerApp {
                             _ => palette.text_muted,
                         };
 
-                        ui.label(
-                            RichText::new(type_str)
-                                .size(9.0)
-                                .color(type_color)
-                                .strong(),
-                        );
+                        ui.label(RichText::new(type_str).size(9.0).color(type_color).strong());
                         ui.label(
                             RichText::new(&manifest.name)
                                 .size(12.0)
@@ -470,7 +496,9 @@ impl PluginManagerApp {
                                 if let Some(req) = manifest.models.first() {
                                     if let Some(ref url) = req.url {
                                         let dl_btn = egui::Button::new(
-                                            RichText::new(msg_download).size(10.0).color(Color32::WHITE),
+                                            RichText::new(msg_download)
+                                                .size(10.0)
+                                                .color(Color32::WHITE),
                                         )
                                         .fill(palette.button_secondary)
                                         .corner_radius(2.0);
@@ -479,7 +507,9 @@ impl PluginManagerApp {
                                             let target_dir = manifest
                                                 .plugin_dir
                                                 .clone()
-                                                .unwrap_or_else(|| PathBuf::from("plugins").join(&manifest.id))
+                                                .unwrap_or_else(|| {
+                                                    PathBuf::from("plugins").join(&manifest.id)
+                                                })
                                                 .join("models");
                                             let _ = std::fs::create_dir_all(&target_dir);
                                             let target_file = target_dir.join(&req.name);
@@ -487,7 +517,12 @@ impl PluginManagerApp {
 
                                             std::thread::spawn(move || {
                                                 let _ = std::process::Command::new("curl.exe")
-                                                    .args(["-L", "-o", target_file.to_str().unwrap_or(""), &url_clone])
+                                                    .args([
+                                                        "-L",
+                                                        "-o",
+                                                        target_file.to_str().unwrap_or(""),
+                                                        &url_clone,
+                                                    ])
                                                     .output();
                                             });
                                             download_notice = Some(msg_download_started);
@@ -600,7 +635,8 @@ impl PluginManagerApp {
                 }
             }
         } else if let Some((target_id, combo)) = recorded_hotkey {
-            self.hotkey_overrides.insert(target_id.clone(), combo.clone());
+            self.hotkey_overrides
+                .insert(target_id.clone(), combo.clone());
             for m in &mut self.manifests {
                 if m.id == target_id {
                     m.default_hotkey = Some(combo.clone());
@@ -657,11 +693,7 @@ impl PluginManagerApp {
                             .corner_radius(4.0)
                             .fill(Color32::TRANSPARENT);
 
-                            if ui
-                                .add(clear_btn)
-                                .on_hover_text(&clear_tooltip)
-                                .clicked()
-                            {
+                            if ui.add(clear_btn).on_hover_text(&clear_tooltip).clicked() {
                                 self.hotkey_overrides.remove(&plugin_id);
                                 m.default_hotkey = None;
                             }
@@ -778,7 +810,11 @@ impl PluginManagerApp {
 
         // 1. Pinned bottom panel: status/connection indicator on left, [ Close ] [ Save ] on right
         egui::Panel::bottom("manager_bottom_panel")
-            .frame(egui::Frame::new().fill(palette.bg_fill).inner_margin(egui::Margin::symmetric(14, 10)))
+            .frame(
+                egui::Frame::new()
+                    .fill(palette.bg_fill)
+                    .inner_margin(egui::Margin::symmetric(14, 10)),
+            )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     if !self.status_text.is_empty() {
@@ -797,10 +833,7 @@ impl PluginManagerApp {
                                 "Подключено (127.0.0.1:18492)",
                             )
                         } else {
-                            self.t(
-                                "Offline (Socket 18492)",
-                                "Офлайн (Сокет 18492)",
-                            )
+                            self.t("Offline (Socket 18492)", "Офлайн (Сокет 18492)")
                         };
                         let color = if connected {
                             Color32::from_rgb(0x28, 0xa7, 0x45)
@@ -845,7 +878,11 @@ impl PluginManagerApp {
 
         // 2. Central panel: Tabs header and scrollable card fills remaining space
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(palette.bg_fill).inner_margin(egui::Margin::symmetric(14, 8)))
+            .frame(
+                egui::Frame::new()
+                    .fill(palette.bg_fill)
+                    .inner_margin(egui::Margin::symmetric(14, 8)),
+            )
             .show(ui, |ui| {
                 self.render_tabs_header(ui, palette);
                 ui.add_space(6.0);
@@ -885,10 +922,20 @@ mod tests {
 
     #[test]
     fn test_plugin_manager_app_init() {
-        let temp_dir = std::env::temp_dir().join(format!("mgr_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mgr_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let prefs_file = temp_dir.join("preferences.json");
-        std::fs::write(&prefs_file, r#"{"interface": {"language": "en", "theme": "studioDark"}}"#).unwrap();
+        std::fs::write(
+            &prefs_file,
+            r#"{"interface": {"language": "en", "theme": "studioDark"}}"#,
+        )
+        .unwrap();
 
         let is_connected = Arc::new(AtomicBool::new(true));
         let app = PluginManagerApp::new(vec![], prefs_file, is_connected.clone());
@@ -905,7 +952,13 @@ mod tests {
 
     #[test]
     fn test_plugin_manager_app_translations() {
-        let temp_dir = std::env::temp_dir().join(format!("mgr_trans_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mgr_trans_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let prefs_file = temp_dir.join("preferences.json");
         let is_connected = Arc::new(AtomicBool::new(false));
@@ -922,7 +975,13 @@ mod tests {
 
     #[test]
     fn test_plugin_manager_app_save_settings() {
-        let temp_dir = std::env::temp_dir().join(format!("mgr_save_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mgr_save_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let prefs_file = temp_dir.join("preferences.json");
         let is_connected = Arc::new(AtomicBool::new(false));
@@ -931,7 +990,8 @@ mod tests {
         app.config_path = temp_dir.join("companion_config.json");
         app.port = 19999;
         app.current_theme = ThemeMode::Light;
-        app.hotkey_overrides.insert("test.plugin".to_string(), "Ctrl+Alt+P".to_string());
+        app.hotkey_overrides
+            .insert("test.plugin".to_string(), "Ctrl+Alt+P".to_string());
 
         let res = app.save_settings();
         assert!(res.is_ok());
@@ -940,10 +1000,11 @@ mod tests {
         let loaded = CompanionConfig::load_or_default(&app.config_path);
         assert_eq!(loaded.port, 19999);
         assert_eq!(loaded.theme, "light");
-        assert_eq!(loaded.hotkey_overrides.get("test.plugin"), Some(&"Ctrl+Alt+P".to_string()));
+        assert_eq!(
+            loaded.hotkey_overrides.get("test.plugin"),
+            Some(&"Ctrl+Alt+P".to_string())
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
-
-

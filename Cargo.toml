@@ -37,9 +37,21 @@ resvg = "0.48"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
 
+[profile.dev]
+opt-level = 0
+debug = 1
+codegen-units = 1
+incremental = false
+
+[profile.test]
+opt-level = 0
+debug = 1
+codegen-units = 1
+incremental = false
+
 [profile.release]
 opt-level = 2
-codegen-units = 8
+codegen-units = 1
 lto = false
 debug = false
 panic = "abort"

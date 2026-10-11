@@ -29,8 +29,12 @@ impl OfflineModalApp {
     pub fn render(&mut self, ui: &mut Ui, palette: &ThemePalette) {
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 8.0, palette.panel_fill);
-        ui.painter()
-            .rect_stroke(rect, 8.0, Stroke::new(1.0, palette.border_stroke), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(
+            rect,
+            8.0,
+            Stroke::new(1.0, palette.border_stroke),
+            egui::StrokeKind::Inside,
+        );
 
         ui.vertical_centered(|ui| {
             ui.add_space(16.0);
@@ -123,4 +127,3 @@ mod tests {
         assert_eq!(app_auto.t("English", "Russian"), "English");
     }
 }
-

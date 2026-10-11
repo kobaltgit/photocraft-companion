@@ -48,50 +48,58 @@ impl ToolstripApp {
         // Draw frameless panel background matching PhotoCraft tool palettes with 2px corner radius
         let rect = ui.max_rect();
         ui.painter().rect_filled(rect, 2.0, palette.panel_fill);
-        ui.painter()
-            .rect_stroke(rect, 2.0, Stroke::new(1.0, palette.border_stroke), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(
+            rect,
+            2.0,
+            Stroke::new(1.0, palette.border_stroke),
+            egui::StrokeKind::Inside,
+        );
 
-        let render_button_items = |ui: &mut Ui, buttons: &[ButtonConfig], pending: &mut Option<String>, hovered_tt: &mut Option<(String, egui::Rect)>| {
-            ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-            for btn in buttons {
-                let label_text = match btn.icon.as_deref() {
-                    Some("wand") | Some("scissors") => "AI",
-                    Some("bw") | Some("film") | Some("adjust") => "BW",
-                    Some("copy") => "CP",
-                    Some("paste") => "PS",
-                    _ => {
-                        if btn.label.len() <= 3 {
-                            &btn.label
-                        } else {
-                            &btn.label[..3]
+        let render_button_items =
+            |ui: &mut Ui,
+             buttons: &[ButtonConfig],
+             pending: &mut Option<String>,
+             hovered_tt: &mut Option<(String, egui::Rect)>| {
+                ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+                for btn in buttons {
+                    let label_text = match btn.icon.as_deref() {
+                        Some("wand") | Some("scissors") => "AI",
+                        Some("bw") | Some("film") | Some("adjust") => "BW",
+                        Some("copy") => "CP",
+                        Some("paste") => "PS",
+                        _ => {
+                            if btn.label.len() <= 3 {
+                                &btn.label
+                            } else {
+                                &btn.label[..3]
+                            }
                         }
+                    };
+
+                    let b = egui::Button::new(
+                        RichText::new(label_text)
+                            .strong()
+                            .size(11.0)
+                            .color(palette.text_primary),
+                    )
+                    .min_size(Vec2::new(32.0, 32.0))
+                    .corner_radius(3.0);
+
+                    let tooltip = if let Some(ref hk) = btn.hotkey {
+                        format!("{} ({})", btn.label, hk)
+                    } else {
+                        btn.label.clone()
+                    };
+
+                    let resp = ui.add(b);
+                    if resp.hovered() {
+                        *hovered_tt = Some((tooltip, resp.rect));
                     }
-                };
-
-                let b = egui::Button::new(
-                    RichText::new(label_text)
-                        .strong()
-                        .size(11.0)
-                        .color(palette.text_primary),
-                )
-                .min_size(Vec2::new(32.0, 32.0))
-                .corner_radius(3.0);
-
-                let tooltip = if let Some(ref hk) = btn.hotkey {
-                    format!("{} ({})", btn.label, hk)
-                } else {
-                    btn.label.clone()
-                };
-
-                let resp = ui.add(b);
-                if resp.hovered() {
-                    *hovered_tt = Some((tooltip, resp.rect));
+                    if resp.clicked() {
+                        *pending = Some(btn.action.clone());
+                    }
                 }
-                if resp.clicked() {
-                    *pending = Some(btn.action.clone());
-                }
-            }
-        };
+            };
 
         if self.is_vertical {
             // Vertical Layout: Top service bar + column of tools
@@ -105,14 +113,20 @@ impl ToolstripApp {
                         ui.add_space((avail - 16.0) * 0.5);
                     }
                     let handle_size = Vec2::new(16.0, 7.0);
-                    let (handle_rect, response) = ui.allocate_exact_size(handle_size, Sense::drag());
+                    let (handle_rect, response) =
+                        ui.allocate_exact_size(handle_size, Sense::drag());
                     if response.drag_started() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                     }
                     let c = handle_rect.center();
                     for dx in [-4.0, 0.0, 4.0] {
-                        ui.painter().circle_filled(c + Vec2::new(dx, -1.8), 1.0, palette.text_muted);
-                        ui.painter().circle_filled(c + Vec2::new(dx, 1.8), 1.0, palette.text_muted);
+                        ui.painter().circle_filled(
+                            c + Vec2::new(dx, -1.8),
+                            1.0,
+                            palette.text_muted,
+                        );
+                        ui.painter()
+                            .circle_filled(c + Vec2::new(dx, 1.8), 1.0, palette.text_muted);
                     }
                 });
 
@@ -133,17 +147,35 @@ impl ToolstripApp {
                         .corner_radius(2.0);
                     let resp = ui.add(orient_btn);
                     if resp.hovered() {
-                        self.hovered_tooltip = Some(("Switch to Horizontal".to_string(), resp.rect));
+                        self.hovered_tooltip =
+                            Some(("Switch to Horizontal".to_string(), resp.rect));
                     }
                     let c = resp.rect.center();
-                    ui.painter().line_segment([c - Vec2::new(3.0, 0.0), c + Vec2::new(3.0, 0.0)], Stroke::new(1.2, palette.text_muted));
-                    ui.painter().line_segment([c - Vec2::new(3.0, 0.0), c - Vec2::new(1.5, 2.0)], Stroke::new(1.0, palette.text_muted));
-                    ui.painter().line_segment([c - Vec2::new(3.0, 0.0), c - Vec2::new(1.5, -2.0)], Stroke::new(1.0, palette.text_muted));
-                    ui.painter().line_segment([c + Vec2::new(3.0, 0.0), c + Vec2::new(1.5, 2.0)], Stroke::new(1.0, palette.text_muted));
-                    ui.painter().line_segment([c + Vec2::new(3.0, 0.0), c + Vec2::new(1.5, -2.0)], Stroke::new(1.0, palette.text_muted));
+                    ui.painter().line_segment(
+                        [c - Vec2::new(3.0, 0.0), c + Vec2::new(3.0, 0.0)],
+                        Stroke::new(1.2, palette.text_muted),
+                    );
+                    ui.painter().line_segment(
+                        [c - Vec2::new(3.0, 0.0), c - Vec2::new(1.5, 2.0)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
+                    ui.painter().line_segment(
+                        [c - Vec2::new(3.0, 0.0), c - Vec2::new(1.5, -2.0)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
+                    ui.painter().line_segment(
+                        [c + Vec2::new(3.0, 0.0), c + Vec2::new(1.5, 2.0)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
+                    ui.painter().line_segment(
+                        [c + Vec2::new(3.0, 0.0), c + Vec2::new(1.5, -2.0)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
                     if resp.clicked() {
                         self.is_vertical = false;
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(self.calculate_size()));
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(
+                            self.calculate_size(),
+                        ));
                     }
 
                     // Settings gear (vector drawn)
@@ -152,12 +184,20 @@ impl ToolstripApp {
                         .corner_radius(2.0);
                     let resp_gear = ui.add(gear_btn);
                     if resp_gear.hovered() {
-                        self.hovered_tooltip = Some(("Plugins Manager".to_string(), resp_gear.rect));
+                        self.hovered_tooltip =
+                            Some(("Plugins Manager".to_string(), resp_gear.rect));
                     }
                     let cg = resp_gear.rect.center();
-                    ui.painter().circle_stroke(cg, 2.3, Stroke::new(1.0, palette.text_muted));
-                    ui.painter().line_segment([cg - Vec2::new(0.0, 3.5), cg + Vec2::new(0.0, 3.5)], Stroke::new(1.0, palette.text_muted));
-                    ui.painter().line_segment([cg - Vec2::new(3.5, 0.0), cg + Vec2::new(3.5, 0.0)], Stroke::new(1.0, palette.text_muted));
+                    ui.painter()
+                        .circle_stroke(cg, 2.3, Stroke::new(1.0, palette.text_muted));
+                    ui.painter().line_segment(
+                        [cg - Vec2::new(0.0, 3.5), cg + Vec2::new(0.0, 3.5)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
+                    ui.painter().line_segment(
+                        [cg - Vec2::new(3.5, 0.0), cg + Vec2::new(3.5, 0.0)],
+                        Stroke::new(1.0, palette.text_muted),
+                    );
                     if resp_gear.clicked() {
                         self.open_manager_requested = true;
                     }
@@ -168,7 +208,8 @@ impl ToolstripApp {
                         .corner_radius(2.0);
                     let resp_min = ui.add(min_btn);
                     if resp_min.hovered() {
-                        self.hovered_tooltip = Some(("Minimize to Tray".to_string(), resp_min.rect));
+                        self.hovered_tooltip =
+                            Some(("Minimize to Tray".to_string(), resp_min.rect));
                     }
                     let cm = resp_min.rect.center();
                     ui.painter().line_segment(
@@ -185,7 +226,12 @@ impl ToolstripApp {
                 ui.add_space(2.0);
 
                 ui.vertical_centered(|ui| {
-                    render_button_items(ui, &self.buttons, &mut self.pending_action, &mut self.hovered_tooltip);
+                    render_button_items(
+                        ui,
+                        &self.buttons,
+                        &mut self.pending_action,
+                        &mut self.hovered_tooltip,
+                    );
                 });
                 ui.add_space(3.0);
             });
@@ -200,14 +246,20 @@ impl ToolstripApp {
 
                     // Drag handle
                     let handle_size = Vec2::new(20.0, 14.0);
-                    let (handle_rect, response) = ui.allocate_exact_size(handle_size, Sense::drag());
+                    let (handle_rect, response) =
+                        ui.allocate_exact_size(handle_size, Sense::drag());
                     if response.drag_started() {
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                     }
                     let c = handle_rect.center();
                     for dx in [-6.0, -2.0, 2.0, 6.0] {
-                        ui.painter().circle_filled(c + Vec2::new(dx, -2.5), 1.0, palette.text_muted);
-                        ui.painter().circle_filled(c + Vec2::new(dx, 2.5), 1.0, palette.text_muted);
+                        ui.painter().circle_filled(
+                            c + Vec2::new(dx, -2.5),
+                            1.0,
+                            palette.text_muted,
+                        );
+                        ui.painter()
+                            .circle_filled(c + Vec2::new(dx, 2.5), 1.0, palette.text_muted);
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -219,7 +271,8 @@ impl ToolstripApp {
                             .corner_radius(2.0);
                         let resp_min = ui.add(min_btn);
                         if resp_min.hovered() {
-                            self.hovered_tooltip = Some(("Minimize to Tray".to_string(), resp_min.rect));
+                            self.hovered_tooltip =
+                                Some(("Minimize to Tray".to_string(), resp_min.rect));
                         }
                         let cm = resp_min.rect.center();
                         ui.painter().line_segment(
@@ -236,12 +289,20 @@ impl ToolstripApp {
                             .corner_radius(2.0);
                         let resp_gear = ui.add(gear_btn);
                         if resp_gear.hovered() {
-                            self.hovered_tooltip = Some(("Plugins Manager".to_string(), resp_gear.rect));
+                            self.hovered_tooltip =
+                                Some(("Plugins Manager".to_string(), resp_gear.rect));
                         }
                         let cg = resp_gear.rect.center();
-                        ui.painter().circle_stroke(cg, 2.6, Stroke::new(1.0, palette.text_muted));
-                        ui.painter().line_segment([cg - Vec2::new(0.0, 4.0), cg + Vec2::new(0.0, 4.0)], Stroke::new(1.0, palette.text_muted));
-                        ui.painter().line_segment([cg - Vec2::new(4.0, 0.0), cg + Vec2::new(4.0, 0.0)], Stroke::new(1.0, palette.text_muted));
+                        ui.painter()
+                            .circle_stroke(cg, 2.6, Stroke::new(1.0, palette.text_muted));
+                        ui.painter().line_segment(
+                            [cg - Vec2::new(0.0, 4.0), cg + Vec2::new(0.0, 4.0)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
+                        ui.painter().line_segment(
+                            [cg - Vec2::new(4.0, 0.0), cg + Vec2::new(4.0, 0.0)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
                         if resp_gear.clicked() {
                             self.open_manager_requested = true;
                         }
@@ -252,17 +313,35 @@ impl ToolstripApp {
                             .corner_radius(2.0);
                         let resp_orient = ui.add(orient_btn);
                         if resp_orient.hovered() {
-                            self.hovered_tooltip = Some(("Switch to Vertical".to_string(), resp_orient.rect));
+                            self.hovered_tooltip =
+                                Some(("Switch to Vertical".to_string(), resp_orient.rect));
                         }
                         let c = resp_orient.rect.center();
-                        ui.painter().line_segment([c - Vec2::new(0.0, 3.5), c + Vec2::new(0.0, 3.5)], Stroke::new(1.2, palette.text_muted));
-                        ui.painter().line_segment([c - Vec2::new(0.0, 3.5), c - Vec2::new(2.0, 1.5)], Stroke::new(1.0, palette.text_muted));
-                        ui.painter().line_segment([c - Vec2::new(0.0, 3.5), c - Vec2::new(-2.0, 1.5)], Stroke::new(1.0, palette.text_muted));
-                        ui.painter().line_segment([c + Vec2::new(0.0, 3.5), c + Vec2::new(2.0, -1.5)], Stroke::new(1.0, palette.text_muted));
-                        ui.painter().line_segment([c + Vec2::new(0.0, 3.5), c + Vec2::new(-2.0, -1.5)], Stroke::new(1.0, palette.text_muted));
+                        ui.painter().line_segment(
+                            [c - Vec2::new(0.0, 3.5), c + Vec2::new(0.0, 3.5)],
+                            Stroke::new(1.2, palette.text_muted),
+                        );
+                        ui.painter().line_segment(
+                            [c - Vec2::new(0.0, 3.5), c - Vec2::new(2.0, 1.5)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
+                        ui.painter().line_segment(
+                            [c - Vec2::new(0.0, 3.5), c - Vec2::new(-2.0, 1.5)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
+                        ui.painter().line_segment(
+                            [c + Vec2::new(0.0, 3.5), c + Vec2::new(2.0, -1.5)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
+                        ui.painter().line_segment(
+                            [c + Vec2::new(0.0, 3.5), c + Vec2::new(-2.0, -1.5)],
+                            Stroke::new(1.0, palette.text_muted),
+                        );
                         if resp_orient.clicked() {
                             self.is_vertical = true;
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(self.calculate_size()));
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(
+                                self.calculate_size(),
+                            ));
                         }
                     });
                 });
@@ -274,7 +353,12 @@ impl ToolstripApp {
                 // Tier 2: Large plugin action buttons strictly below service row
                 ui.horizontal_centered(|ui| {
                     ui.add_space(4.0);
-                    render_button_items(ui, &self.buttons, &mut self.pending_action, &mut self.hovered_tooltip);
+                    render_button_items(
+                        ui,
+                        &self.buttons,
+                        &mut self.pending_action,
+                        &mut self.hovered_tooltip,
+                    );
                 });
             });
         }
@@ -291,7 +375,11 @@ mod tests {
                 label: format!("Tool {}", i + 1),
                 action: format!("action_{}", i + 1),
                 hotkey: None,
-                icon: if i == 0 { Some("wand".to_string()) } else { Some("bw".to_string()) },
+                icon: if i == 0 {
+                    Some("wand".to_string())
+                } else {
+                    Some("bw".to_string())
+                },
             })
             .collect()
     }
@@ -308,8 +396,10 @@ mod tests {
             assert_eq!(expected_size.x, 50.0);
             assert!(expected_size.y >= (count as f32) * 36.0 + 58.0);
 
-            let mut raw_input = egui::RawInput::default();
-            raw_input.screen_rect = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size));
+            let raw_input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size)),
+                ..Default::default()
+            };
 
             let mut full_output = ctx.run_ui(raw_input, |ctx| {
                 let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size);
@@ -352,8 +442,10 @@ mod tests {
             let expected_size = app.calculate_size();
             assert_eq!(expected_size.y, 78.0);
 
-            let mut raw_input = egui::RawInput::default();
-            raw_input.screen_rect = Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size));
+            let raw_input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size)),
+                ..Default::default()
+            };
 
             let mut full_output = ctx.run_ui(raw_input, |ctx| {
                 let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size);
@@ -417,5 +509,3 @@ mod tests {
         assert!(app.hovered_tooltip.is_none());
     }
 }
-
-

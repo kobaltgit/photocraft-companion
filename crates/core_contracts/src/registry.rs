@@ -29,17 +29,36 @@ impl Plugin for NoCodePlugin {
     }
 
     async fn execute(&self, ctx: &PluginContext) -> Result<PluginResult> {
-        info!("Executing No-Code plugin '{}' ({} steps)", self.manifest.name, self.manifest.commands.len());
+        info!(
+            "Executing No-Code plugin '{}' ({} steps)",
+            self.manifest.name,
+            self.manifest.commands.len()
+        );
 
         let mut last_output = serde_json::Value::Null;
         for (idx, step) in self.manifest.commands.iter().enumerate() {
             if let Some(desc) = &step.description {
-                debug!("  Step [{}/{}]: {} ({})", idx + 1, self.manifest.commands.len(), step.command, desc);
+                debug!(
+                    "  Step [{}/{}]: {} ({})",
+                    idx + 1,
+                    self.manifest.commands.len(),
+                    step.command,
+                    desc
+                );
             } else {
-                debug!("  Step [{}/{}]: {}", idx + 1, self.manifest.commands.len(), step.command);
+                debug!(
+                    "  Step [{}/{}]: {}",
+                    idx + 1,
+                    self.manifest.commands.len(),
+                    step.command
+                );
             }
 
-            match ctx.client.execute_command(&step.command, step.params.clone()).await {
+            match ctx
+                .client
+                .execute_command(&step.command, step.params.clone())
+                .await
+            {
                 Ok(val) => {
                     last_output = val;
                 }
@@ -51,7 +70,10 @@ impl Plugin for NoCodePlugin {
         }
 
         Ok(PluginResult::ok_with_data(
-            format!("No-Code plugin '{}' completed successfully", self.manifest.name),
+            format!(
+                "No-Code plugin '{}' completed successfully",
+                self.manifest.name
+            ),
             last_output,
         ))
     }
@@ -83,7 +105,10 @@ impl PluginRegistry {
     /// Scan directory for `plugin.json` manifests and instantiate plugins
     pub fn scan_and_load(&mut self) -> Result<usize> {
         if !self.plugins_dir.exists() {
-            debug!("Plugins directory does not exist: {}", self.plugins_dir.display());
+            debug!(
+                "Plugins directory does not exist: {}",
+                self.plugins_dir.display()
+            );
             return Ok(0);
         }
 
@@ -100,48 +125,75 @@ impl PluginRegistry {
                             Ok(mut manifest) => {
                                 manifest.plugin_dir = Some(path.clone());
                                 if !manifest.enabled {
-                                    info!("Skipping disabled plugin: {} ({})", manifest.name, manifest.id);
+                                    info!(
+                                        "Skipping disabled plugin: {} ({})",
+                                        manifest.name, manifest.id
+                                    );
                                     continue;
                                 }
 
                                 match manifest.plugin_type {
                                     PluginType::NoCode => {
-                                        info!("Loaded No-Code plugin: {} [{}]", manifest.name, manifest.id);
+                                        info!(
+                                            "Loaded No-Code plugin: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
                                         let plugin = Arc::new(NoCodePlugin::new(manifest.clone()));
                                         self.plugins.insert(manifest.id.clone(), plugin);
                                         self.manifests.push(manifest);
                                         loaded_count += 1;
                                     }
                                     PluginType::NativeAi => {
-                                        info!("Found Native AI plugin manifest: {} [{}]", manifest.name, manifest.id);
+                                        info!(
+                                            "Found Native AI plugin manifest: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
                                         // Manifest is tracked; instance registered via register_native
                                         if !self.plugins.contains_key(&manifest.id) {
                                             self.manifests.push(manifest);
                                         }
                                     }
                                     PluginType::Script => {
-                                        info!("Found Script plugin manifest: {} [{}]", manifest.name, manifest.id);
+                                        info!(
+                                            "Found Script plugin manifest: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
                                         self.manifests.push(manifest);
                                     }
                                     PluginType::ExternalCli => {
-                                        info!("Found External CLI plugin manifest: {} [{}]", manifest.name, manifest.id);
+                                        info!(
+                                            "Found External CLI plugin manifest: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
                                         self.manifests.push(manifest);
                                     }
                                 }
                             }
                             Err(e) => {
-                                warn!("Failed to parse plugin manifest {}: {}", manifest_file.display(), e);
+                                warn!(
+                                    "Failed to parse plugin manifest {}: {}",
+                                    manifest_file.display(),
+                                    e
+                                );
                             }
                         },
                         Err(e) => {
-                            warn!("Failed to read plugin manifest {}: {}", manifest_file.display(), e);
+                            warn!(
+                                "Failed to read plugin manifest {}: {}",
+                                manifest_file.display(),
+                                e
+                            );
                         }
                     }
                 }
             }
         }
 
-        info!("Plugin registry loaded {} plugins from {}", loaded_count, self.plugins_dir.display());
+        info!(
+            "Plugin registry loaded {} plugins from {}",
+            loaded_count,
+            self.plugins_dir.display()
+        );
         Ok(loaded_count)
     }
 
@@ -196,13 +248,20 @@ mod tests {
 
     #[async_trait]
     impl BridgeOperations for MockBridge {
-        async fn execute_command(&self, command: &str, params: serde_json::Value) -> Result<serde_json::Value> {
+        async fn execute_command(
+            &self,
+            command: &str,
+            params: serde_json::Value,
+        ) -> Result<serde_json::Value> {
             if let Some(ref fail) = self.fail_on {
                 if fail == command {
                     return Err(CompanionError::Bridge(format!("Mock failure on {command}")));
                 }
             }
-            self.executed.lock().unwrap().push((command.to_string(), params.clone()));
+            self.executed
+                .lock()
+                .unwrap()
+                .push((command.to_string(), params.clone()));
             Ok(json!({ "status": "ok", "cmd": command }))
         }
 
@@ -293,13 +352,11 @@ mod tests {
             plugin_type: PluginType::NoCode,
             default_hotkey: None,
             icon: None,
-            commands: vec![
-                PluginCommandStep {
-                    command: "fail.cmd".to_string(),
-                    params: json!({}),
-                    description: None,
-                },
-            ],
+            commands: vec![PluginCommandStep {
+                command: "fail.cmd".to_string(),
+                params: json!({}),
+                description: None,
+            }],
             models: vec![],
             action_id: None,
             entrypoint: None,
@@ -328,28 +385,42 @@ mod tests {
 
     #[test]
     fn test_plugin_registry_scan_and_load() {
-        let temp_dir = std::env::temp_dir().join(format!("registry_scan_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "registry_scan_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let p1 = temp_dir.join("p1");
         fs::create_dir_all(&p1).unwrap();
-        fs::write(p1.join("plugin.json"), r#"{
+        fs::write(
+            p1.join("plugin.json"),
+            r#"{
             "id": "p1.id",
             "name": "Plugin One",
             "version": "1.0",
             "description": "desc",
             "plugin_type": "no_code",
             "commands": []
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
 
         let p2_disabled = temp_dir.join("p2_disabled");
         fs::create_dir_all(&p2_disabled).unwrap();
-        fs::write(p2_disabled.join("plugin.json"), r#"{
+        fs::write(
+            p2_disabled.join("plugin.json"),
+            r#"{
             "id": "p2.disabled",
             "name": "Disabled Plugin",
             "version": "1.0",
             "description": "desc",
             "plugin_type": "no_code",
             "enabled": false
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
 
         let mut registry = PluginRegistry::new(&temp_dir);
         let count = registry.scan_and_load().unwrap();
@@ -385,4 +456,3 @@ mod tests {
         assert!(res.is_err());
     }
 }
-

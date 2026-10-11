@@ -13,8 +13,9 @@ pub struct HotkeyManager {
 
 impl HotkeyManager {
     pub fn new() -> Result<Self> {
-        let manager = GlobalHotKeyManager::new()
-            .map_err(|e| CompanionError::Plugin(format!("Failed to initialize GlobalHotKeyManager: {e}")))?;
+        let manager = GlobalHotKeyManager::new().map_err(|e| {
+            CompanionError::Plugin(format!("Failed to initialize GlobalHotKeyManager: {e}"))
+        })?;
         Ok(Self {
             manager,
             registered: HashMap::new(),
@@ -100,14 +101,18 @@ impl HotkeyManager {
 
     /// Register action by hotkey string
     pub fn register(&mut self, hotkey_str: &str, action_name: &str) -> Result<u32> {
-        let hotkey = Self::parse_hotkey(hotkey_str)
-            .ok_or_else(|| CompanionError::Plugin(format!("Unsupported hotkey format: {hotkey_str}")))?;
+        let hotkey = Self::parse_hotkey(hotkey_str).ok_or_else(|| {
+            CompanionError::Plugin(format!("Unsupported hotkey format: {hotkey_str}"))
+        })?;
         let id = hotkey.id();
-        self.manager
-            .register(hotkey)
-            .map_err(|e| CompanionError::Plugin(format!("Failed to register hotkey '{hotkey_str}': {e}")))?;
+        self.manager.register(hotkey).map_err(|e| {
+            CompanionError::Plugin(format!("Failed to register hotkey '{hotkey_str}': {e}"))
+        })?;
         self.registered.insert(id, action_name.to_string());
-        info!("Registered global hotkey '{}' -> '{}' (id: {})", hotkey_str, action_name, id);
+        info!(
+            "Registered global hotkey '{}' -> '{}' (id: {})",
+            hotkey_str, action_name, id
+        );
         Ok(id)
     }
 
@@ -183,5 +188,3 @@ mod tests {
         }
     }
 }
-
-

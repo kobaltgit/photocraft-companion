@@ -30,8 +30,8 @@ pub use i18n::Language;
 
 pub mod plugin;
 pub use plugin::{
-    BridgeOperations, ModelRequirement, Plugin, PluginCommandStep, PluginContext,
-    PluginManifest, PluginResult, PluginType,
+    BridgeOperations, ModelRequirement, Plugin, PluginCommandStep, PluginContext, PluginManifest,
+    PluginResult, PluginType,
 };
 
 pub mod config;

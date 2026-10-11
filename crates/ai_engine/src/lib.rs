@@ -31,7 +31,10 @@ impl AiEngine {
         }
 
         // 2. Self-contained plugin folder: plugins/remove_bg/models/rmbg-1.4.onnx
-        let plugin_model = PathBuf::from("plugins").join("remove_bg").join("models").join("rmbg-1.4.onnx");
+        let plugin_model = PathBuf::from("plugins")
+            .join("remove_bg")
+            .join("models")
+            .join("rmbg-1.4.onnx");
         if plugin_model.exists() {
             return plugin_model;
         }
@@ -39,12 +42,20 @@ impl AiEngine {
         // 3. Check relative to executable directory
         if let Ok(exe) = std::env::current_exe() {
             if let Some(parent) = exe.parent() {
-                let candidate = parent.join("plugins").join("remove_bg").join("models").join("rmbg-1.4.onnx");
+                let candidate = parent
+                    .join("plugins")
+                    .join("remove_bg")
+                    .join("models")
+                    .join("rmbg-1.4.onnx");
                 if candidate.exists() {
                     return candidate;
                 }
                 if let Some(grandparent) = parent.parent() {
-                    let candidate = grandparent.join("plugins").join("remove_bg").join("models").join("rmbg-1.4.onnx");
+                    let candidate = grandparent
+                        .join("plugins")
+                        .join("remove_bg")
+                        .join("models")
+                        .join("rmbg-1.4.onnx");
                     if candidate.exists() {
                         return candidate;
                     }
@@ -53,7 +64,9 @@ impl AiEngine {
         }
 
         // 4. Fallback to PhotoCraftData portable cache
-        let portable = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models\rmbg-1.4.onnx");
+        let portable = PathBuf::from(
+            r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models\rmbg-1.4.onnx",
+        );
         if portable.exists() {
             return portable;
         }
@@ -73,12 +86,18 @@ impl AiEngine {
             }
             info!("Loading RMBG-1.4 model from {}...", model_path.display());
             let session = Session::builder()
-                .map_err(|e| CompanionError::AiEngine(format!("Failed to init Session builder: {e}")))?
+                .map_err(|e| {
+                    CompanionError::AiEngine(format!("Failed to init Session builder: {e}"))
+                })?
                 .with_execution_providers([
                     ort::ep::DirectML::default().build(),
                     ort::ep::CPU::default().build(),
                 ])
-                .map_err(|e| CompanionError::AiEngine(format!("Failed to configure execution providers: {e}")))?
+                .map_err(|e| {
+                    CompanionError::AiEngine(format!(
+                        "Failed to configure execution providers: {e}"
+                    ))
+                })?
                 .commit_from_file(&model_path)
                 .map_err(|e| CompanionError::AiEngine(format!("Failed to load ONNX model: {e}")))?;
             *guard = Some(session);
@@ -93,11 +112,16 @@ impl AiEngine {
         let orig_w = image.width();
         let orig_h = image.height();
 
-        debug!("Preprocessing image ({}x{}) for RMBG-1.4...", orig_w, orig_h);
+        debug!(
+            "Preprocessing image ({}x{}) for RMBG-1.4...",
+            orig_w, orig_h
+        );
 
         // 1. Resize to 1024x1024 for RMBG-1.4
         let dynamic_img = DynamicImage::ImageRgba8(image.clone());
-        let resized = dynamic_img.resize_exact(1024, 1024, FilterType::Triangle).to_rgb8();
+        let resized = dynamic_img
+            .resize_exact(1024, 1024, FilterType::Triangle)
+            .to_rgb8();
 
         // 2. Build NCHW tensor [1, 3, 1024, 1024] normalized by ([0.5, 0.5, 0.5], [1.0, 1.0, 1.0])
         let channel_stride = 1024 * 1024;
@@ -118,16 +142,18 @@ impl AiEngine {
         // 3. Inference
         debug!("Running ONNX inference...");
         let mut guard = self.session.lock().unwrap();
-        let session = guard.as_mut().ok_or_else(|| CompanionError::AiEngine("Session not loaded".into()))?;
+        let session = guard
+            .as_mut()
+            .ok_or_else(|| CompanionError::AiEngine("Session not loaded".into()))?;
 
         let outputs = session
             .run(inputs![input_tensor])
             .map_err(|e| CompanionError::AiEngine(format!("Inference failed: {e}")))?;
 
         // Output tensor shape is [1, 1, 1024, 1024]
-        let (_shape, mask_slice) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| CompanionError::AiEngine(format!("Failed to extract output array: {e}")))?;
+        let (_shape, mask_slice) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+            CompanionError::AiEngine(format!("Failed to extract output array: {e}"))
+        })?;
 
         debug!("Postprocessing mask...");
         // 4. Construct 1024x1024 alpha mask
@@ -141,7 +167,9 @@ impl AiEngine {
 
         // 5. Upscale mask back to original dimensions
         let dynamic_mask = DynamicImage::ImageLuma8(mask_img);
-        let resized_mask = dynamic_mask.resize_exact(orig_w, orig_h, FilterType::CatmullRom).to_luma8();
+        let resized_mask = dynamic_mask
+            .resize_exact(orig_w, orig_h, FilterType::CatmullRom)
+            .to_luma8();
 
         // 6. Apply mask to original image RGBA
         let mut result_img = image.clone();
@@ -206,8 +234,15 @@ impl core_contracts::Plugin for RemoveBgPlugin {
         &self.manifest
     }
 
-    async fn execute(&self, ctx: &core_contracts::PluginContext) -> Result<core_contracts::PluginResult> {
-        let source_name = ctx.document.active_layer_name.clone().unwrap_or_else(|| "Layer".to_string());
+    async fn execute(
+        &self,
+        ctx: &core_contracts::PluginContext,
+    ) -> Result<core_contracts::PluginResult> {
+        let source_name = ctx
+            .document
+            .active_layer_name
+            .clone()
+            .unwrap_or_else(|| "Layer".to_string());
         let lang = core_contracts::Language::Auto.resolve(None);
         let target_name = lang.format_cutout_name(&source_name);
 
@@ -215,12 +250,11 @@ impl core_contracts::Plugin for RemoveBgPlugin {
         let engine_clone = self.engine.clone();
         let img_clone = img.clone();
 
-        let cutout = tokio::task::spawn_blocking(move || {
-            engine_clone.remove_background(&img_clone)
-        })
-        .await
-        .map_err(|e| CompanionError::Plugin(format!("Background task join error: {e}")))?
-        .map_err(|e| CompanionError::Plugin(format!("Inference error: {e}")))?;
+        let cutout =
+            tokio::task::spawn_blocking(move || engine_clone.remove_background(&img_clone))
+                .await
+                .map_err(|e| CompanionError::Plugin(format!("Background task join error: {e}")))?
+                .map_err(|e| CompanionError::Plugin(format!("Inference error: {e}")))?;
 
         let paste_res = ctx.client.paste_image_in_place(&cutout).await?;
         if let Some(new_layer_id) = paste_res.get("layer").and_then(|l| l.as_u64()) {
@@ -260,7 +294,13 @@ mod tests {
 
     #[test]
     fn test_ai_engine_model_path_resolution() {
-        let temp_dir = std::env::temp_dir().join(format!("ai_path_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ai_path_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let models_sub = temp_dir.join("models");
         std::fs::create_dir_all(&models_sub).unwrap();
         let target_model = models_sub.join("rmbg-1.4.onnx");
@@ -274,7 +314,13 @@ mod tests {
 
     #[test]
     fn test_ai_engine_missing_model_error() {
-        let temp_dir = std::env::temp_dir().join(format!("ai_missing_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "ai_missing_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         std::fs::create_dir_all(&temp_dir).unwrap();
 
         let engine = AiEngine::new(&temp_dir);
@@ -299,12 +345,20 @@ mod tests {
 
     #[async_trait::async_trait]
     impl BridgeOperations for MockBridgeAi {
-        async fn execute_command(&self, _command: &str, _params: serde_json::Value) -> Result<serde_json::Value> {
+        async fn execute_command(
+            &self,
+            _command: &str,
+            _params: serde_json::Value,
+        ) -> Result<serde_json::Value> {
             Ok(json!({}))
         }
 
         async fn copy_active_layer_image(&self) -> Result<RgbaImage> {
-            Ok(RgbaImage::from_pixel(16, 16, image::Rgba([200, 100, 50, 255])))
+            Ok(RgbaImage::from_pixel(
+                16,
+                16,
+                image::Rgba([200, 100, 50, 255]),
+            ))
         }
 
         async fn paste_image_in_place(&self, _image: &RgbaImage) -> Result<serde_json::Value> {
@@ -330,7 +384,10 @@ mod tests {
     #[tokio::test]
     async fn test_remove_bg_plugin_execution_with_model() {
         // Test real or simulated plugin execution
-        let plugin_model = std::path::PathBuf::from("plugins").join("remove_bg").join("models").join("rmbg-1.4.onnx");
+        let plugin_model = std::path::PathBuf::from("plugins")
+            .join("remove_bg")
+            .join("models")
+            .join("rmbg-1.4.onnx");
         if !plugin_model.exists() {
             // Skip model inference if weights are not fetched
             return;
@@ -368,6 +425,3 @@ mod tests {
         assert!(layer_name.contains("Model Layer"));
     }
 }
-
-
-

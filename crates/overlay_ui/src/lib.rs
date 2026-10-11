@@ -70,10 +70,9 @@ impl OverlayBar {
     }
 
     pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self> {
-        let content =
-            std::fs::read_to_string(path.as_ref()).map_err(|e| CompanionError::Io(e))?;
+        let content = std::fs::read_to_string(path.as_ref()).map_err(CompanionError::Io)?;
         let buttons: Vec<ButtonConfig> =
-            serde_json::from_str(&content).map_err(|e| CompanionError::Json(e))?;
+            serde_json::from_str(&content).map_err(CompanionError::Json)?;
         info!(
             "Loaded {} overlay buttons from {}",
             buttons.len(),
@@ -156,8 +155,8 @@ impl eframe::App for CompanionOverlayApp {
             let restore_flag = self.restore_toolbar_flag.clone();
             let manager_flag = self.open_manager_flag.clone();
 
-            tray_icon::menu::MenuEvent::set_event_handler(Some(move |event: tray_icon::menu::MenuEvent| {
-                match event.id.as_ref() {
+            tray_icon::menu::MenuEvent::set_event_handler(Some(
+                move |event: tray_icon::menu::MenuEvent| match event.id.as_ref() {
                     "tray_exit" => {
                         std::process::exit(0);
                     }
@@ -173,25 +172,32 @@ impl eframe::App for CompanionOverlayApp {
                         ctx_tray.request_repaint();
                     }
                     _ => {}
-                }
-            }));
+                },
+            ));
 
             let ctx_icon = ctx.clone();
             let restore_flag_icon = self.restore_toolbar_flag.clone();
-            tray_icon::TrayIconEvent::set_event_handler(Some(move |event: tray_icon::TrayIconEvent| {
-                if let tray_icon::TrayIconEvent::Click { button: tray_icon::MouseButton::Left, .. } = event {
-                    restore_flag_icon.store(true, Ordering::Relaxed);
-                    ctx_icon.send_viewport_cmd(egui::ViewportCommand::Visible(true));
-                    ctx_icon.send_viewport_cmd(egui::ViewportCommand::Focus);
-                    ctx_icon.request_repaint();
-                }
-            }));
+            tray_icon::TrayIconEvent::set_event_handler(Some(
+                move |event: tray_icon::TrayIconEvent| {
+                    if let tray_icon::TrayIconEvent::Click {
+                        button: tray_icon::MouseButton::Left,
+                        ..
+                    } = event
+                    {
+                        restore_flag_icon.store(true, Ordering::Relaxed);
+                        ctx_icon.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                        ctx_icon.send_viewport_cmd(egui::ViewportCommand::Focus);
+                        ctx_icon.request_repaint();
+                    }
+                },
+            ));
         }
 
         // Process asynchronous tray commands instantly
         if self.restore_toolbar_flag.swap(false, Ordering::Relaxed) {
             self.is_hidden_to_tray = false;
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Visible(true));
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::Visible(true));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
         }
         if self.open_manager_flag.swap(false, Ordering::Relaxed) {
@@ -200,7 +206,8 @@ impl eframe::App for CompanionOverlayApp {
         }
 
         // Keep reactive loop active so IPC connection state is updated
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(50));
 
         let palette = ThemePalette::for_mode(self.toolstrip.current_theme);
         ui.ctx().set_visuals(palette.to_egui_visuals());
@@ -212,12 +219,19 @@ impl eframe::App for CompanionOverlayApp {
             self.last_connected_state = connected;
             if connected {
                 let size = self.toolstrip.calculate_size();
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
                 if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(pos[0], pos[1])));
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                            pos[0], pos[1],
+                        )));
                 }
             } else {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(280.0, 160.0)));
+                ui.ctx()
+                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
+                        280.0, 160.0,
+                    )));
             }
         }
 
@@ -285,12 +299,15 @@ impl eframe::App for CompanionOverlayApp {
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
                     self.is_hidden_to_tray = true;
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 }
 
                 // BUG-023: Render external floating tooltip popup viewport if any tool button is hovered
                 if let Some((tt_text, btn_rect)) = self.toolstrip.hovered_tooltip.take() {
-                    let window_min = ui.ctx().input(|i| i.viewport().outer_rect)
+                    let window_min = ui
+                        .ctx()
+                        .input(|i| i.viewport().outer_rect)
                         .map(|r| r.min)
                         .unwrap_or(egui::pos2(0.0, 0.0));
 
@@ -323,10 +340,14 @@ impl eframe::App for CompanionOverlayApp {
                                         .fill(palette.card_inner)
                                         .stroke(egui::Stroke::new(1.0, palette.border_stroke))
                                         .corner_radius(4.0)
-                                        .inner_margin(egui::Margin::symmetric(8, 3))
+                                        .inner_margin(egui::Margin::symmetric(8, 3)),
                                 )
                                 .show(ctx, |ui| {
-                                    ui.label(egui::RichText::new(&tt_text).size(11.0).color(palette.text_primary));
+                                    ui.label(
+                                        egui::RichText::new(&tt_text)
+                                            .size(11.0)
+                                            .color(palette.text_primary),
+                                    );
                                 });
                         },
                     );
@@ -361,13 +382,18 @@ impl eframe::App for CompanionOverlayApp {
                         self.show_manager = false;
                     }
                     if let Some(icon) = get_egui_icon_data(is_dark, 64) {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(std::sync::Arc::new(icon))));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(
+                            std::sync::Arc::new(icon),
+                        )));
                     }
                     egui::CentralPanel::default()
                         .frame(egui::Frame::new().fill(palette.bg_fill).inner_margin(0))
                         .show(ctx, |ui| {
-                            self.manager
-                                .render_settings_window(ui, &palette, &mut self.show_manager);
+                            self.manager.render_settings_window(
+                                ui,
+                                &palette,
+                                &mut self.show_manager,
+                            );
                         });
                 },
             );
@@ -478,7 +504,10 @@ mod tests {
         let default_btns = OverlayBar::default_buttons();
         assert_eq!(default_btns.len(), 2);
         assert_eq!(default_btns[0].action, "ai.photocraft.plugins.remove_bg");
-        assert_eq!(default_btns[1].action, "macro.photocraft.plugins.black_and_white");
+        assert_eq!(
+            default_btns[1].action,
+            "macro.photocraft.plugins.black_and_white"
+        );
     }
 
     #[test]
@@ -528,18 +557,22 @@ mod tests {
 
     #[test]
     fn test_overlay_bar_save_and_load() {
-        let temp_dir = std::env::temp_dir().join(format!("overlay_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "overlay_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let bar_file = temp_dir.join("buttons.json");
 
-        let sample_buttons = vec![
-            ButtonConfig {
-                label: "Custom Action".to_string(),
-                action: "custom.action".to_string(),
-                hotkey: Some("F5".to_string()),
-                icon: Some("custom".to_string()),
-            }
-        ];
+        let sample_buttons = vec![ButtonConfig {
+            label: "Custom Action".to_string(),
+            action: "custom.action".to_string(),
+            hotkey: Some("F5".to_string()),
+            icon: Some("custom".to_string()),
+        }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 
         let bar = OverlayBar::load_from_file(&bar_file).unwrap();
@@ -561,4 +594,3 @@ mod tests {
         assert!(y >= 50.0);
     }
 }
-

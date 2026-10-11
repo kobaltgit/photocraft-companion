@@ -18,10 +18,7 @@ extern "system" {
 }
 
 #[cfg(windows)]
-unsafe extern "system" fn enum_windows_callback(
-    hwnd: *mut std::ffi::c_void,
-    lparam: isize,
-) -> i32 {
+unsafe extern "system" fn enum_windows_callback(hwnd: *mut std::ffi::c_void, lparam: isize) -> i32 {
     let result_ptr = lparam as *mut Option<[i32; 4]>;
     if IsWindowVisible(hwnd) != 0 {
         let mut pid: u32 = 0;

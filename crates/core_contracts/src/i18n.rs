@@ -61,7 +61,11 @@ impl Language {
         if let Some(path) = photocraft_prefs_path {
             if let Ok(content) = std::fs::read_to_string(path) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(lang_str) = v.get("interface").and_then(|i| i.get("language")).and_then(|l| l.as_str()) {
+                    if let Some(lang_str) = v
+                        .get("interface")
+                        .and_then(|i| i.get("language"))
+                        .and_then(|l| l.as_str())
+                    {
                         let detected = Language::from_str_code(lang_str);
                         if detected != Language::Auto {
                             return detected;
@@ -72,11 +76,17 @@ impl Language {
         }
 
         // Try default portable preferences path
-        let default_portable = Path::new(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\preferences.json");
+        let default_portable = Path::new(
+            r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\preferences.json",
+        );
         if default_portable.exists() {
             if let Ok(content) = std::fs::read_to_string(default_portable) {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                    if let Some(lang_str) = v.get("interface").and_then(|i| i.get("language")).and_then(|l| l.as_str()) {
+                    if let Some(lang_str) = v
+                        .get("interface")
+                        .and_then(|i| i.get("language"))
+                        .and_then(|l| l.as_str())
+                    {
                         let detected = Language::from_str_code(lang_str);
                         if detected != Language::Auto {
                             return detected;
@@ -127,16 +137,27 @@ impl Language {
         let trimmed = source_name.trim();
 
         let all_suffixes = [
-            "No BG", "Cutout", "Без фона", "Ohne Hintergrund",
-            "Sans fond", "Sin fondo", "Senza sfondo",
-            "背景なし", "无背景", "배경 없음", "Sem fundo",
+            "No BG",
+            "Cutout",
+            "Без фона",
+            "Ohne Hintergrund",
+            "Sans fond",
+            "Sin fondo",
+            "Senza sfondo",
+            "背景なし",
+            "无背景",
+            "배경 없음",
+            "Sem fundo",
         ];
 
         for s in all_suffixes {
             let pattern1 = format!("({s})");
             let pattern2 = format!("[{s}]");
             let pattern3 = format!("- {s}");
-            if trimmed.ends_with(&pattern1) || trimmed.ends_with(&pattern2) || trimmed.ends_with(&pattern3) {
+            if trimmed.ends_with(&pattern1)
+                || trimmed.ends_with(&pattern2)
+                || trimmed.ends_with(&pattern3)
+            {
                 return trimmed.to_string();
             }
         }
@@ -202,7 +223,9 @@ mod tests {
     fn test_language_remove_bg_label() {
         assert!(Language::En.remove_bg_label().contains("Remove BG"));
         assert!(Language::Ru.remove_bg_label().contains("Удалить фон"));
-        assert!(Language::De.remove_bg_label().contains("Hintergrund entfernen"));
+        assert!(Language::De
+            .remove_bg_label()
+            .contains("Hintergrund entfernen"));
     }
 
     #[test]
@@ -212,7 +235,13 @@ mod tests {
         assert_eq!(Language::De.resolve(None), Language::De);
 
         // Auto resolves from preferences JSON
-        let temp_dir = std::env::temp_dir().join(format!("i18n_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "i18n_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let prefs_file = temp_dir.join("preferences.json");
         std::fs::write(&prefs_file, r#"{"interface": {"language": "ru"}}"#).unwrap();
@@ -237,17 +266,38 @@ mod tests {
         assert_eq!(en.format_cutout_name("Portrait"), "Portrait (No BG)");
 
         // Deduplication when already has suffix in parentheses
-        assert_eq!(ru.format_cutout_name("Portrait (Без фона)"), "Portrait (Без фона)");
-        assert_eq!(en.format_cutout_name("Portrait (No BG)"), "Portrait (No BG)");
-        assert_eq!(ru.format_cutout_name("Portrait (No BG)"), "Portrait (No BG)");
+        assert_eq!(
+            ru.format_cutout_name("Portrait (Без фона)"),
+            "Portrait (Без фона)"
+        );
+        assert_eq!(
+            en.format_cutout_name("Portrait (No BG)"),
+            "Portrait (No BG)"
+        );
+        assert_eq!(
+            ru.format_cutout_name("Portrait (No BG)"),
+            "Portrait (No BG)"
+        );
 
         // Deduplication in brackets
-        assert_eq!(en.format_cutout_name("Portrait [No BG]"), "Portrait [No BG]");
-        assert_eq!(ru.format_cutout_name("Portrait [Без фона]"), "Portrait [Без фона]");
+        assert_eq!(
+            en.format_cutout_name("Portrait [No BG]"),
+            "Portrait [No BG]"
+        );
+        assert_eq!(
+            ru.format_cutout_name("Portrait [Без фона]"),
+            "Portrait [Без фона]"
+        );
 
         // Deduplication with dash
-        assert_eq!(en.format_cutout_name("Portrait - No BG"), "Portrait - No BG");
-        assert_eq!(ru.format_cutout_name("Portrait - Без фона"), "Portrait - Без фона");
+        assert_eq!(
+            en.format_cutout_name("Portrait - No BG"),
+            "Portrait - No BG"
+        );
+        assert_eq!(
+            ru.format_cutout_name("Portrait - Без фона"),
+            "Portrait - Без фона"
+        );
 
         // Whitespace handling
         assert_eq!(en.format_cutout_name("  Subject  "), "Subject (No BG)");
@@ -281,16 +331,40 @@ mod tests {
             let label = lang.remove_bg_label();
 
             // Suffix must not be empty and must not be a lazy hardcoded fallback to English
-            assert!(!suffix.trim().is_empty(), "Language {:?} has empty suffix", lang);
-            assert_ne!(suffix, en_suffix, "Language {:?} has hardcoded English suffix", lang);
-            assert!(seen_suffixes.insert(suffix), "Duplicate suffix '{}' for language {:?}", suffix, lang);
+            assert!(
+                !suffix.trim().is_empty(),
+                "Language {:?} has empty suffix",
+                lang
+            );
+            assert_ne!(
+                suffix, en_suffix,
+                "Language {:?} has hardcoded English suffix",
+                lang
+            );
+            assert!(
+                seen_suffixes.insert(suffix),
+                "Duplicate suffix '{}' for language {:?}",
+                suffix,
+                lang
+            );
 
             // Label must not be empty and must not be a lazy hardcoded fallback to English
-            assert!(!label.trim().is_empty(), "Language {:?} has empty label", lang);
-            assert_ne!(label, en_label, "Language {:?} has hardcoded English label", lang);
-            assert!(seen_labels.insert(label), "Duplicate label '{}' for language {:?}", label, lang);
+            assert!(
+                !label.trim().is_empty(),
+                "Language {:?} has empty label",
+                lang
+            );
+            assert_ne!(
+                label, en_label,
+                "Language {:?} has hardcoded English label",
+                lang
+            );
+            assert!(
+                seen_labels.insert(label),
+                "Duplicate label '{}' for language {:?}",
+                label,
+                lang
+            );
         }
     }
 }
-
-

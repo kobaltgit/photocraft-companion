@@ -56,7 +56,10 @@ impl PluginManifest {
     }
 
     pub fn all_models_installed(&self) -> bool {
-        self.models.iter().filter(|m| m.required).all(|m| self.is_model_installed(m))
+        self.models
+            .iter()
+            .filter(|m| m.required)
+            .all(|m| self.is_model_installed(m))
     }
 }
 
@@ -68,10 +71,11 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginType {
     /// Declarative macro running PhotoCraft engine commands sequentially
+    #[default]
     NoCode,
     /// Native Rust/C++ AI inference or high-perf memory processing
     NativeAi,
@@ -79,12 +83,6 @@ pub enum PluginType {
     Script,
     /// External CLI process communicating via stdin/stdout or clipboard
     ExternalCli,
-}
-
-impl Default for PluginType {
-    fn default() -> Self {
-        Self::NoCode
-    }
 }
 
 /// A step in a declarative No-Code pipeline
@@ -119,7 +117,11 @@ pub struct PluginContext {
 /// Abstraction over PhotoCraft bridge operations for plugin isolation
 #[async_trait]
 pub trait BridgeOperations {
-    async fn execute_command(&self, command: &str, params: serde_json::Value) -> Result<serde_json::Value>;
+    async fn execute_command(
+        &self,
+        command: &str,
+        params: serde_json::Value,
+    ) -> Result<serde_json::Value>;
     async fn copy_active_layer_image(&self) -> Result<RgbaImage>;
     async fn paste_image_in_place(&self, image: &RgbaImage) -> Result<serde_json::Value>;
     async fn rename_layer(&self, layer_id: u64, new_name: &str) -> Result<serde_json::Value>;
@@ -203,7 +205,13 @@ mod tests {
 
     #[test]
     fn test_plugin_manifest_model_installed() {
-        let temp_dir = std::env::temp_dir().join(format!("manifest_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "manifest_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let models_dir = temp_dir.join("models");
         std::fs::create_dir_all(&models_dir).unwrap();
 
@@ -262,4 +270,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
-

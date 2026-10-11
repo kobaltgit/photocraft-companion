@@ -99,7 +99,10 @@ impl PhotoCraftClient {
                 .write_all(line.as_bytes())
                 .await
                 .map_err(|e| CompanionError::Bridge(format!("Failed to write auth: {e}")))?;
-            writer.flush().await.map_err(|e| CompanionError::Bridge(e.to_string()))?;
+            writer
+                .flush()
+                .await
+                .map_err(|e| CompanionError::Bridge(e.to_string()))?;
 
             let mut resp_line = String::new();
             reader
@@ -111,8 +114,13 @@ impl PhotoCraftClient {
                 .map_err(|e| CompanionError::Bridge(format!("Invalid auth response JSON: {e}")))?;
 
             if !resp.ok {
-                let err_msg = resp.error.map(|v| v.to_string()).unwrap_or_else(|| "Unknown auth error".into());
-                return Err(CompanionError::Bridge(format!("PhotoCraft auth failed: {err_msg}")));
+                let err_msg = resp
+                    .error
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "Unknown auth error".into());
+                return Err(CompanionError::Bridge(format!(
+                    "PhotoCraft auth failed: {err_msg}"
+                )));
             }
             info!("Authenticated with PhotoCraft successfully.");
         } else {
@@ -141,8 +149,12 @@ impl PhotoCraftClient {
             reader_guard = self.reader.lock().await;
         }
 
-        let writer = writer_guard.as_mut().ok_or_else(|| CompanionError::Bridge("Writer not connected".into()))?;
-        let reader = reader_guard.as_mut().ok_or_else(|| CompanionError::Bridge("Reader not connected".into()))?;
+        let writer = writer_guard
+            .as_mut()
+            .ok_or_else(|| CompanionError::Bridge("Writer not connected".into()))?;
+        let reader = reader_guard
+            .as_mut()
+            .ok_or_else(|| CompanionError::Bridge("Reader not connected".into()))?;
 
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let req = JsonRpcRequest {
@@ -154,18 +166,33 @@ impl PhotoCraftClient {
         let mut line = serde_json::to_string(&req)?;
         line.push('\n');
 
-        writer.write_all(line.as_bytes()).await.map_err(|e| CompanionError::Bridge(format!("Socket write error: {e}")))?;
-        writer.flush().await.map_err(|e| CompanionError::Bridge(e.to_string()))?;
+        writer
+            .write_all(line.as_bytes())
+            .await
+            .map_err(|e| CompanionError::Bridge(format!("Socket write error: {e}")))?;
+        writer
+            .flush()
+            .await
+            .map_err(|e| CompanionError::Bridge(e.to_string()))?;
 
         let mut resp_line = String::new();
-        reader.read_line(&mut resp_line).await.map_err(|e| CompanionError::Bridge(format!("Socket read error: {e}")))?;
+        reader
+            .read_line(&mut resp_line)
+            .await
+            .map_err(|e| CompanionError::Bridge(format!("Socket read error: {e}")))?;
 
-        let resp: JsonRpcResponse = serde_json::from_str(&resp_line)
-            .map_err(|e| CompanionError::Bridge(format!("Invalid response JSON: {e} (raw: {resp_line})")))?;
+        let resp: JsonRpcResponse = serde_json::from_str(&resp_line).map_err(|e| {
+            CompanionError::Bridge(format!("Invalid response JSON: {e} (raw: {resp_line})"))
+        })?;
 
         if !resp.ok {
-            let err_msg = resp.error.map(|v| v.to_string()).unwrap_or_else(|| "Command failed".into());
-            return Err(CompanionError::Bridge(format!("PhotoCraft command failed: {err_msg}")));
+            let err_msg = resp
+                .error
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "Command failed".into());
+            return Err(CompanionError::Bridge(format!(
+                "PhotoCraft command failed: {err_msg}"
+            )));
         }
 
         Ok(resp.result)
@@ -186,10 +213,14 @@ impl PhotoCraftClient {
 
     /// Execute an engine command by id with parameters
     pub async fn execute_command(&self, command: &str, params: Value) -> Result<Value> {
-        self.call("engine.execute", json!({
-            "command": command,
-            "params": params
-        })).await
+        self.call(
+            "engine.execute",
+            json!({
+                "command": command,
+                "params": params
+            }),
+        )
+        .await
     }
 
     /// Inspect current UI and document state
@@ -205,16 +236,26 @@ impl PhotoCraftClient {
     /// Get current active document info
     pub async fn get_document_info(&self) -> Result<DocumentInfo> {
         let inspect = self.execute_command("document.inspect", json!({})).await?;
-        let name = inspect.get("name").and_then(|v| v.as_str()).unwrap_or("Untitled").to_string();
+        let name = inspect
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled")
+            .to_string();
         let width = inspect.get("width").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         let height = inspect.get("height").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
         let active_layer = inspect.get("activeLayer").and_then(|v| v.as_u64());
 
         let mut active_layer_name = None;
-        if let (Some(active_id), Some(layers)) = (active_layer, inspect.get("layers").and_then(|l| l.as_array())) {
+        if let (Some(active_id), Some(layers)) = (
+            active_layer,
+            inspect.get("layers").and_then(|l| l.as_array()),
+        ) {
             for layer in layers {
                 if layer.get("id").and_then(|id| id.as_u64()) == Some(active_id) {
-                    active_layer_name = layer.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
+                    active_layer_name = layer
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_string());
                     break;
                 }
             }
@@ -231,10 +272,14 @@ impl PhotoCraftClient {
 
     /// Rename layer by id using layer.renameLayer
     pub async fn rename_layer(&self, layer_id: u64, new_name: &str) -> Result<Value> {
-        self.execute_command("layer.renameLayer", json!({
-            "layer": layer_id,
-            "name": new_name
-        })).await
+        self.execute_command(
+            "layer.renameLayer",
+            json!({
+                "layer": layer_id,
+                "name": new_name
+            }),
+        )
+        .await
     }
 
     /// Paste from system clipboard into the active document
@@ -248,7 +293,10 @@ impl PhotoCraftClient {
     }
 
     /// Read image from system clipboard with custom retry count and backoff delay
-    pub fn read_clipboard_image_retry(max_attempts: usize, delay: std::time::Duration) -> Result<image::RgbaImage> {
+    pub fn read_clipboard_image_retry(
+        max_attempts: usize,
+        delay: std::time::Duration,
+    ) -> Result<image::RgbaImage> {
         let mut last_err = None;
         for attempt in 0..max_attempts {
             if attempt > 0 {
@@ -263,21 +311,39 @@ impl PhotoCraftClient {
                             img_data.bytes.into_owned(),
                         )
                         .ok_or_else(|| {
-                            CompanionError::Bridge("Failed to construct RgbaImage from clipboard bytes".into())
+                            CompanionError::Bridge(
+                                "Failed to construct RgbaImage from clipboard bytes".into(),
+                            )
                         });
                     }
                     Err(e) => {
-                        tracing::debug!("Clipboard read attempt {}/{} failed: {}", attempt + 1, max_attempts, e);
-                        last_err = Some(CompanionError::Bridge(format!("Failed to get image from clipboard: {e}")));
+                        tracing::debug!(
+                            "Clipboard read attempt {}/{} failed: {}",
+                            attempt + 1,
+                            max_attempts,
+                            e
+                        );
+                        last_err = Some(CompanionError::Bridge(format!(
+                            "Failed to get image from clipboard: {e}"
+                        )));
                     }
                 },
                 Err(e) => {
-                    tracing::debug!("Clipboard open attempt {}/{} failed: {}", attempt + 1, max_attempts, e);
-                    last_err = Some(CompanionError::Bridge(format!("Failed to open clipboard: {e}")));
+                    tracing::debug!(
+                        "Clipboard open attempt {}/{} failed: {}",
+                        attempt + 1,
+                        max_attempts,
+                        e
+                    );
+                    last_err = Some(CompanionError::Bridge(format!(
+                        "Failed to open clipboard: {e}"
+                    )));
                 }
             }
         }
-        Err(last_err.unwrap_or_else(|| CompanionError::Bridge("Failed to read image from clipboard after retries".into())))
+        Err(last_err.unwrap_or_else(|| {
+            CompanionError::Bridge("Failed to read image from clipboard after retries".into())
+        }))
     }
 
     /// Write image to system clipboard with automatic retry policy
@@ -297,16 +363,26 @@ impl PhotoCraftClient {
                     Ok(()) => return Ok(()),
                     Err(e) => {
                         tracing::debug!("Clipboard write attempt {}/5 failed: {}", attempt + 1, e);
-                        last_err = Some(CompanionError::Bridge(format!("Failed to write image to clipboard: {e}")));
+                        last_err = Some(CompanionError::Bridge(format!(
+                            "Failed to write image to clipboard: {e}"
+                        )));
                     }
                 },
                 Err(e) => {
-                    tracing::debug!("Clipboard open for write attempt {}/5 failed: {}", attempt + 1, e);
-                    last_err = Some(CompanionError::Bridge(format!("Failed to open clipboard: {e}")));
+                    tracing::debug!(
+                        "Clipboard open for write attempt {}/5 failed: {}",
+                        attempt + 1,
+                        e
+                    );
+                    last_err = Some(CompanionError::Bridge(format!(
+                        "Failed to open clipboard: {e}"
+                    )));
                 }
             }
         }
-        Err(last_err.unwrap_or_else(|| CompanionError::Bridge("Failed to write image to clipboard after retries".into())))
+        Err(last_err.unwrap_or_else(|| {
+            CompanionError::Bridge("Failed to write image to clipboard after retries".into())
+        }))
     }
 
     /// Copy active layer to clipboard and read it as RgbaImage with settling delay
@@ -322,7 +398,8 @@ impl PhotoCraftClient {
         Self::write_clipboard_image(img)?;
         // Micro-pause (30ms) ensures Windows clipboard lock is released before PhotoCraft paste command reads it
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
-        self.execute_command("edit.pasteSpecial.pasteInPlace", json!({})).await
+        self.execute_command("edit.pasteSpecial.pasteInPlace", json!({}))
+            .await
     }
 }
 
@@ -360,17 +437,32 @@ mod tests {
         // 1. Test direct token env var
         std::env::remove_var("PHOTOCRAFT_CONTROL_TOKEN_FILE");
         std::env::set_var("PHOTOCRAFT_CONTROL_TOKEN", "mock_token_12345");
-        assert_eq!(PhotoCraftClient::default_token(), Some("mock_token_12345".to_string()));
+        assert_eq!(
+            PhotoCraftClient::default_token(),
+            Some("mock_token_12345".to_string())
+        );
         std::env::remove_var("PHOTOCRAFT_CONTROL_TOKEN");
 
         // 2. Test token file env var
-        let temp_dir = std::env::temp_dir().join(format!("token_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "token_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
         let token_path = temp_dir.join("control.token");
         std::fs::write(&token_path, "  file_token_abc  \n").unwrap();
 
-        std::env::set_var("PHOTOCRAFT_CONTROL_TOKEN_FILE", token_path.to_str().unwrap());
-        assert_eq!(PhotoCraftClient::default_token(), Some("file_token_abc".to_string()));
+        std::env::set_var(
+            "PHOTOCRAFT_CONTROL_TOKEN_FILE",
+            token_path.to_str().unwrap(),
+        );
+        assert_eq!(
+            PhotoCraftClient::default_token(),
+            Some("file_token_abc".to_string())
+        );
 
         // 3. Clean up
         std::env::remove_var("PHOTOCRAFT_CONTROL_TOKEN_FILE");
@@ -402,7 +494,9 @@ mod tests {
                                 "ok": true,
                                 "result": null
                             });
-                            let _ = write_half.write_all(format!("{}\n", auth_resp).as_bytes()).await;
+                            let _ = write_half
+                                .write_all(format!("{}\n", auth_resp).as_bytes())
+                                .await;
                             let _ = write_half.flush().await;
                         }
                     }
@@ -456,7 +550,9 @@ mod tests {
                                     "ok": true,
                                     "result": { "base64": "dummy_img" }
                                 }),
-                                _ => json!({ "id": req["id"], "ok": false, "error": "Unknown method" }),
+                                _ => {
+                                    json!({ "id": req["id"], "ok": false, "error": "Unknown method" })
+                                }
                             };
 
                             let _ = write_half.write_all(format!("{}\n", resp).as_bytes()).await;
@@ -518,7 +614,10 @@ mod tests {
                 "ok": false,
                 "error": "Access denied: invalid token"
             });
-            write_half.write_all(format!("{}\n", auth_resp).as_bytes()).await.unwrap();
+            write_half
+                .write_all(format!("{}\n", auth_resp).as_bytes())
+                .await
+                .unwrap();
             write_half.flush().await.unwrap();
         });
 
@@ -544,7 +643,9 @@ mod tests {
                 let _ = reader.read_line(&mut line).await;
                 let req: Value = serde_json::from_str(&line).unwrap();
                 let auth_resp = json!({ "id": req["id"], "ok": true, "result": null });
-                let _ = write_half.write_all(format!("{}\n", auth_resp).as_bytes()).await;
+                let _ = write_half
+                    .write_all(format!("{}\n", auth_resp).as_bytes())
+                    .await;
                 let _ = write_half.flush().await;
 
                 // Close socket
@@ -561,15 +662,20 @@ mod tests {
                 let _ = reader.read_line(&mut line).await;
                 let req: Value = serde_json::from_str(&line).unwrap();
                 let auth_resp = json!({ "id": req["id"], "ok": true, "result": null });
-                let _ = write_half.write_all(format!("{}\n", auth_resp).as_bytes()).await;
+                let _ = write_half
+                    .write_all(format!("{}\n", auth_resp).as_bytes())
+                    .await;
                 let _ = write_half.flush().await;
 
                 // Next command
                 line.clear();
                 let _ = reader.read_line(&mut line).await;
                 let cmd_req: Value = serde_json::from_str(&line).unwrap();
-                let cmd_resp = json!({ "id": cmd_req["id"], "ok": true, "result": { "reconnected": true } });
-                let _ = write_half.write_all(format!("{}\n", cmd_resp).as_bytes()).await;
+                let cmd_resp =
+                    json!({ "id": cmd_req["id"], "ok": true, "result": { "reconnected": true } });
+                let _ = write_half
+                    .write_all(format!("{}\n", cmd_resp).as_bytes())
+                    .await;
                 let _ = write_half.flush().await;
             }
         });
@@ -588,13 +694,13 @@ mod tests {
         // In some CI/headless/restricted environments, opening the OS clipboard may fail;
         // if writing succeeds, verify reading matches the dimensions.
         if PhotoCraftClient::write_clipboard_image(&test_img).is_ok() {
-            if let Ok(read_back) = PhotoCraftClient::read_clipboard_image_retry(3, std::time::Duration::from_millis(10)) {
+            if let Ok(read_back) = PhotoCraftClient::read_clipboard_image_retry(
+                3,
+                std::time::Duration::from_millis(10),
+            ) {
                 assert_eq!(read_back.width(), 4);
                 assert_eq!(read_back.height(), 4);
             }
         }
     }
 }
-
-
-

@@ -85,4 +85,3 @@ mod tests {
         assert!(tray_icon.is_some());
     }
 }
-

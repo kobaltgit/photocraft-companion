@@ -2,17 +2,12 @@ use egui::{Color32, Stroke, Visuals};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThemeMode {
+    #[default]
     Dark,
     Light,
     System,
-}
-
-impl Default for ThemeMode {
-    fn default() -> Self {
-        Self::Dark
-    }
 }
 
 impl ThemeMode {
@@ -188,7 +183,13 @@ mod tests {
 
     #[test]
     fn test_theme_mode_from_preferences() {
-        let temp_dir = std::env::temp_dir().join(format!("theme_test_{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let temp_dir = std::env::temp_dir().join(format!(
+            "theme_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         let _ = std::fs::create_dir_all(&temp_dir);
 
         // Light themes
@@ -198,7 +199,10 @@ mod tests {
 
         let classic_prefs = temp_dir.join("classic.json");
         std::fs::write(&classic_prefs, r#"{"interface": {"theme": "classic"}}"#).unwrap();
-        assert_eq!(ThemeMode::from_preferences(&classic_prefs), ThemeMode::Light);
+        assert_eq!(
+            ThemeMode::from_preferences(&classic_prefs),
+            ThemeMode::Light
+        );
 
         // Dark theme
         let dark_prefs = temp_dir.join("dark.json");
@@ -225,7 +229,10 @@ mod tests {
 
         let light_palette = ThemePalette::for_mode(ThemeMode::Light);
         assert!(!light_palette.is_dark);
-        assert_eq!(light_palette.panel_fill, Color32::from_rgb(0xf8, 0xf8, 0xf8));
+        assert_eq!(
+            light_palette.panel_fill,
+            Color32::from_rgb(0xf8, 0xf8, 0xf8)
+        );
 
         // Visuals check
         let dark_visuals = dark_palette.to_egui_visuals();
@@ -237,4 +244,3 @@ mod tests {
         assert_eq!(light_visuals.window_fill, light_palette.panel_fill);
     }
 }
-
