@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![CI & Quality Gate](https://github.com/kobaltgit/photocraft-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-plugins/actions/workflows/ci.yml)
+[![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
@@ -73,7 +73,7 @@
 | **Linux (x86_64)** | `PhotoCraft-Companion-v0.1.0-linux-amd64.deb` | `PhotoCraft-Companion-v0.1.0-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив |
 
 > [!TIP]
-> Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-plugins/releases)** при каждом релизе.
+> Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** при каждом релизе.
 
 ### Локальная сборка установщиков и дистрибутивов
 
@@ -100,8 +100,8 @@
 
 ### 1. Клонирование репозитория
 ```bash
-git clone https://github.com/kobaltgit/photocraft-plugins.git
-cd photocraft-plugins
+git clone https://github.com/kobaltgit/photocraft-companion.git
+cd photocraft-companion
 ```
 
 ### 2. Загрузка весов нейросетей (для разработчиков)

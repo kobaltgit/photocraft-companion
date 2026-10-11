@@ -4,7 +4,7 @@
 #define MyAppName "PhotoCraft Companion"
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "kobaltGIT"
-#define MyAppURL "https://github.com/kobaltgit/photocraft-plugins"
+#define MyAppURL "https://github.com/kobaltgit/photocraft-companion"
 #define MyAppExeName "photocraft-companion.exe"
 
 [Setup]

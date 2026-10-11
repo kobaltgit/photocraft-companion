@@ -14,7 +14,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/kobaltgit/photocraft-plugins"
+repository = "https://github.com/kobaltgit/photocraft-companion"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
