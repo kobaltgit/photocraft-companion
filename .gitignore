@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+Cargo.lock.backup
+
+# Python & Environment
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Large Model Weights & Binary Blobs (>100MB, fetched via scripts/fetch_models.ps1)
+*.onnx
+*.bin
+plugins/**/models/*.onnx
+PhotoCraftData/models/*.onnx
+*.pcpl
+
+# Logs and Debug
+*.log
+out.log
+
+# System & OS Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local runtime data & tokens
+screen_check.png
+control.token
+PhotoCraftData/
+companion_config.json

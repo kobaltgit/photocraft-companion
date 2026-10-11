@@ -1,0 +1,21 @@
+[package]
+name = "overlay_ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+core_contracts = { path = "../core_contracts" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+image = { workspace = true }
+resvg = { workspace = true }
+rfd = { workspace = true }
+tokio = { workspace = true }
+tray-icon = { workspace = true }
+

@@ -1,0 +1,345 @@
+mod win32_theme;
+use win32_theme::apply_win32_menu_theme;
+
+use ai_engine::{AiEngine, RemoveBgPlugin};
+use core_contracts::{PluginContext, PluginRegistry, PluginType};
+use hotkey_service::HotkeyManager;
+use overlay_ui::{get_icon_rgba, OverlayBar, ThemeMode};
+use photocraft_bridge::PhotoCraftClient;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+use tokio::sync::Mutex;
+use tracing::info;
+use tray_icon::{
+    menu::{Menu, MenuItem, PredefinedMenuItem},
+    TrayIconBuilder,
+};
+
+fn find_plugins_dir() -> PathBuf {
+    if PathBuf::from("plugins").is_dir() {
+        return PathBuf::from("plugins");
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(target_dir) = exe.parent().and_then(|p| p.parent()) {
+            if let Some(root) = target_dir.parent() {
+                let candidate = root.join("plugins");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut cur = cwd.as_path();
+        for _ in 0..5 {
+            let candidate = cur.join("plugins");
+            if candidate.is_dir() {
+                return candidate;
+            }
+            if let Some(parent) = cur.parent() {
+                cur = parent;
+            } else {
+                break;
+            }
+        }
+    }
+    PathBuf::from("plugins")
+}
+
+fn find_photocraft_data_dir() -> PathBuf {
+    let hardcoded = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData");
+    if hardcoded.is_dir() {
+        return hardcoded;
+    }
+    if PathBuf::from("PhotoCraftData").is_dir() {
+        return PathBuf::from("PhotoCraftData");
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let mut cur = cwd.as_path();
+        for _ in 0..5 {
+            let candidate = cur.join("PhotoCraftData");
+            if candidate.is_dir() {
+                return candidate;
+            }
+            if let Some(parent) = cur.parent() {
+                cur = parent;
+            } else {
+                break;
+            }
+        }
+    }
+    PathBuf::from("PhotoCraftData")
+}
+
+fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt::init();
+    info!("PhotoCraft Companion starting up on main OS thread...");
+
+    let plugins_dir = find_plugins_dir();
+    let data_dir = find_photocraft_data_dir();
+    let prefs_path = data_dir.join("preferences.json");
+    let theme_mode = ThemeMode::from_preferences(&prefs_path);
+    let is_dark = theme_mode.is_dark();
+
+    // Set Win32 context menu theme strictly matching the selected theme (no white popups in dark mode)
+    let win32_mode = match theme_mode {
+        ThemeMode::Dark => 2,   // ForceDark
+        ThemeMode::Light => 3,  // ForceLight
+        ThemeMode::System => 1, // AllowDark / System
+    };
+    apply_win32_menu_theme(win32_mode);
+
+    // Initialize background async Tokio runtime for networking & engine bridge
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+
+    // 1. Initialize Plugin Registry
+    println!("\n=== DISCOVERING & LOADING PLUGINS ===");
+    let mut registry = PluginRegistry::new(&plugins_dir);
+
+    // Register Native AI Plugin
+    let ai = Arc::new(AiEngine::new(&data_dir));
+    let remove_bg = Arc::new(RemoveBgPlugin::new(ai.clone()));
+    registry.register_native(remove_bg);
+
+    // Scan for No-Code & other declarative plugins in `plugins/`
+    let _loaded = registry.scan_and_load()?;
+    println!("  Total registered plugin manifests: {}", registry.list_manifests().len());
+    for m in registry.list_manifests() {
+        let p_type = match m.plugin_type {
+            PluginType::NoCode => "No-Code Macro",
+            PluginType::NativeAi => "Native AI / GPU",
+            PluginType::Script => "Script Automation",
+            PluginType::ExternalCli => "External CLI Tool",
+        };
+        let hk = m.default_hotkey.as_deref().unwrap_or("None");
+        println!("  - [{}] [{}] {} (v{}) by {}", hk, p_type, m.name, m.version, m.author);
+    }
+
+    // 2. Setup Hotkeys from Plugins & UI bar
+    println!("\n=== REGISTERING HOTKEYS ===");
+    let mut hotkeys = HotkeyManager::new()?;
+    for m in registry.list_manifests() {
+        if let Some(ref hk) = m.default_hotkey {
+            if let Err(e) = hotkeys.register(hk, &m.id) {
+                tracing::warn!("Failed to register hotkey {}: {}", hk, e);
+            } else {
+                println!("  Registered hotkey [{}] for plugin '{}'", hk, m.id);
+            }
+        }
+    }
+
+    // 3. Setup Bridge Client and Offline/Online State Monitor
+    let client = Arc::new(PhotoCraftClient::new(18492, None));
+    let is_connected = Arc::new(AtomicBool::new(false));
+
+    // Try initial connection synchronously on startup
+    let client_init = client.clone();
+    let is_conn_init = is_connected.clone();
+    rt.block_on(async {
+        if client_init.is_alive().await {
+            if let Ok(_) = client_init.connect().await {
+                is_conn_init.store(true, Ordering::Relaxed);
+                info!("Successfully connected to live PhotoCraft instance on startup!");
+                if let Ok(doc) = client_init.get_document_info().await {
+                    println!("=== CURRENT ACTIVE DOCUMENT ===");
+                    println!("Name:         {}", doc.name);
+                    println!("Resolution:   {}x{}", doc.width, doc.height);
+                    println!("Active Layer: {:?}", doc.active_layer);
+                }
+            }
+        } else {
+            println!("PhotoCraft is not yet detected on port 18492. Entering background polling mode (1.5s)...");
+        }
+    });
+
+    // Background monitor task (pings every 1.5s per specification)
+    let is_conn_monitor = is_connected.clone();
+    let client_monitor = client.clone();
+    rt.spawn(async move {
+        loop {
+            let alive = client_monitor.is_alive().await;
+            let was_connected = is_conn_monitor.load(Ordering::Relaxed);
+            if alive && !was_connected {
+                if let Ok(_) = client_monitor.connect().await {
+                    is_conn_monitor.store(true, Ordering::Relaxed);
+                    info!("PhotoCraft launched! Successfully connected to socket 18492.");
+                }
+            } else if !alive && was_connected {
+                is_conn_monitor.store(false, Ordering::Relaxed);
+                tracing::warn!("PhotoCraft was closed or disconnected.");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        }
+    });
+
+    let args: Vec<String> = std::env::args().collect();
+    let is_test_run = args.iter().any(|a| a == "--test" || a == "--benchmark");
+    let is_daemon_only = args.iter().any(|a| a == "--daemon" || a == "-d");
+    let start_with_manager = args.iter().any(|a| a == "--manager" || a == "-m");
+
+    // Initialize System Tray Icon on the main OS thread using user's SVG icon
+    let tray_menu = Menu::new();
+    let open_toolbar_item = MenuItem::with_id("tray_toolbar", "PhotoCraft Toolbar", true, None);
+    let open_manager_item = MenuItem::with_id("tray_manager", "Plugins Manager", true, None);
+    let separator = PredefinedMenuItem::separator();
+    let exit_item = MenuItem::with_id("tray_exit", "Exit Companion", true, None);
+
+    let _ = tray_menu.append(&open_toolbar_item);
+    let _ = tray_menu.append(&open_manager_item);
+    let _ = tray_menu.append(&separator);
+    let _ = tray_menu.append(&exit_item);
+
+    let mut tray_builder = TrayIconBuilder::new()
+        .with_menu(Box::new(tray_menu))
+        .with_tooltip("PhotoCraft Companion");
+
+    if let Some(rgba) = get_icon_rgba(is_dark, 32) {
+        if let Ok(icon) = tray_icon::Icon::from_rgba(rgba, 32, 32) {
+            tray_builder = tray_builder.with_icon(icon);
+        }
+    }
+
+    let tray_icon = match tray_builder.build() {
+        Ok(ti) => {
+            info!("System tray icon initialized successfully on main thread.");
+            Some(ti)
+        }
+        Err(e) => {
+            tracing::warn!("Failed to create system tray icon: {}", e);
+            None
+        }
+    };
+    let tray_icon_handle = Arc::new(std::sync::Mutex::new(tray_icon));
+
+    if is_test_run {
+        println!("\n>>> Running Native AI Plugin Execution via PluginRegistry <<<");
+        let t0 = Instant::now();
+        let client_test = client.clone();
+        let data_dir_test = data_dir.clone();
+        let plugins_dir_test = plugins_dir.clone();
+        let reg_test = registry;
+
+        rt.block_on(async {
+            let doc_info = client_test.get_document_info().await?;
+            let ctx = PluginContext {
+                document: doc_info,
+                models_dir: data_dir_test.join("models"),
+                plugin_dir: plugins_dir_test.join("remove_bg"),
+                client: client_test.clone(),
+            };
+
+            let result = reg_test.execute("ai.photocraft.plugins.remove_bg", &ctx).await?;
+            println!("  Result: {} in {:.2}s", result.message, t0.elapsed().as_secs_f32());
+
+            if reg_test.get("macro.photocraft.plugins.black_and_white").is_some() {
+                println!("\n>>> Running No-Code Macro Plugin Execution via PluginRegistry <<<");
+                let t1 = Instant::now();
+                let res_macro = reg_test.execute("macro.photocraft.plugins.black_and_white", &ctx).await?;
+                println!("  Result: {} in {:.2}s", res_macro.message, t1.elapsed().as_secs_f32());
+            }
+            Ok::<(), anyhow::Error>(())
+        })?;
+        return Ok(());
+    }
+
+    // Action execution worker for toolstrip clicks and hotkeys
+    let manifests = registry.list_manifests().to_vec();
+    let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let client_exec = client.clone();
+    let registry_exec = Arc::new(Mutex::new(registry));
+    let data_dir_exec = data_dir.clone();
+    let plugins_dir_exec = plugins_dir.clone();
+
+    rt.spawn(async move {
+        while let Some(action_id) = action_rx.recv().await {
+            info!("Dispatching action '{}'...", action_id);
+            if action_id.starts_with("engine:") {
+                let cmd = &action_id["engine:".len()..];
+                info!("Executing PhotoCraft engine command '{}'...", cmd);
+                match client_exec.execute_command(cmd, serde_json::json!({})).await {
+                    Ok(res) => info!("Engine command '{}' executed successfully: {:?}", cmd, res),
+                    Err(e) => tracing::error!("Engine command '{}' failed: {}", cmd, e),
+                }
+            } else if let Ok(doc) = client_exec.get_document_info().await {
+                let ctx = PluginContext {
+                    document: doc,
+                    models_dir: data_dir_exec.join("models"),
+                    plugin_dir: plugins_dir_exec.join("remove_bg"),
+                    client: client_exec.clone(),
+                };
+                let reg = registry_exec.lock().await;
+                match reg.execute(&action_id, &ctx).await {
+                    Ok(res) => info!("Action '{}' finished successfully: {}", action_id, res.message),
+                    Err(e) => tracing::error!("Action '{}' failed: {}", action_id, e),
+                }
+            } else {
+                tracing::warn!("PhotoCraft is not ready or active document not found for action '{}'", action_id);
+            }
+        }
+    });
+
+    if is_daemon_only {
+        println!("\nPhotoCraft Companion is active in system tray and listening for hotkeys! (Press Ctrl+C to stop)");
+        // Register direct tray exit handler for daemon mode
+        tray_icon::menu::MenuEvent::set_event_handler(Some(|event: tray_icon::menu::MenuEvent| {
+            if event.id.as_ref() == "tray_exit" {
+                info!("Tray exit clicked in daemon mode, terminating.");
+                std::process::exit(0);
+            }
+        }));
+
+        loop {
+            if let Some(action_id) = hotkeys.poll_event() {
+                println!("\n[HOTKEY TRIGGERED] -> Action: {}", action_id);
+                let _ = action_tx.send(action_id);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
+    // Default & Manager mode: launch the floating toolstrip and overlay on the main OS thread
+    println!("\n>>> Launching PhotoCraft Floating Toolstrip & Companion Overlay <<<");
+    let buttons = OverlayBar::from_manifests(&manifests);
+
+    overlay_ui::launch_companion_overlay(
+        buttons,
+        manifests,
+        prefs_path,
+        start_with_manager,
+        is_connected,
+        Some(action_tx),
+        tray_icon_handle,
+    )?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_plugins_dir() {
+        let p = find_plugins_dir();
+        assert!(p.to_string_lossy().contains("plugins"));
+    }
+
+    #[test]
+    fn test_find_photocraft_data_dir() {
+        let p = find_photocraft_data_dir();
+        assert!(p.to_string_lossy().contains("PhotoCraftData"));
+    }
+
+    #[test]
+    fn test_apply_win32_menu_theme() {
+        // Mode 1: AllowDark / System, Mode 2: ForceDark, Mode 3: ForceLight
+        apply_win32_menu_theme(1);
+        apply_win32_menu_theme(2);
+        apply_win32_menu_theme(3);
+    }
+}
+

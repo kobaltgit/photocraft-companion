@@ -1,0 +1,17 @@
+[package]
+name = "ai_engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+core_contracts = { path = "../core_contracts" }
+image = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+ort = { workspace = true }
+ndarray = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }

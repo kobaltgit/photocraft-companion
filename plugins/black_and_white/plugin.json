@@ -1,0 +1,22 @@
+{
+  "id": "macro.photocraft.plugins.black_and_white",
+  "name": "B&W Film Pop (No-Code)",
+  "version": "1.0.0",
+  "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
+  "author": "kobaltGIT",
+  "plugin_type": "no_code",
+  "default_hotkey": "Ctrl+Shift+U",
+  "icon": "adjust",
+  "commands": [
+    {
+      "command": "layer.duplicate",
+      "params": {},
+      "description": "Duplicate source layer"
+    },
+    {
+      "command": "image.adjustments.desaturate",
+      "params": {},
+      "description": "Desaturate layer pixels"
+    }
+  ]
+}

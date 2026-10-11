@@ -1,0 +1,20 @@
+[
+  {
+    "label": "🪄 Remove BG",
+    "action": "plugin:remove_bg",
+    "hotkey": "Ctrl+Shift+B",
+    "icon": "scissors"
+  },
+  {
+    "label": "📋 Copy Merged",
+    "action": "engine:edit.copyMerged",
+    "hotkey": "Ctrl+Shift+C",
+    "icon": "copy"
+  },
+  {
+    "label": "📥 Paste In Place",
+    "action": "engine:edit.pasteSpecial.pasteInPlace",
+    "hotkey": "Ctrl+Shift+V",
+    "icon": "paste"
+  }
+]

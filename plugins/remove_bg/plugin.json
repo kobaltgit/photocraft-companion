@@ -1,0 +1,19 @@
+{
+  "id": "ai.photocraft.plugins.remove_bg",
+  "name": "AI Remove Background (RMBG-1.4)",
+  "version": "1.0.0",
+  "description": "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
+  "author": "kobaltGIT",
+  "plugin_type": "native_ai",
+  "action_id": "plugin:remove_bg",
+  "default_hotkey": "Ctrl+Shift+B",
+  "icon": "scissors",
+  "models": [
+    {
+      "name": "rmbg-1.4.onnx",
+      "required": true,
+      "size_mb": 168,
+      "url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx"
+    }
+  ]
+}

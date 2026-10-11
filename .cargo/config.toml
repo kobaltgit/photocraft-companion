@@ -1,0 +1,3 @@
+[build]
+# Strictly limit parallel compilation jobs to 2 threads to guarantee 100% responsiveness of Windows
+jobs = 2
