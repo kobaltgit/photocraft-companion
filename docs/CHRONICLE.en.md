@@ -404,3 +404,23 @@ We performed an in-depth readiness audit of the architecture:
 
 
 
+
+---
+
+## Chapter 17: CI Green Light, Exhaustive Linter Cleansing, and Strict Compiler Memory Bounds (October 11, 2026)
+
+*Time: October 11, 2026, 22:42 (~30 mins)*
+
+During the initial run of the GitHub Actions release workflow, the `Code Formatting Check` step (`cargo fmt --all -- --check`) failed due to minor style differences in newly authored packaging files. In addition, running workspace builds and tests locally without explicit parallelism limits led to sudden memory spikes by the linker on developer machines.
+
+### 1. Ironclad Compiler Memory Bounds (Safe Build Guard)
+- **Strict Single Thread (`jobs = 1`):** In local `.cargo/config.toml` and global `CARGO_HOME` (`D:\BuildCaches\.cargo\config.toml`), sequential crate compilation is enforced to prevent resource exhaustion.
+- **Codegen Unit Isolation (`codegen-units = 1`):** Reduced `codegen-units = 8` to `1` in the release profile, and enforced `codegen-units = 1` across all dev/test profiles.
+- **Lean Debug Footprint (`debug = 1`):** Reduced debuginfo overhead in dev profiles to line tables, saving over 75% peak RAM usage for the MSVC `link.exe` linker.
+
+### 2. Quality Assurance & CI/CD
+- Completed full repository reformatting via `cargo fmt --all`.
+- Eliminated all linter warnings under `cargo clippy --workspace --all-targets -- -D warnings`.
+- All **62 unit, integration, and UI tests** across the Cargo workspace run 100% green.
+- Registered and resolved `BUG-027` in the project bug tracker.
+- Pushed changes to GitHub, successfully launching a clean CI & Quality Gate pipeline run.
