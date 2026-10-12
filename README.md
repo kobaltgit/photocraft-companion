@@ -1,88 +1,120 @@
 # PhotoCraft Plugins & Companion
 
+<p align="center">
+  <img src="assets/github-social-preview.svg" alt="PhotoCraft Companion Social Preview" width="100%">
+</p>
+
 <div align="center">
 
+**[English](README.md)** • [Русский](README.ru.md)
+
+---
+
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
+[![Release: v0.1.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v0.1.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
 [![Tests: 62 Passing](https://img.shields.io/badge/Tests-62_Passing-success.svg)](crates/)
 
-**Экосистема плагинов, локальных нейросетей и оверлей-панелей для графического редактора PhotoCraft.**
+**Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
-[Возможности](#-основные-возможности) • [Быстрый старт](#-быстрый-старт) • [Архитектура](#-архитектура-монорепозитория) • [Пакеты .pcpl](#-пакетный-формат-pcpl) • [Документация](#-документация-проекта) • [Лицензия](#-лицензия)
+[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
+
 
 </div>
 
 ---
 
-## 💡 О проекте
+## 💡 About The Project
 
-**PhotoCraft Plugins & Companion** решает задачу расширения графического редактора **PhotoCraft** (open-source reimplementation of Photoshop на Rust):
+**PhotoCraft Plugins & Companion** solves the core challenge of seamlessly extending the **PhotoCraft** graphics editor (a modern, open-source Rust-based reimplementation of Photoshop):
 
-- **Бесшовное исполнение (In-Place Execution):** все операции (вырезание фона нейросетью, фильтры, макросы) выполняются прямо на активном слое в открытом холсте редактора через протокол JSON-RPC (порт 18492) и буфер обмена Windows без ручного сохранения/открытия файлов.
-- **В обход Wasm-песочницы:** редактор PhotoCraft запускает плагины в изолированной песочнице без прямого доступа к локальному GPU и диску. Компаньон предоставляет нативный доступ к DirectML и ONNX Runtime.
-
----
-
-## ✨ Основные возможности
-
-- ✂️ **Локальное нейросетевое удаление фона (AI In-Place Remove BG):**
-  - Встроенная модель Bria AI **RMBG-1.4** (~168 МБ).
-  - Аппаратное ускорение **DirectML (DirectX 12 GPU)** для видеокарт NVIDIA, AMD и Intel с безопасным откатом на CPU.
-  - Сохранение геометрии на холстах любого разрешения (проверено вплоть до 8K: 8256×4608).
-  - Интеллектуальное именование: автоматическое добавление мультиязычного суффикса `(No BG)` / `(Без фона)` без дублирования.
-
-- 🎛️ **Плавающая панель инструментов (Two-Tier Floating Toolstrip):**
-  - Компактная двухъярусная палитра на `egui` / `eframe` с родной эстетикой PhotoCraft.
-  - Переключение между горизонтальной (высота 78 px) и вертикальной (ширина 50 px) ориентацией без обрезания кнопок при любом числе плагинов $N$.
-  - Парящий режим: панель не засоряет Панель задач Windows (`.with_taskbar(false)`).
-  - Всплывающие независимые тултипы поверх рабочего стола.
-
-- ⚙️ **Менеджер плагинов (Plugin Manager):**
-  - Верхние горизонтальные вкладки: `[ General ]`, `[ Plugins ]`, `[ Hotkeys ]`, `[ About ]`.
-  - Индикатор связи: статус сокета PhotoCraft (`● Connected` / `○ Offline`).
-  - Темы оформления: синхронизация тёмной и чистой светлой тем.
-  - Интерактивный рекордер горячих клавиш: захват сложных комбинаций (`Ctrl+Shift+...`) с защитой от залипания модификаторов.
-
-- 📦 **100% автономность и формат пакетов `.pcpl`:**
-  - Все веса нейросетей хранятся локально в папке плагина (`plugins/<id>/models/`).
-  - Установка расширений в один клик из файлов `.pcpl` (PhotoCraft Plugin Package) через стандартный диалог проводника.
-  - Автопроверка целостности моделей и скачивание отсутствующих весов прямо из GUI.
-
-- ⏳ **Режим ожидания редактора (Offline Mode):**
-  - Компаньон не завершает работу с ошибкой, если PhotoCraft закрыт, а выводит графитовое окно ожидания.
-  - Фоновый опрос сокета каждые 1.5 секунды: как только редактор запускается, тулбар бесшовно появляется на холсте.
-
-- 🔔 **Реактивный системный трей (0 ms):**
-  - Фоновое прослушивание хоткеев и управление окнами через иконку в трее Windows.
-  - Мгновенный отклик меню без задержек и нативная тёмная тема контекстного меню Windows.
+- **In-Place Canvas Execution:** Neural background removal, color filters, and custom macro actions execute directly on the active layer of your open canvas over JSON-RPC socket (port 18492) and the system clipboard — no manual saving, reopening, or file dialog gymnastics required.
+- **Bypassing Sandbox Limitations:** PhotoCraft natively confines internal plugins inside a strict WebAssembly sandbox without local GPU access or filesystem permissions. The companion provides native, hardware-accelerated DirectML GPU inference and local model storage.
 
 ---
 
-## 📦 Установка и дистрибутивы (Installers & Portable)
+## ⚖️ Why Companion? Advantages over Built-in PhotoCraft Plugins
 
-Для удобства пользователей проект распространяется в двух форматах для каждой платформы: **готовый установщик (Setup)** и **автономная портабельная версия (Portable)** без необходимости инсталляции:
+PhotoCraft includes a built-in plugin mechanism based on an internal WebAssembly (Wasm) runtime. While Wasm provides sandboxed safety, it imposes strict technical boundaries that make heavy AI workflows and floating palettes impractical.
 
-| Платформа                         | Установщик (Setup / Installer)                | Портабельная версия (Portable)                             | Описание                                                                           |
-| :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v0.1.0-windows-x64-portable.zip`     | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-v0.1.0-macos.dmg`       | `PhotoCraft-Companion-v0.1.0-macos-portable.tar.gz`        | DMG-образ с перетаскиванием в `/Applications` / Автономный бандл `.app`            |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v0.1.0-linux-amd64.deb` | `PhotoCraft-Companion-v0.1.0-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив     |
+Here is how **PhotoCraft Companion** elevates the editing experience:
+
+| Feature | Built-in PhotoCraft Wasm Plugins | PhotoCraft Companion & Ecosystem |
+| :--- | :--- | :--- |
+| **Local AI & Neural Models** | ❌ **No GPU access** (isolated within Wasm sandbox; cannot run DirectML/Tensor cores) | ✅ **Full DirectML GPU Acceleration** (DirectX 12 / Metal via ONNX Runtime; ~2s inference) |
+| **Model Storage & Autonomy** | ❌ Strict memory limits; cannot package or download multi-hundred MB model weights | ✅ **Autonomous Storage:** Models live inside `plugins/<id>/models/` with SHA-256 validation & in-app downloader |
+| **No-Code Macro Authoring** | ❌ Requires Rust/C toolchains and manual WebAssembly compilation to `.wasm` | ✅ **Zero-Code JSON:** Just list desired PhotoCraft engine commands in `plugin.json` — ready in 60 seconds |
+| **Floating Palette (Toolstrip)** | ❌ Locked inside classic menu bars (`Filter › Plugins`); cannot render floating windows | ✅ **Two-Tier Floating Toolstrip:** Compact `egui` palette hovering over the canvas with orientation toggle & tray minimize |
+| **System Hotkeys** | ❌ Only responsive when PhotoCraft window is actively focused | ✅ **Global OS Hotkeys:** Continuous desktop listener (`global-hotkey`) triggering actions across the entire OS |
+| **Package Management** | ❌ Manual file manipulation into application directories | ✅ **1-Click `.pcpl` Packages:** Install and hot-reload plugins directly from the Plugin Manager UI without restarts |
+| **In-Place Pixel Pipeline** | ⚠️ Bound to internal Wasm memory buffers | ✅ **Zero-Drift In-Place Execution:** Seamless round-trip active layer processing via JSON-RPC socket and clipboard |
+
+---
+
+
+## ✨ Key Features
+
+- ✂️ **In-Place AI Background Removal:**
+  - Bundled SOTA neural model: Bria AI **RMBG-1.4** (~168 MB).
+  - Hardware-accelerated **DirectML (DirectX 12 GPU)** for NVIDIA RTX, AMD Radeon, and Intel Arc graphics with transparent CPU fallback.
+  - Zero-drift coordinate alignment on high-resolution canvases up to 8K (tested at 8256 × 4608 px).
+  - Smart layer naming: automatic localized suffix `(No BG)` / `(Без фона)` without suffix stacking on repeated runs.
+
+- 🎛️ **Floating Two-Tier Toolstrip (`egui` / `eframe`):**
+  - Ultra-compact floating palette matching PhotoCraft's native UI aesthetics.
+  - Orientation toggle: seamlessly switch between Horizontal (78 px height) and Vertical (50 px width) modes with zero button clipping for any count of plugins $N$.
+  - Clean floating behavior: does not clutter the OS taskbar (`.with_taskbar(false)`).
+  - Out-of-bounds immediate tooltips hovering over the desktop workspace.
+
+- ⚙️ **Comprehensive Plugin Manager:**
+  - Tabbed interface: `[ General ]`, `[ Plugins ]`, `[ Hotkeys ]`, `[ About ]`.
+  - Live connection indicator: real-time socket status (`● Connected` / `○ Offline`).
+  - Native themes: instant synchronization between Dark and pure Light modes.
+  - Interactive hotkey recorder: records multi-modifier combos (`Ctrl+Shift+...`) with stuck-key prevention.
+
+- 📦 **100% Autonomous `.pcpl` Package Ecosystem:**
+  - Plugin neural weights are fully self-contained inside each plugin directory (`plugins/<id>/models/`).
+  - One-click plugin installation from `.pcpl` (PhotoCraft Plugin Package) ZIP bundles via standard file dialogs.
+  - Model integrity verification and automatic missing weights downloader directly in the UI.
+
+- ⏳ **Resilient Waiting / Offline Mode:**
+  - The companion does not crash if PhotoCraft is not running; it displays a sleek standby window.
+  - Background polling every 1.5s: when PhotoCraft starts, the toolbar smoothly appears above the canvas.
+
+- 🔔 **Instant Reactive System Tray (0 ms):**
+  - Continuous background global hotkey listener and window control from the system tray (Windows, Linux, macOS).
+  - Zero-latency event dispatching with native Win32 dark context menu support.
+
+---
+
+## 📦 Download & Installers
+
+Ready-to-use binaries are built for every platform as both full **installers** and standalone **portable archives**:
+
+<p align="center">
+  <img src="assets/releases-preview.png" alt="PhotoCraft Companion GitHub Releases" width="90%">
+</p>
+
+| Platform                          | Installer (Setup)                             | Portable Archive                                           | Notes                                                              |
+
+| :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------- |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v0.1.0-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v0.1.0-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v0.1.0-linux-amd64.deb` | `PhotoCraft-Companion-v0.1.0-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
 
 > [!TIP]
-> Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** при каждом релизе.
+> All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
 
-### Локальная сборка установщиков и дистрибутивов
+### Building Packages Locally
 
 - **Windows:**
-
   ```powershell
   .\scripts\package_release.ps1
   ```
-
-  _(Создаёт портабельный архив `.zip` в каталоге `dist/` и компилирует Inno Setup инсталлятор при наличии ISCC)._
+  *(Creates a portable `.zip` in `dist/` and builds the Inno Setup installer if ISCC is installed).*
 
 - **Linux / macOS:**
   ```bash
@@ -92,103 +124,109 @@
 
 ---
 
-## 🚀 Быстрый старт (для разработчиков)
+## 🚀 Quick Start (for Developers)
 
-### Требования
+### Prerequisites
 
-- **ОС:** Windows 10 / 11 (x64), Linux или macOS
-- **Rust:** Toolchain 1.80+ (версия 2021)
-- **GPU (опционально):** Любая видеокарта с поддержкой DirectX 12 (NVIDIA RTX / AMD Radeon / Intel Arc) для DirectML-ускорения.
+- **OS:** Windows 10 / 11 (x64), Linux (X11 / Wayland), or macOS
+- **Rust:** Toolchain 1.80+ (2021 edition)
+- **GPU (optional):** Any DirectX 12 capable GPU (NVIDIA, AMD, Intel) for DirectML acceleration.
 
-### 1. Клонирование репозитория
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/kobaltgit/photocraft-companion.git
 cd photocraft-companion
 ```
 
-### 2. Загрузка весов нейросетей (для разработчиков)
+### 2. Fetch AI Model Weights
 
-Модели нейросетей исключены из репозитория (`.gitignore`) для сохранения чистоты и легковесности Git. Для загрузки весов RMBG-1.4 выполните скрипт:
+Model weights are excluded from Git (`.gitignore`) to keep the repository lightweight. Run the download script to fetch RMBG-1.4:
 
 ```powershell
 .\scripts\fetch_models.ps1
 ```
 
-_(Либо веса можно скачать в один клик через кнопку `[ ⬇ Скачать модель ]` в Менеджере плагинов при первом запуске)._
+*(Alternatively, click `[ ⬇ Download Model ]` inside the Plugin Manager UI on first run).*
 
-### 3. Сборка и запуск
+### 3. Build & Run
 
 ```bash
-# Запуск тестов воркспейса (62 теста)
-cargo test --workspace
+# Run full workspace test suite (62 tests) with single-thread resource guard
+cargo test --workspace -j 1
 
-# Запуск приложения компаньона
+# Launch the companion application
 cargo run --package companion_app
 ```
 
 ---
 
-## 🏗 Архитектура монорепозитория
+## 🏗 Workspace Architecture
 
-Проект организован как модульный Cargo Workspace с чистым разделением обязанностей:
+The project is structured as a modular Cargo Workspace with strict separation of concerns:
 
 ```text
 photocraft-plugins/
-├── Cargo.toml                      # Корневой манифест Rust Cargo Workspace
-├── crates/                         # Независимые пакеты
-│   ├── core_contracts/            # Трейты Plugin, DTO, Config, i18n, пакетный установщик .pcpl
-│   ├── photocraft_bridge/         # Асинхронный клиент сокета PhotoCraft (JSON-RPC 18492)
-│   ├── ai_engine/                 # DirectML GPU инференс (ort, ONNX Runtime, RMBG-1.4)
-│   ├── overlay_ui/                # Плавающий тулбар, Менеджер плагинов и оверлеи (egui 0.36)
-│   ├── hotkey_service/            # Глобальные горячие клавиши ОС (global-hotkey)
-│   └── companion_app/             # Главный бинарник (системный трей, DI, жизненный цикл)
-├── plugins/                       # Каталог установленных плагинов
-│   ├── remove_bg/                 # Автономный плагин нейросетевого удаления фона
-│   └── black_and_white/          # Декларативный No-Code макрос
+├── Cargo.toml                      # Root Rust Workspace manifest
+├── crates/                         # Independent crates
+│   ├── core_contracts/            # Plugin traits, DTOs, Config, i18n, .pcpl installer
+│   ├── photocraft_bridge/         # Async PhotoCraft socket client (JSON-RPC 18492)
+│   ├── ai_engine/                 # DirectML GPU ONNX runtime inference (ort, RMBG-1.4)
+│   ├── overlay_ui/                # Floating Toolstrip, Plugin Manager & dialogs (egui 0.36)
+│   ├── hotkey_service/            # Cross-platform OS global hotkey service (global-hotkey)
+│   └── companion_app/             # Main binary (system tray, lifecycle, DI container)
+├── plugins/                       # Installed plugin directory
+│   ├── remove_bg/                 # Autonomous AI background removal plugin
+│   └── black_and_white/          # Declarative No-Code macro plugin
 ├── scripts/
-│   └── fetch_models.ps1           # Скрипт подгрузки нейросетевых моделей
-└── docs/                          # Центр документации и спецификаций
+│   ├── fetch_models.ps1           # PowerShell model downloader
+│   ├── package_release.ps1        # Inno Setup & Windows packaging script
+│   └── package_release.sh         # Linux DEB & macOS DMG packaging script
+└── docs/                          # Engineering specifications & dev chronicles
 ```
 
 ---
 
-## 📦 Пакетный формат `.pcpl`
+## 📦 `.pcpl` Package Format
 
-Любой плагин может быть упакован в переносимый ZIP-контейнер `.pcpl`:
+Any plugin can be distributed as a portable `.pcpl` archive (ZIP format):
 
 ```text
 my_plugin.pcpl
-├── plugin.json              # Декларативный манифест
-├── icon.svg                 # Векторная иконка для панели
-└── models/                  # (опционально) Локальные веса ONNX
+├── plugin.json              # Declarative manifest (metadata, commands, hotkeys)
+├── icon.svg                 # Vector palette icon
+└── models/                  # (Optional) Local ONNX neural weights
     └── rmbg-1.4.onnx
 ```
 
-Установка выполняется в один клик через кнопку `[ + Установить плагин (.pcpl) ]` в окне Менеджера плагинов.
+Install any `.pcpl` file with a single click via `[ + Install Plugin (.pcpl) ]` inside the Plugin Manager.
 
 ---
 
-## 📚 Документация проекта
+## 📚 Documentation
 
-Подробные инженерные спецификации и журнал разработки находятся в папке [`docs/`](docs/):
+Detailed specifications and development history can be found in [`docs/`](docs/):
 
-- 📘 [`GEMINI.md`](GEMINI.md) — Главный архитектурный манифест проекта.
-- 🎯 [`docs/PLAN.md`](docs/PLAN.md) — План реализации плавающей панели и автономных плагинов.
-- 🗺️ [`docs/ROADMAP.md`](docs/ROADMAP.md) — Дорожная карта этапов разработки.
-- ✅ [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — Интерактивный чек-лист статуса всех 16 фаз.
-- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Журнал решенных дефектов (BUG-001 – BUG-026).
-- 📜 [`docs/CHRONICLE.md`](docs/CHRONICLE.md) / [`docs/CHRONICLE.en.md`](docs/CHRONICLE.en.md) — Авторская летопись разработки.
-- 📐 [`docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md`](docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md) — Спецификация универсального ядра (Rhai, CLI, C-ABI DynLib).
+- 📘 [`GEMINI.md`](GEMINI.md) — Master architectural manifest.
+- 🎯 [`docs/PLAN.md`](docs/PLAN.md) — Implementation blueprint for floating UI and autonomous plugins.
+- 🗺️ [`docs/ROADMAP.md`](docs/ROADMAP.md) — Project roadmap and milestones.
+- ✅ [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — Interactive phase-by-phase checklist.
+- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Defect tracking log (BUG-001 through BUG-029).
+- 📜 [`docs/CHRONICLE.md`](docs/CHRONICLE.md) / [`docs/CHRONICLE.en.md`](docs/CHRONICLE.en.md) — Chronological developer devlog in Russian and English.
+- 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.en.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) / [`RU`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) — Plugin Developer Guide (No-Code macros, AI inference, workflows).
+- 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) / [`RU`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) — Complete Catalog of all **851** PhotoCraft Engine Commands.
+- 📐 [`docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md`](docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md) — Universal Core specification (Rhai, CLI runner, C-ABI dynamic libs).
+
+
 
 ---
 
-## 👤 Автор
+## 👤 Author
 
 **kobaltGIT** ([GitHub](https://github.com/kobaltgit))
 
 ---
 
-## 📄 Лицензия
+## 📄 License
 
-Проект распространяется под открытой лицензией [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE).
