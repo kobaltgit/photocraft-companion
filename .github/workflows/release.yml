@@ -52,23 +52,13 @@ jobs:
       - name: Build and Package Linux
         shell: bash
         run: |
+          set -e
           set -x
           chmod +x ./scripts/package_release.sh
-          ./scripts/package_release.sh 2>&1 | tee linux_build.log
+          ./scripts/package_release.sh
 
-      - name: Print failure log tail
-        if: failure()
-        shell: bash
-        run: |
-          echo "=== LAST 150 LINES OF LINUX BUILD LOG ==="
-          tail -n 150 linux_build.log || true
 
-      - name: Upload Linux Build Log on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-build-failure-log
-          path: linux_build.log
+
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
