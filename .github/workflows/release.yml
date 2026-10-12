@@ -56,6 +56,13 @@ jobs:
           chmod +x ./scripts/package_release.sh
           ./scripts/package_release.sh 2>&1 | tee linux_build.log
 
+      - name: Print failure log tail
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== LAST 150 LINES OF LINUX BUILD LOG ==="
+          tail -n 150 linux_build.log || true
+
       - name: Upload Linux Build Log on Failure
         if: failure()
         uses: actions/upload-artifact@v4
