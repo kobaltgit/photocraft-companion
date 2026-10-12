@@ -85,7 +85,8 @@ impl AiEngine {
                 )));
             }
             info!("Loading RMBG-1.4 model from {}...", model_path.display());
-            let session = Session::builder()
+            #[cfg(windows)]
+            let mut session_builder = Session::builder()
                 .map_err(|e| {
                     CompanionError::AiEngine(format!("Failed to init Session builder: {e}"))
                 })?
@@ -97,7 +98,21 @@ impl AiEngine {
                     CompanionError::AiEngine(format!(
                         "Failed to configure execution providers: {e}"
                     ))
+                })?;
+
+            #[cfg(not(windows))]
+            let mut session_builder = Session::builder()
+                .map_err(|e| {
+                    CompanionError::AiEngine(format!("Failed to init Session builder: {e}"))
                 })?
+                .with_execution_providers([ort::ep::CPU::default().build()])
+                .map_err(|e| {
+                    CompanionError::AiEngine(format!(
+                        "Failed to configure execution providers: {e}"
+                    ))
+                })?;
+
+            let session = session_builder
                 .commit_from_file(&model_path)
                 .map_err(|e| CompanionError::AiEngine(format!("Failed to load ONNX model: {e}")))?;
             *guard = Some(session);

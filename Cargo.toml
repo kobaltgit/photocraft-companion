@@ -26,7 +26,7 @@ thiserror = "1.0"
 anyhow = "1.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 arboard = "3.4"
-ort = { version = "2.0.0-rc.13", features = ["directml"] }
+ort = { version = "2.0.0-rc.13" }
 ndarray = "0.17"
 global-hotkey = "0.8.0"
 async-trait = "0.1"
