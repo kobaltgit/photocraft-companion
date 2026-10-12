@@ -17,6 +17,13 @@ pub enum CompanionError {
 
 pub type Result<T> = std::result::Result<T, CompanionError>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConnectionState {
+    Offline,
+    Connected,
+    AuthRequired,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ButtonConfig {
     pub label: String,
@@ -30,8 +37,9 @@ pub use i18n::Language;
 
 pub mod plugin;
 pub use plugin::{
-    BridgeOperations, ModelRequirement, Plugin, PluginCommandStep, PluginContext, PluginManifest,
-    PluginResult, PluginType,
+    AiPipelineConfig, AiTask, BridgeOperations, ExecutionState, ModelRequirement,
+    NormalizationMode, Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginManifest,
+    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus,
 };
 
 pub mod config;
@@ -41,13 +49,17 @@ pub mod package;
 pub use package::{create_pcpl, install_pcpl};
 
 pub mod registry;
-pub use registry::{NoCodePlugin, PluginRegistry};
+pub use registry::{AiPluginFactory, NoCodePlugin, PluginRegistry};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DocumentInfo {
     pub name: String,
     pub width: u32,
     pub height: u32,
     pub active_layer: Option<u64>,
     pub active_layer_name: Option<String>,
+    #[serde(default)]
+    pub has_selection: bool,
+    #[serde(default)]
+    pub selection_bounds: Option<[i32; 4]>,
 }

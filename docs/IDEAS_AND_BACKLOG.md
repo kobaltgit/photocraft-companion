@@ -5,24 +5,27 @@
 | ID | Фича / Концепция | Описание и ценность | Приоритет | Статус |
 |---|---|---|---|---|
 | IDEA-001 | In-Place Remove BG | Бесшовное удаление фона активного слоя без открытия файлов через буфер обмена | P0 | DONE |
-| IDEA-002 | Smart Layer Naming | Сохранение пользовательского имени слоя и добавление суффикса `(No BG)` / `(Без фона)` с защитой от дублирования | P0 | ACCEPTED |
-| IDEA-003 | Multi-Language on the Fly (i18n) | Синхронизация с языком PhotoCraft (`auto`, `en`, `ru`, `de`, `fr`, `es`, `it`, `ja`, `zh`, `ko`, `pt`) из `preferences.json` | P0 | ACCEPTED |
-| IDEA-004 | Universal Hardware Auto-Select | DirectML (DirectX 12) для дискретных и встроенных видеокарт (NVIDIA/AMD/Intel) с безопасным откатом на CPU | P0 | ACCEPTED |
-| IDEA-005 | Plugin Manager GUI | Графическое окно управления плагинами: тумблеры вкл/выкл, настройка хоткеев, порядок кнопок, статус связи | P1 | ACCEPTED |
-| IDEA-006 | Open Plugin SDK (`photocraft_plugin_sdk`) | Публичный трейт `Plugin` и контекст `PluginContext` (доступ к 851 команде PhotoCraft, маскам, пикселям, UI и ИИ) | P1 | ACCEPTED |
-| IDEA-007 | No-Code Declarative Plugins | Поддержка простых плагинов через `plugins/*/plugin.json` для вызова внешних утилит, скриптов и макросов | P1 | ACCEPTED |
-| IDEA-008 | Docked Toolbar (Overlay UI) | Плашка кнопок на `egui` / `eframe` в тёмной теме PhotoCraft (`#1e1e1e`), прилипающая к окну редактора | P1 | IN_PROGRESS |
-| IDEA-009 | Hotkey Dispatcher & Safe Resolver | Глобальные и контекстные хоткеи с защитой от конфликтов со встроенными 851 командами PhotoCraft | P1 | ACCEPTED |
-| IDEA-010 | Connection & Token Settings | Поле ручного ввода токена и порта в GUI + автообнаружение из `control.token`, хранение в `companion_config.json` | P1 | ACCEPTED |
+| IDEA-002 | Smart Layer Naming | Сохранение пользовательского имени слоя и добавление суффикса `(No BG)` / `(Без фона)` с защитой от дублирования | P0 | DONE |
+| IDEA-003 | Multi-Language on the Fly (i18n) | Синхронизация с языком PhotoCraft (`auto`, `en`, `ru`, `de`, `fr`, `es`, `it`, `ja`, `zh`, `ko`, `pt`) из `preferences.json` | P0 | DONE |
+| IDEA-004 | Universal Hardware Auto-Select | DirectML (DirectX 12) для дискретных и встроенных видеокарт (NVIDIA/AMD/Intel) с безопасным откатом на CPU | P0 | DONE |
+| IDEA-005 | Plugin Manager GUI | Графическое окно управления плагинами: тумблеры вкл/выкл, настройка хоткеев, порядок кнопок, статус связи | P1 | DONE |
+| IDEA-006 | Open Plugin SDK (`photocraft_plugin_sdk`) | Публичный трейт `Plugin` и контекст `PluginContext` (доступ к 851 команде PhotoCraft, маскам, пикселям, UI и ИИ) | P1 | DONE |
+| IDEA-007 | No-Code Declarative Plugins | Поддержка простых плагинов через `plugins/*/plugin.json` для вызова внешних утилит, скриптов и макросов | P1 | DONE |
+| IDEA-008 | Docked Toolbar (Overlay UI) | Плашка кнопок на `egui` / `eframe` в тёмной теме PhotoCraft (`#1e1e1e`), прилипающая к окну редактора | P1 | DONE |
+| IDEA-009 | Hotkey Dispatcher & Safe Resolver | Глобальные и контекстные хоткеи с защитой от конфликтов со встроенными 851 командами PhotoCraft | P1 | DONE |
+| IDEA-010 | Connection & Token Settings | Поле ручного ввода токена и порта в GUI + автообнаружение из `control.token`, хранение в `companion_config.json` | P1 | DONE |
 | IDEA-011 | Auto-Hide Source Layer | Автоматическое скрытие исходного слоя после вырезания для мгновенного просмотра прозрачного фона | P2 | ACCEPTED |
-| IDEA-012 | Smart Upscale (Real-ESRGAN) | Нейросетевое увеличение разрешения слоя в 2x/4x с сохранением текстур | P2 | BACKLOG |
-| IDEA-013 | Quick Inpainting Eraser | Удаление нежелательных объектов по маске выделения пользователя | P2 | BACKLOG |
+| IDEA-012 | AI Super-Resolution Upscale (2x/4x) | Нейросетевое увеличение разрешения слоя в 2x/4x с генерацией микротекстур через Real-ESRGAN Compact (~17–35 МБ ONNX) | P1 | READY_FOR_DEV |
+| IDEA-013 | AI Generative Fill (LaMa Inpainting) | Генеративная заливка и умный ластик объектов без промпта по выделению на базе LaMa ONNX (~196 МБ) за ~1.5 с | P1 | READY_FOR_DEV |
 | IDEA-014 | Plugin Marketplace / Catalog | Загрузка и обновление плагинов сообщества из GitHub прямо через интерфейс менеджера | P3 | IDEA |
-| IDEA-015 | Package Format `.pcpl` | Стандартный формат пакета плагинов (zip-архив с манифестом, иконками и моделями) и установка в 1 клик | P0 | ACCEPTED |
+| IDEA-015 | Package Format `.pcpl` | Стандартный формат пакета плагинов (zip-архив с манифестом, иконками и моделями) и установка в 1 клик | P0 | DONE |
 | IDEA-016 | Window Tracker & Auto-Snap | Автоопределение координат окна PhotoCraft и привязка плавающей панели в верхнюю зону над холстом | P0 | DONE |
 | IDEA-017 | Embedded Script Engine (Rhai) | Встроенный безопасный скриптинг на чистом Rust для легковесной автоматизации без компиляции (`plugin.rhai`) | P1 | SPECIFIED |
 | IDEA-018 | External CLI Runner | Запуск внешних консольных утилит (Python, ImageMagick, Go, C++) с передачей параметров документа и слоев | P1 | SPECIFIED |
 | IDEA-019 | Dynamic C-ABI DynLib Runner | Поддержка сторонних динамических библиотек (`.dll` / `.so` / `.dylib`) через `libloading` со стабильным C-ABI | P2 | SPECIFIED |
+| IDEA-020 | Frequency Separation Macro | Профессиональное 1-клик частотное разложение (Low/High frequency) для бьюти-ретуши кожи | P2 | BACKLOG |
+| IDEA-021 | Cinematic Teal & Orange Grading | Кинематографический голливудский цветокор (S-кривые, Color Balance, Vibrance) в формате `.pcpl` | P2 | BACKLOG |
+
 
 
 ---
@@ -49,4 +52,25 @@
 * Визуальный переназначатель горячих клавиш (нажал сочетание — зафиксировалось).
 * Перетаскивание порядка кнопок на плавающей плашке.
 * Выбор языка (`Auto`, `English`, `Русский`, ...) и выбор устройства инференса (`Auto GPU`, `DirectML`, `CPU`).
+
+### Концепция: AI Super-Resolution Upscaler 2x/4x (IDEA-012)
+* **Цель:** Качественное увеличение разрешения активного слоя или холста без пикселизации и замыливания.
+* **Модель:** `realesrgan-x2plus.onnx` (~17–35 МБ) в `plugins/upscale/models/`.
+* **Архитектура конвейера:**
+  1. Захват пикселей слоя через буфер обмена (`copy_active_layer_image`).
+  2. Препроцессинг в тензор RGB `[1, 3, H, W]` с нормализацией [0..1].
+  3. Прямой инференс через `ort` и DirectML GPU (с тайлингом для холстов высокого разрешения).
+  4. Постпроцессинг в `[1, 3, 2*H, 2*W]` и вставка нового слоя `Layer (Upscaled 2x)` через `paste_image_in_place`.
+* **Преимущество перед PhotoCraft:** В редакторе доступен только обычный математический ресайз (Bilinear/Bicubic). Модель генерирует реалистичные микротекстуры.
+
+### Концепция: AI Generative Fill / Inpainting без промпта (IDEA-013)
+* **Цель:** Умный ластик объектов и бесшовное восстановление фона (трава, стены, асфальт, небо) по маске выделения.
+* **Модель:** **LaMa (Large Mask Inpainting)** ONNX (~196 МБ) в `plugins/inpaint/models/`.
+* **Архитектура конвейера:**
+  1. Чтение пикселей активного слоя и текущей маски выделения PhotoCraft (альфа-канал или выделенная область).
+  2. Формирование входного тензора изображения `[1, 3, H, W]` и бинарной маски `[1, 1, H, W]`.
+  3. Инференс Fast-Fourier Convolution (FFC) на DirectML GPU (~1.5 секунды).
+  4. Вставка восстановленного фрагмента на новый слой `Generative Fill` без швов и смещений.
+* **Преимущество:** 100% локально, без подписок Adobe Creative Cloud ($30+/мес), без интернета, без Python и ComfyUI прямо на видеокарте пользователя.
+
 

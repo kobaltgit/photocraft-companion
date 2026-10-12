@@ -1,10 +1,11 @@
 use crate::theme::{ThemeMode, ThemePalette};
-use core_contracts::Language;
+use core_contracts::{ConnectionState, Language};
 use eframe::egui::{self, Color32, RichText, Stroke, Ui, Vec2};
 
 pub struct OfflineModalApp {
     pub current_language: Language,
     pub current_theme: ThemeMode,
+    pub connection_state: ConnectionState,
     pub open_manager_requested: bool,
     pub retry_seconds: f32,
 }
@@ -14,6 +15,7 @@ impl OfflineModalApp {
         Self {
             current_language,
             current_theme,
+            connection_state: ConnectionState::Offline,
             open_manager_requested: false,
             retry_seconds: 1.5,
         }
@@ -36,21 +38,34 @@ impl OfflineModalApp {
             egui::StrokeKind::Inside,
         );
 
+        let is_auth_req = self.connection_state == ConnectionState::AuthRequired;
+        let indicator_color = if is_auth_req {
+            Color32::from_rgb(0xea, 0x86, 0x00)
+        } else {
+            palette.accent_blue
+        };
+
         ui.vertical_centered(|ui| {
             ui.add_space(16.0);
 
-            // Icon / Indicator
-            ui.label(
-                RichText::new("⏳")
-                    .size(28.0)
-                    .color(palette.accent_blue),
-            );
+            // Icon / Indicator (clean vector-drawn circular pulse)
+            let (circle_rect, _) =
+                ui.allocate_exact_size(egui::Vec2::splat(28.0), egui::Sense::hover());
+            let cc = circle_rect.center();
+            ui.painter()
+                .circle_stroke(cc, 11.0, egui::Stroke::new(2.5, indicator_color));
+            ui.painter().circle_filled(cc, 5.0, indicator_color);
 
             ui.add_space(8.0);
 
             // Title
+            let title = if is_auth_req {
+                self.t("PhotoCraft Auth Required", "Требуется авторизация")
+            } else {
+                self.t("PhotoCraft Not Detected", "PhotoCraft не обнаружен")
+            };
             ui.heading(
-                RichText::new(self.t("PhotoCraft Not Detected", "PhotoCraft не обнаружен"))
+                RichText::new(title)
                     .size(15.0)
                     .strong()
                     .color(palette.text_primary),
@@ -59,13 +74,21 @@ impl OfflineModalApp {
             ui.add_space(6.0);
 
             // Message
-            ui.label(
-                RichText::new(self.t(
+            let message = if is_auth_req {
+                self.t(
+                    "PhotoCraft is running, but requires authentication. Click below to enter your control token.",
+                    "PhotoCraft запущен, но требует авторизации. Нажмите ниже, чтобы ввести токен управления.",
+                )
+            } else {
+                self.t(
                     "Please launch PhotoCraft to activate the floating toolstrip and plugins.",
                     "Пожалуйста, запустите PhotoCraft, чтобы панель инструментов и плагины активировались.",
-                ))
-                .size(11.0)
-                .color(palette.text_muted),
+                )
+            };
+            ui.label(
+                RichText::new(message)
+                    .size(11.0)
+                    .color(palette.text_muted),
             );
 
             ui.add_space(10.0);
@@ -77,7 +100,7 @@ impl OfflineModalApp {
                     "Проверка подключения каждые 1.5 сек...",
                 ))
                 .size(10.0)
-                .color(palette.accent_blue),
+                .color(indicator_color),
             );
 
             ui.add_space(14.0);

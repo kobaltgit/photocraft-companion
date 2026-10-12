@@ -10,6 +10,9 @@ pub struct ToolstripApp {
     pub open_manager_requested: bool,
     pub hide_requested: bool,
     pub hovered_tooltip: Option<(String, egui::Rect)>,
+    pub is_busy: bool,
+    pub active_action: Option<String>,
+    pub orientation_changed: bool,
 }
 
 impl ToolstripApp {
@@ -22,7 +25,15 @@ impl ToolstripApp {
             open_manager_requested: false,
             hide_requested: false,
             hovered_tooltip: None,
+            is_busy: false,
+            active_action: None,
+            orientation_changed: false,
         }
+    }
+
+    pub fn with_orientation(mut self, is_vertical: bool) -> Self {
+        self.is_vertical = is_vertical;
+        self
     }
 
     /// Dynamic sizing:
@@ -55,6 +66,9 @@ impl ToolstripApp {
             egui::StrokeKind::Inside,
         );
 
+        let is_busy = self.is_busy;
+        let active_action = self.active_action.clone();
+
         let render_button_items =
             |ui: &mut Ui,
              buttons: &[ButtonConfig],
@@ -62,8 +76,15 @@ impl ToolstripApp {
              hovered_tt: &mut Option<(String, egui::Rect)>| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
                 for btn in buttons {
+                    let is_this_active = active_action
+                        .as_deref()
+                        .map(|a| a == btn.action)
+                        .unwrap_or(false);
+
                     let label_text = match btn.icon.as_deref() {
                         Some("wand") | Some("scissors") => "AI",
+                        Some("zoom-in") | Some("upscale") => "2X",
+                        Some("inpaint") | Some("fill") | Some("magic-wand") => "GF",
                         Some("bw") | Some("film") | Some("adjust") => "BW",
                         Some("copy") => "CP",
                         Some("paste") => "PS",
@@ -76,11 +97,19 @@ impl ToolstripApp {
                         }
                     };
 
+                    let display_label = if is_this_active { "..." } else { label_text };
+
+                    let text_color = if is_this_active {
+                        palette.accent_blue
+                    } else {
+                        palette.text_primary
+                    };
+
                     let b = egui::Button::new(
-                        RichText::new(label_text)
+                        RichText::new(display_label)
                             .strong()
                             .size(11.0)
-                            .color(palette.text_primary),
+                            .color(text_color),
                     )
                     .min_size(Vec2::new(32.0, 32.0))
                     .corner_radius(3.0);
@@ -91,11 +120,21 @@ impl ToolstripApp {
                         btn.label.clone()
                     };
 
-                    let resp = ui.add(b);
+                    // Disable clicking other buttons while a heavy operation is busy
+                    let resp = ui.add_enabled(!is_busy || is_this_active, b);
+                    if is_this_active {
+                        // Draw an active circular border glow on the button
+                        ui.painter().rect_stroke(
+                            resp.rect,
+                            3.0,
+                            Stroke::new(1.5, palette.accent_blue),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
                     if resp.hovered() {
                         *hovered_tt = Some((tooltip, resp.rect));
                     }
-                    if resp.clicked() {
+                    if resp.clicked() && !is_busy {
                         *pending = Some(btn.action.clone());
                     }
                 }
@@ -173,6 +212,7 @@ impl ToolstripApp {
                     );
                     if resp.clicked() {
                         self.is_vertical = false;
+                        self.orientation_changed = true;
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(
                             self.calculate_size(),
                         ));
@@ -339,6 +379,7 @@ impl ToolstripApp {
                         );
                         if resp_orient.clicked() {
                             self.is_vertical = true;
+                            self.orientation_changed = true;
                             ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(
                                 self.calculate_size(),
                             ));
@@ -507,5 +548,18 @@ mod tests {
         assert!(!app.open_manager_requested);
         assert!(!app.hide_requested);
         assert!(app.hovered_tooltip.is_none());
+        assert!(!app.orientation_changed);
+    }
+
+    #[test]
+    fn test_toolstrip_with_orientation() {
+        let app_v = ToolstripApp::new(vec![], ThemeMode::Dark).with_orientation(true);
+        assert!(app_v.is_vertical);
+        assert_eq!(app_v.calculate_size().x, 50.0);
+
+        let app_h = ToolstripApp::new(vec![], ThemeMode::Dark).with_orientation(false);
+        assert!(!app_h.is_vertical);
+        assert_eq!(app_h.calculate_size().y, 78.0);
     }
 }
+

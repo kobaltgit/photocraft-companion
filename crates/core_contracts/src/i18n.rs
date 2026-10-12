@@ -115,6 +115,38 @@ impl Language {
         }
     }
 
+    /// Suffix for upscaled layers
+    pub fn upscale_suffix(&self) -> &'static str {
+        match self {
+            Language::En | Language::Auto => "Upscaled 2x",
+            Language::Ru => "Увеличение 2x",
+            Language::De => "Hochskaliert 2x",
+            Language::Fr => "Agrandissement 2x",
+            Language::Es => "Aumentado 2x",
+            Language::It => "Ingrandito 2x",
+            Language::Ja => "2倍拡大",
+            Language::Zh => "超分辨率 2x",
+            Language::Ko => "2배 업스케일",
+            Language::Pt => "Ampliado 2x",
+        }
+    }
+
+    /// Suffix for inpaint / generative fill layers
+    pub fn inpaint_suffix(&self) -> &'static str {
+        match self {
+            Language::En | Language::Auto => "Gen Fill",
+            Language::Ru => "Генеративная заливка",
+            Language::De => "Generatives Füllen",
+            Language::Fr => "Remplissage génératif",
+            Language::Es => "Relleno generativo",
+            Language::It => "Riempimento generativo",
+            Language::Ja => "生成塗りつぶし",
+            Language::Zh => "生成式填充",
+            Language::Ko => "생성형 채우기",
+            Language::Pt => "Preenchimento generativo",
+        }
+    }
+
     /// Button label for remove bg action
     pub fn remove_bg_label(&self) -> &'static str {
         match self {
@@ -162,6 +194,20 @@ impl Language {
             }
         }
 
+        format!("{trimmed} ({suffix})")
+    }
+
+    /// Format upscale layer name
+    pub fn format_upscale_name(&self, source_name: &str) -> String {
+        let suffix = self.upscale_suffix();
+        let trimmed = source_name.trim();
+        format!("{trimmed} ({suffix})")
+    }
+
+    /// Format generative fill layer name
+    pub fn format_inpaint_name(&self, source_name: &str) -> String {
+        let suffix = self.inpaint_suffix();
+        let trimmed = source_name.trim();
         format!("{trimmed} ({suffix})")
     }
 }

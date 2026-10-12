@@ -1,5 +1,5 @@
 use crate::theme::{ThemeMode, ThemePalette};
-use core_contracts::{CompanionConfig, Language, PluginManifest, PluginType};
+use core_contracts::{CompanionConfig, ConnectionState, Language, PluginManifest, PluginType};
 use eframe::egui::{self, Color32, RichText, Stroke, Ui, Vec2};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -30,7 +30,9 @@ pub struct PluginManagerApp {
     pub hotkey_overrides: HashMap<String, String>,
     pub downloading_model: Option<String>,
     pub is_connected: Arc<AtomicBool>,
+    pub connection_state: Arc<std::sync::RwLock<ConnectionState>>,
     pub recording_hotkey_for: Option<String>,
+    pub on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 }
 
 impl PluginManagerApp {
@@ -74,6 +76,12 @@ impl PluginManagerApp {
             data_dir.parent().unwrap_or(&data_dir).join("plugins")
         };
 
+        let init_state = if is_connected.load(Ordering::Relaxed) {
+            ConnectionState::Connected
+        } else {
+            ConnectionState::Offline
+        };
+
         Self {
             active_tab: ActiveTab::General,
             manifests,
@@ -89,8 +97,26 @@ impl PluginManagerApp {
             hotkey_overrides: cfg.hotkey_overrides,
             downloading_model: None,
             is_connected,
+            connection_state: Arc::new(std::sync::RwLock::new(init_state)),
             recording_hotkey_for: None,
+            on_token_saved: None,
         }
+    }
+
+    pub fn with_connection_state(
+        mut self,
+        connection_state: Arc<std::sync::RwLock<ConnectionState>>,
+    ) -> Self {
+        self.connection_state = connection_state;
+        self
+    }
+
+    pub fn with_token_callback(
+        mut self,
+        callback: Arc<dyn Fn(Option<String>) + Send + Sync>,
+    ) -> Self {
+        self.on_token_saved = Some(callback);
+        self
     }
 
     pub fn t<'a>(&self, en: &'a str, ru: &'a str) -> &'a str {
@@ -104,11 +130,12 @@ impl PluginManagerApp {
         let mut cfg = CompanionConfig::load_or_default(&self.config_path);
         cfg.host = self.host.clone();
         cfg.port = self.port;
-        cfg.token = if self.token.trim().is_empty() {
+        let token_opt = if self.token.trim().is_empty() {
             None
         } else {
             Some(self.token.trim().to_string())
         };
+        cfg.token = token_opt.clone();
         cfg.theme = match self.current_theme {
             ThemeMode::Dark => "dark".to_string(),
             ThemeMode::Light => "light".to_string(),
@@ -128,6 +155,11 @@ impl PluginManagerApp {
 
         cfg.save(&self.config_path)?;
         info!("Saved settings to {}", self.config_path.display());
+
+        // Notify runtime client immediately
+        if let Some(ref cb) = self.on_token_saved {
+            cb(token_opt);
+        }
 
         self.status_text = self
             .t(
@@ -176,12 +208,12 @@ impl PluginManagerApp {
         });
     }
 
-    pub fn render_status_bullet(ui: &mut Ui, connected: bool) {
+    pub fn render_status_bullet(ui: &mut Ui, state: ConnectionState) {
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(10.0), egui::Sense::hover());
-        let color = if connected {
-            Color32::from_rgb(0x28, 0xa7, 0x45)
-        } else {
-            Color32::from_rgb(0xea, 0x86, 0x00)
+        let color = match state {
+            ConnectionState::Connected => Color32::from_rgb(0x28, 0xa7, 0x45),
+            ConnectionState::AuthRequired => Color32::from_rgb(0xea, 0x86, 0x00),
+            ConnectionState::Offline => Color32::from_rgb(0x88, 0x88, 0x88),
         };
         ui.painter().circle_filled(rect.center(), 3.5, color);
     }
@@ -207,29 +239,43 @@ impl PluginManagerApp {
                         .size(12.0)
                         .color(palette.text_primary),
                 );
-                let connected = self.is_connected.load(Ordering::Relaxed);
+                let state = *self.connection_state.read().unwrap();
                 ui.horizontal(|ui| {
-                    Self::render_status_bullet(ui, connected);
+                    Self::render_status_bullet(ui, state);
                     ui.add_space(2.0);
-                    if connected {
-                        ui.label(
-                            RichText::new(self.t(
-                                "Connected to PhotoCraft (127.0.0.1:18492)",
-                                "Подключено к PhotoCraft (127.0.0.1:18492)",
-                            ))
-                            .size(12.0)
-                            .strong()
-                            .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
-                        );
-                    } else {
-                        ui.label(
-                            RichText::new(self.t(
-                                "Offline (Waiting for PhotoCraft on port 18492...)",
-                                "Офлайн (Ожидание запуска PhotoCraft на порту 18492...)",
-                            ))
-                            .size(12.0)
-                            .color(Color32::from_rgb(0xea, 0x86, 0x00)),
-                        );
+                    match state {
+                        ConnectionState::Connected => {
+                            ui.label(
+                                RichText::new(self.t(
+                                    "Connected to PhotoCraft (127.0.0.1:18492)",
+                                    "Подключено к PhotoCraft (127.0.0.1:18492)",
+                                ))
+                                .size(12.0)
+                                .strong()
+                                .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
+                            );
+                        }
+                        ConnectionState::AuthRequired => {
+                            ui.label(
+                                RichText::new(self.t(
+                                    "Auth Required (Token Missing or Invalid)",
+                                    "Требуется авторизация (Токен отсутствует или неверен)",
+                                ))
+                                .size(12.0)
+                                .strong()
+                                .color(Color32::from_rgb(0xea, 0x86, 0x00)),
+                            );
+                        }
+                        ConnectionState::Offline => {
+                            ui.label(
+                                RichText::new(self.t(
+                                    "Offline (Waiting for PhotoCraft on port 18492...)",
+                                    "Офлайн (Ожидание запуска PhotoCraft на порту 18492...)",
+                                ))
+                                .size(12.0)
+                                .color(palette.text_muted),
+                            );
+                        }
                     }
                 });
                 ui.end_row();
@@ -334,13 +380,49 @@ impl PluginManagerApp {
                         )
                         .clicked()
                     {
+                        // Check direct token file in prefs_path parent
                         let token_path = self
                             .prefs_path
                             .parent()
                             .unwrap_or(&self.prefs_path)
                             .join("control.token");
+                        let mut found = None;
                         if let Ok(s) = std::fs::read_to_string(&token_path) {
-                            self.token = s.trim().to_string();
+                            let trimmed = s.trim();
+                            if !trimmed.is_empty() {
+                                found = Some(trimmed.to_string());
+                            }
+                        }
+
+                        // Fallback check standard locations if not found
+                        if found.is_none() {
+                            let mut candidates = Vec::new();
+                            if let Ok(cwd) = std::env::current_dir() {
+                                candidates.push(cwd.join("PhotoCraftData").join("control.token"));
+                                candidates.push(
+                                    cwd.join("..").join("PhotoCraftData").join("control.token"),
+                                );
+                            }
+                            if let Ok(appdata) = std::env::var("APPDATA") {
+                                candidates.push(
+                                    std::path::PathBuf::from(appdata)
+                                        .join("PhotoCraft")
+                                        .join("control.token"),
+                                );
+                            }
+                            for c in candidates {
+                                if let Ok(s) = std::fs::read_to_string(&c) {
+                                    let trimmed = s.trim();
+                                    if !trimmed.is_empty() {
+                                        found = Some(trimmed.to_string());
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        if let Some(t) = found {
+                            self.token = t;
                             self.status_text = self
                                 .t("Token updated successfully", "Токен успешно обновлен")
                                 .to_string();
@@ -348,6 +430,30 @@ impl PluginManagerApp {
                             self.status_text = self
                                 .t("control.token not found", "Файл control.token не найден")
                                 .to_string();
+                        }
+                    }
+
+                    if ui
+                        .button(
+                            RichText::new(self.t("Browse...", "Обзор..."))
+                                .size(11.0)
+                                .color(Color32::WHITE),
+                        )
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .set_title("Select PhotoCraft control.token")
+                            .pick_file()
+                        {
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                let trimmed = content.trim();
+                                if !trimmed.is_empty() {
+                                    self.token = trimmed.to_string();
+                                    self.status_text = self
+                                        .t("Token loaded from file", "Токен загружен из файла")
+                                        .to_string();
+                                }
+                            }
                         }
                     }
                 });
@@ -385,13 +491,12 @@ impl PluginManagerApp {
                     {
                         match core_contracts::install_pcpl(&file, &self.plugins_dir) {
                             Ok(m) => {
-                                self.status_text = format!(
-                                    "● {}",
-                                    self.t(
+                                self.status_text = self
+                                    .t(
                                         "Plugin installed successfully!",
-                                        "Плагин успешно установлен!"
+                                        "Плагин успешно установлен!",
                                     )
-                                );
+                                    .to_string();
                                 self.manifests.push(m);
                             }
                             Err(e) => {
@@ -407,9 +512,9 @@ impl PluginManagerApp {
         ui.separator();
         ui.add_space(6.0);
 
-        let msg_model_ready = self.t("● Model ready", "● Модель готова");
-        let msg_model_missing = self.t("⚠️ Model missing", "⚠️ Требуется модель");
-        let msg_download = self.t("⬇ Download model", "⬇ Скачать модель");
+        let msg_model_ready = self.t("Model ready", "Модель готова");
+        let msg_model_missing = self.t("Model missing", "Требуется модель");
+        let msg_download = self.t("Download model", "Скачать модель");
         let msg_download_started = self.t("Model download started...", "Загрузка модели начата...");
         let mut download_notice = None;
 
@@ -477,8 +582,18 @@ impl PluginManagerApp {
                                 .color(palette.text_muted),
                         );
 
-                        // Models status badge
+                        // Models status badge (clean vector circle dot + label)
                         if !manifest.models.is_empty() {
+                            let (dot_rect, _) =
+                                ui.allocate_exact_size(Vec2::new(8.0, 10.0), egui::Sense::hover());
+                            let dot_color = if all_models_ok {
+                                Color32::from_rgb(0x28, 0xa7, 0x45)
+                            } else {
+                                Color32::from_rgb(0xea, 0x86, 0x00)
+                            };
+                            ui.painter()
+                                .circle_filled(dot_rect.center(), 2.8, dot_color);
+
                             if all_models_ok {
                                 ui.label(
                                     RichText::new(msg_model_ready)
@@ -824,21 +939,28 @@ impl PluginManagerApp {
                                 .color(palette.accent_blue),
                         );
                     } else {
-                        let connected = self.is_connected.load(Ordering::Relaxed);
-                        Self::render_status_bullet(ui, connected);
+                        let state = *self.connection_state.read().unwrap();
+                        Self::render_status_bullet(ui, state);
                         ui.add_space(2.0);
-                        let text = if connected {
-                            self.t(
-                                "Connected (127.0.0.1:18492)",
-                                "Подключено (127.0.0.1:18492)",
-                            )
-                        } else {
-                            self.t("Offline (Socket 18492)", "Офлайн (Сокет 18492)")
-                        };
-                        let color = if connected {
-                            Color32::from_rgb(0x28, 0xa7, 0x45)
-                        } else {
-                            palette.text_muted
+                        let (text, color) = match state {
+                            ConnectionState::Connected => (
+                                self.t(
+                                    "Connected (127.0.0.1:18492)",
+                                    "Подключено (127.0.0.1:18492)",
+                                ),
+                                Color32::from_rgb(0x28, 0xa7, 0x45),
+                            ),
+                            ConnectionState::AuthRequired => (
+                                self.t(
+                                    "Auth Required (Token Missing or Invalid)",
+                                    "Требуется авторизация (Токен отсутствует или неверен)",
+                                ),
+                                Color32::from_rgb(0xea, 0x86, 0x00),
+                            ),
+                            ConnectionState::Offline => (
+                                self.t("Offline (Socket 18492)", "Офлайн (Сокет 18492)"),
+                                palette.text_muted,
+                            ),
                         };
                         ui.label(RichText::new(text).size(11.0).color(color));
                     }

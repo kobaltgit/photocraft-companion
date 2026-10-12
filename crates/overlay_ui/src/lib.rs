@@ -32,11 +32,11 @@ impl OverlayBar {
         let mut buttons = Vec::new();
         for m in manifests {
             if m.enabled {
-                let icon = match m.plugin_type {
+                let icon = m.icon.clone().or_else(|| match m.plugin_type {
                     core_contracts::PluginType::NativeAi => Some("wand".to_string()),
                     core_contracts::PluginType::NoCode => Some("bw".to_string()),
                     _ => None,
-                };
+                });
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
@@ -98,6 +98,7 @@ pub struct CompanionOverlayApp {
     pub show_manager: bool,
     pub is_hidden_to_tray: bool,
     pub is_connected: Arc<AtomicBool>,
+    pub connection_state: Arc<std::sync::RwLock<core_contracts::ConnectionState>>,
     pub action_tx: Option<UnboundedSender<String>>,
     pub last_connected_state: bool,
     pub last_theme: ThemeMode,
@@ -105,6 +106,10 @@ pub struct CompanionOverlayApp {
     pub tray_thread_started: bool,
     pub restore_toolbar_flag: Arc<AtomicBool>,
     pub open_manager_flag: Arc<AtomicBool>,
+    pub exec_status: Option<core_contracts::SharedExecutionStatus>,
+    pub config_path: std::path::PathBuf,
+    pub last_saved_vertical: bool,
+    pub last_saved_pos: Option<[f32; 2]>,
 }
 
 impl CompanionOverlayApp {
@@ -115,13 +120,34 @@ impl CompanionOverlayApp {
         is_connected: Arc<AtomicBool>,
         action_tx: Option<UnboundedSender<String>>,
         tray_icon_handle: Arc<std::sync::Mutex<Option<tray_icon::TrayIcon>>>,
+        exec_status: Option<core_contracts::SharedExecutionStatus>,
+        connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
+        on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
     ) -> Self {
         let prefs_path = prefs_path.into();
+        let data_dir = prefs_path.parent().unwrap_or(&prefs_path).to_path_buf();
+        let config_path = core_contracts::CompanionConfig::resolve_config_path(&data_dir);
+        let cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+
         let current_theme = ThemeMode::from_preferences(&prefs_path);
         let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
 
-        let toolstrip = ToolstripApp::new(buttons, current_theme);
-        let manager = PluginManagerApp::new(manifests, &prefs_path, is_connected.clone());
+        let conn_state_arc = connection_state.unwrap_or_else(|| {
+            let initial = if is_connected.load(Ordering::Relaxed) {
+                core_contracts::ConnectionState::Connected
+            } else {
+                core_contracts::ConnectionState::Offline
+            };
+            Arc::new(std::sync::RwLock::new(initial))
+        });
+
+        let toolstrip = ToolstripApp::new(buttons, current_theme).with_orientation(cfg.is_vertical);
+        let mut manager = PluginManagerApp::new(manifests, &prefs_path, is_connected.clone())
+            .with_connection_state(conn_state_arc.clone());
+        if let Some(cb) = on_token_saved {
+            manager = manager.with_token_callback(cb);
+        }
+
         let offline_modal = OfflineModalApp::new(current_lang, current_theme);
 
         let initial_conn = is_connected.load(Ordering::Relaxed);
@@ -133,6 +159,7 @@ impl CompanionOverlayApp {
             show_manager: false,
             is_hidden_to_tray: false,
             is_connected,
+            connection_state: conn_state_arc,
             action_tx,
             last_connected_state: initial_conn,
             last_theme: current_theme,
@@ -140,6 +167,19 @@ impl CompanionOverlayApp {
             tray_thread_started: false,
             restore_toolbar_flag: Arc::new(AtomicBool::new(false)),
             open_manager_flag: Arc::new(AtomicBool::new(false)),
+            exec_status,
+            config_path,
+            last_saved_vertical: cfg.is_vertical,
+            last_saved_pos: cfg.window_position,
+        }
+    }
+
+    pub fn save_layout_state(&self) {
+        let mut cfg = core_contracts::CompanionConfig::load_or_default(&self.config_path);
+        cfg.is_vertical = self.last_saved_vertical;
+        cfg.window_position = self.last_saved_pos;
+        if let Err(e) = cfg.save(&self.config_path) {
+            tracing::warn!("Failed to save toolstrip layout config: {}", e);
         }
     }
 }
@@ -221,7 +261,19 @@ impl eframe::App for CompanionOverlayApp {
                 let size = self.toolstrip.calculate_size();
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-                if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                if let Some(pos) = self.last_saved_pos {
+                    if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0 {
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                                pos[0], pos[1],
+                            )));
+                    } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                        ui.ctx()
+                            .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                                pos[0], pos[1],
+                            )));
+                    }
+                } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                             pos[0], pos[1],
@@ -292,6 +344,41 @@ impl eframe::App for CompanionOverlayApp {
         if !self.is_hidden_to_tray {
             if connected {
                 self.toolstrip.render(ui, &palette);
+
+                // Auto-save orientation changes
+                if self.toolstrip.orientation_changed
+                    || self.toolstrip.is_vertical != self.last_saved_vertical
+                {
+                    self.toolstrip.orientation_changed = false;
+                    self.last_saved_vertical = self.toolstrip.is_vertical;
+                    self.save_layout_state();
+                }
+
+                // Auto-save window position when mouse drag ends
+                let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
+                if !pointer_down {
+                    if let Some(outer_rect) = ui.ctx().input(|i| i.viewport().outer_rect) {
+                        let min = outer_rect.min;
+                        if min.x.is_finite()
+                            && min.y.is_finite()
+                            && (min.x.abs() > 0.001 || min.y.abs() > 0.001)
+                        {
+                            let cur_pos = [min.x, min.y];
+                            let needs_save = match self.last_saved_pos {
+                                Some(last) => {
+                                    (last[0] - cur_pos[0]).abs() > 1.0
+                                        || (last[1] - cur_pos[1]).abs() > 1.0
+                                }
+                                None => true,
+                            };
+                            if needs_save {
+                                self.last_saved_pos = Some(cur_pos);
+                                self.save_layout_state();
+                            }
+                        }
+                    }
+                }
+
                 if self.toolstrip.open_manager_requested {
                     self.toolstrip.open_manager_requested = false;
                     self.show_manager = true;
@@ -299,6 +386,7 @@ impl eframe::App for CompanionOverlayApp {
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
                     self.is_hidden_to_tray = true;
+                    self.save_layout_state();
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::Visible(false));
                 }
@@ -352,7 +440,157 @@ impl eframe::App for CompanionOverlayApp {
                         },
                     );
                 }
+
+                // Render Execution Status Mini-HUD / Toast Viewport
+                if let Some(ref status_arc) = self.exec_status {
+                    let mut reset_to_idle = false;
+                    let hud_data = {
+                        let guard = status_arc.lock().unwrap();
+                        match &*guard {
+                            core_contracts::ExecutionState::Idle => None,
+                            core_contracts::ExecutionState::Running {
+                                action_id,
+                                action_name,
+                                started_at,
+                            } => {
+                                let elapsed = started_at.elapsed().as_secs_f32();
+                                Some((
+                                    format!(
+                                        "{}: {} ({:.1}s)",
+                                        action_name,
+                                        self.manager.t("Processing...", "Обработка..."),
+                                        elapsed
+                                    ),
+                                    palette.accent_blue,
+                                    Some(action_id.clone()),
+                                    true,
+                                ))
+                            }
+                            core_contracts::ExecutionState::Success {
+                                action_name,
+                                message: _,
+                                duration_secs,
+                                finished_at,
+                            } => {
+                                if finished_at.elapsed() > std::time::Duration::from_secs(3) {
+                                    reset_to_idle = true;
+                                    None
+                                } else {
+                                    Some((
+                                        format!(
+                                            "{}: {} ({:.1}s)",
+                                            action_name,
+                                            self.manager.t("Done", "Готово"),
+                                            duration_secs
+                                        ),
+                                        egui::Color32::from_rgb(0x28, 0xa7, 0x45),
+                                        None,
+                                        false,
+                                    ))
+                                }
+                            }
+                            core_contracts::ExecutionState::Error {
+                                action_name,
+                                error,
+                                finished_at,
+                            } => {
+                                if finished_at.elapsed() > std::time::Duration::from_secs(4) {
+                                    reset_to_idle = true;
+                                    None
+                                } else {
+                                    let err_preview = if error.len() > 35 {
+                                        &error[..35]
+                                    } else {
+                                        error
+                                    };
+                                    Some((
+                                        format!("{}: {}", action_name, err_preview),
+                                        egui::Color32::from_rgb(0xe5, 0x39, 0x35),
+                                        None,
+                                        false,
+                                    ))
+                                }
+                            }
+                        }
+                    };
+
+                    if reset_to_idle {
+                        *status_arc.lock().unwrap() = core_contracts::ExecutionState::Idle;
+                    }
+
+                    if let Some((hud_text, hud_color, active_action, is_running)) = hud_data {
+                        self.toolstrip.is_busy = is_running;
+                        self.toolstrip.active_action = active_action;
+
+                        if is_running {
+                            ui.ctx()
+                                .request_repaint_after(std::time::Duration::from_millis(80));
+                        }
+
+                        let window_rect = ui
+                            .ctx()
+                            .input(|i| i.viewport().outer_rect)
+                            .unwrap_or(egui::Rect::ZERO);
+
+                        let hud_pos = if self.toolstrip.is_vertical {
+                            window_rect.min + egui::vec2(window_rect.width() + 6.0, 4.0)
+                        } else {
+                            window_rect.min + egui::vec2(0.0, window_rect.height() + 6.0)
+                        };
+
+                        let char_count = hud_text.chars().count();
+                        let hud_width = (char_count as f32 * 7.5 + 24.0).clamp(140.0, 360.0);
+                        let hud_height = 26.0;
+
+                        let vp = egui::ViewportBuilder::default()
+                            .with_decorations(false)
+                            .with_transparent(true)
+                            .with_always_on_top()
+                            .with_resizable(false)
+                            .with_taskbar(false)
+                            .with_position(hud_pos)
+                            .with_inner_size(egui::vec2(hud_width, hud_height));
+
+                        ui.ctx().show_viewport_immediate(
+                            egui::ViewportId::from_hash_of("toolstrip_execution_hud_toast"),
+                            vp,
+                            |ctx, _class| {
+                                egui::CentralPanel::default()
+                                    .frame(
+                                        egui::Frame::new()
+                                            .fill(palette.card_inner)
+                                            .stroke(egui::Stroke::new(1.0, hud_color))
+                                            .corner_radius(4.0)
+                                            .inner_margin(egui::Margin::symmetric(10, 4)),
+                                    )
+                                    .show(ctx, |ui| {
+                                        ui.horizontal(|ui| {
+                                            let (circle_rect, _) = ui.allocate_exact_size(
+                                                egui::vec2(8.0, 12.0),
+                                                egui::Sense::hover(),
+                                            );
+                                            ui.painter().circle_filled(
+                                                circle_rect.center(),
+                                                3.0,
+                                                hud_color,
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(&hud_text)
+                                                    .size(11.0)
+                                                    .strong()
+                                                    .color(hud_color),
+                                            );
+                                        });
+                                    });
+                            },
+                        );
+                    } else {
+                        self.toolstrip.is_busy = false;
+                        self.toolstrip.active_action = None;
+                    }
+                }
             } else {
+                self.offline_modal.connection_state = *self.connection_state.read().unwrap();
                 self.offline_modal.render(ui, &palette);
                 if self.offline_modal.open_manager_requested {
                     self.offline_modal.open_manager_requested = false;
@@ -410,6 +648,9 @@ pub fn launch_companion_overlay(
     is_connected: Arc<AtomicBool>,
     action_tx: Option<UnboundedSender<String>>,
     tray_icon_handle: Arc<std::sync::Mutex<Option<tray_icon::TrayIcon>>>,
+    exec_status: Option<core_contracts::SharedExecutionStatus>,
+    connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
+    on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -418,6 +659,9 @@ pub fn launch_companion_overlay(
         is_connected,
         action_tx,
         tray_icon_handle,
+        exec_status,
+        connection_state,
+        on_token_saved,
     );
     if start_with_manager {
         app.show_manager = true;
@@ -441,7 +685,13 @@ pub fn launch_companion_overlay(
         .with_title("PhotoCraft Toolbar");
 
     if connected {
-        if let Some(pos) = calculate_toolstrip_spawn_pos(initial_size.x) {
+        if let Some(pos) = app.last_saved_pos {
+            if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0 {
+                viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
+            } else if let Some(pos) = calculate_toolstrip_spawn_pos(initial_size.x) {
+                viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
+            }
+        } else if let Some(pos) = calculate_toolstrip_spawn_pos(initial_size.x) {
             viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
         }
     }
@@ -467,9 +717,17 @@ pub fn launch_companion_overlay(
 pub fn launch_plugin_manager(
     manifests: Vec<core_contracts::PluginManifest>,
     prefs_path: impl Into<std::path::PathBuf>,
+    connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
+    on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 ) -> anyhow::Result<()> {
     let is_connected = Arc::new(AtomicBool::new(false));
-    let app = PluginManagerApp::new(manifests, prefs_path, is_connected);
+    let mut app = PluginManagerApp::new(manifests, prefs_path, is_connected);
+    if let Some(cs) = connection_state {
+        app = app.with_connection_state(cs);
+    }
+    if let Some(cb) = on_token_saved {
+        app = app.with_token_callback(cb);
+    }
     let is_dark = app.current_theme.is_dark();
 
     let mut viewport = eframe::egui::ViewportBuilder::default()
@@ -525,8 +783,10 @@ mod tests {
             models: vec![],
             action_id: None,
             entrypoint: None,
+            ai: None,
             enabled: true,
             plugin_dir: None,
+            ..Default::default()
         };
         let m2 = core_contracts::PluginManifest {
             id: "p2".to_string(),
@@ -541,8 +801,10 @@ mod tests {
             models: vec![],
             action_id: None,
             entrypoint: None,
+            ai: None,
             enabled: false,
             plugin_dir: None,
+            ..Default::default()
         };
 
         let btns = OverlayBar::from_manifests(&[m1, m2]);
@@ -593,4 +855,68 @@ mod tests {
         assert!(x >= 50.0);
         assert!(y >= 50.0);
     }
+
+    #[test]
+    fn test_toolstrip_persistence_config_roundtrip() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "persist_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_file = temp_dir.join("preferences.json");
+        std::fs::write(&prefs_file, "{}").unwrap();
+
+        let is_connected = Arc::new(AtomicBool::new(false));
+        let app = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected.clone(),
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+        );
+
+        // Initial default state
+        assert!(!app.last_saved_vertical);
+        assert!(app.last_saved_pos.is_none());
+        assert!(!app.toolstrip.is_vertical);
+
+        // Modify and save state
+        let mut app_mut = app;
+        app_mut.last_saved_vertical = true;
+        app_mut.last_saved_pos = Some([420.0, 180.0]);
+        app_mut.save_layout_state();
+
+        // Verify saved on disk
+        let saved_cfg = core_contracts::CompanionConfig::load_or_default(&app_mut.config_path);
+        assert!(saved_cfg.is_vertical);
+        assert_eq!(saved_cfg.window_position, Some([420.0, 180.0]));
+
+        // Re-instantiate app from the same directory - state must be restored!
+        let app_restored = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected,
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+        );
+
+        assert!(app_restored.last_saved_vertical);
+        assert_eq!(app_restored.last_saved_pos, Some([420.0, 180.0]));
+        assert!(app_restored.toolstrip.is_vertical);
+        assert_eq!(app_restored.toolstrip.calculate_size().x, 50.0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
+

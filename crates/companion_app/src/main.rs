@@ -1,8 +1,10 @@
 mod win32_theme;
 use win32_theme::apply_win32_menu_theme;
 
-use ai_engine::{AiEngine, RemoveBgPlugin};
-use core_contracts::{PluginContext, PluginRegistry, PluginType};
+use ai_engine::{AiEngine, GenericAiPlugin};
+use core_contracts::{
+    ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
+};
 use hotkey_service::HotkeyManager;
 use overlay_ui::{get_icon_rgba, OverlayBar, ThemeMode};
 use photocraft_bridge::PhotoCraftClient;
@@ -18,19 +20,24 @@ use tray_icon::{
 };
 
 fn find_plugins_dir() -> PathBuf {
-    if PathBuf::from("plugins").is_dir() {
-        return PathBuf::from("plugins");
-    }
+    // 1. Check relative to current executable location (target/release/../../plugins or adjacent plugins/)
     if let Ok(exe) = std::env::current_exe() {
-        if let Some(target_dir) = exe.parent().and_then(|p| p.parent()) {
-            if let Some(root) = target_dir.parent() {
-                let candidate = root.join("plugins");
-                if candidate.is_dir() {
-                    return candidate;
+        if let Some(exe_dir) = exe.parent() {
+            let adjacent = exe_dir.join("plugins");
+            if adjacent.is_dir() {
+                return adjacent;
+            }
+            if let Some(target_dir) = exe_dir.parent() {
+                if let Some(root) = target_dir.parent() {
+                    let candidate = root.join("plugins");
+                    if candidate.is_dir() {
+                        return candidate;
+                    }
                 }
             }
         }
     }
+    // 2. Check current working directory and its parents
     if let Ok(cwd) = std::env::current_dir() {
         let mut cur = cwd.as_path();
         for _ in 0..5 {
@@ -49,12 +56,15 @@ fn find_plugins_dir() -> PathBuf {
 }
 
 fn find_photocraft_data_dir() -> PathBuf {
-    let hardcoded = PathBuf::from(
-        r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData",
-    );
-    if hardcoded.is_dir() {
-        return hardcoded;
+    // 1. Check directory of currently running PhotoCraft process
+    if let Some(proc_dir) = PhotoCraftClient::find_running_photocraft_dir() {
+        let candidate = proc_dir.join("PhotoCraftData");
+        if candidate.is_dir() {
+            return candidate;
+        }
     }
+
+    // 2. Check local relative directory or parents
     if PathBuf::from("PhotoCraftData").is_dir() {
         return PathBuf::from("PhotoCraftData");
     }
@@ -72,6 +82,15 @@ fn find_photocraft_data_dir() -> PathBuf {
             }
         }
     }
+
+    // 3. Check AppData or user home
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let candidate = PathBuf::from(appdata).join("PhotoCraft");
+        if candidate.is_dir() {
+            return candidate;
+        }
+    }
+
     PathBuf::from("PhotoCraftData")
 }
 
@@ -98,16 +117,21 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()?;
 
-    // 1. Initialize Plugin Registry
+    // 1. Initialize Plugin Registry with dynamic AI Factory
+    // Any Native AI plugin placed in plugins/ will be discovered and instantiated automatically!
     println!("\n=== DISCOVERING & LOADING PLUGINS ===");
-    let mut registry = PluginRegistry::new(&plugins_dir);
-
-    // Register Native AI Plugin
     let ai = Arc::new(AiEngine::new(&data_dir));
-    let remove_bg = Arc::new(RemoveBgPlugin::new(ai.clone()));
-    registry.register_native(remove_bg);
+    let ai_for_factory = ai.clone();
+    let ai_factory: core_contracts::AiPluginFactory = Arc::new(move |manifest| {
+        Ok(Arc::new(GenericAiPlugin::new(
+            manifest.clone(),
+            ai_for_factory.clone(),
+        )))
+    });
 
-    // Scan for No-Code & other declarative plugins in `plugins/`
+    let mut registry = PluginRegistry::new(&plugins_dir).with_ai_factory(ai_factory);
+
+    // Scan for all plugins (No-Code, Native AI, Script, CLI) automatically from `plugins/`
     let _loaded = registry.scan_and_load()?;
     println!(
         "  Total registered plugin manifests: {}",
@@ -140,17 +164,32 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // 3. Setup Bridge Client and Offline/Online State Monitor
-    let client = Arc::new(PhotoCraftClient::new(18492, None));
+    // 3. Load companion configuration first to obtain user token and connection settings
+    let config_path = core_contracts::CompanionConfig::resolve_config_path(&data_dir);
+    let companion_cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+    let initial_token = companion_cfg
+        .token
+        .clone()
+        .or_else(PhotoCraftClient::default_token);
+
+    // 4. Setup Bridge Client and 3-State Connection Monitor
+    let client = Arc::new(PhotoCraftClient::new(companion_cfg.port, initial_token));
     let is_connected = Arc::new(AtomicBool::new(false));
+    let connection_state = Arc::new(std::sync::RwLock::new(
+        core_contracts::ConnectionState::Offline,
+    ));
 
     // Try initial connection synchronously on startup
     let client_init = client.clone();
     let is_conn_init = is_connected.clone();
+    let conn_state_init = connection_state.clone();
     rt.block_on(async {
-        if client_init.is_alive().await {
-            if client_init.connect().await.is_ok() {
+        let state = client_init.verify_connection().await;
+        *conn_state_init.write().unwrap() = state;
+        match state {
+            core_contracts::ConnectionState::Connected => {
                 is_conn_init.store(true, Ordering::Relaxed);
+                let _ = client_init.connect().await;
                 info!("Successfully connected to live PhotoCraft instance on startup!");
                 if let Ok(doc) = client_init.get_document_info().await {
                     println!("=== CURRENT ACTIVE DOCUMENT ===");
@@ -159,26 +198,42 @@ fn main() -> anyhow::Result<()> {
                     println!("Active Layer: {:?}", doc.active_layer);
                 }
             }
-        } else {
-            println!("PhotoCraft is not yet detected on port 18492. Entering background polling mode (1.5s)...");
+            core_contracts::ConnectionState::AuthRequired => {
+                is_conn_init.store(false, Ordering::Relaxed);
+                println!("PhotoCraft is running on port {}, but authentication is required. Please set valid control.token in Settings.", companion_cfg.port);
+            }
+            core_contracts::ConnectionState::Offline => {
+                is_conn_init.store(false, Ordering::Relaxed);
+                println!("PhotoCraft is not yet detected on port {}. Entering background polling mode (1.5s)...", companion_cfg.port);
+            }
         }
     });
 
-    // Background monitor task (pings every 1.5s per specification)
+    // Background monitor task (checks verify_connection every 1.5s per specification)
     let is_conn_monitor = is_connected.clone();
+    let conn_state_monitor = connection_state.clone();
     let client_monitor = client.clone();
     rt.spawn(async move {
         loop {
-            let alive = client_monitor.is_alive().await;
-            let was_connected = is_conn_monitor.load(Ordering::Relaxed);
-            if alive && !was_connected {
-                if client_monitor.connect().await.is_ok() {
-                    is_conn_monitor.store(true, Ordering::Relaxed);
-                    info!("PhotoCraft launched! Successfully connected to socket 18492.");
+            let state = client_monitor.verify_connection().await;
+            let prev_state = *conn_state_monitor.read().unwrap();
+            if state != prev_state {
+                *conn_state_monitor.write().unwrap() = state;
+                match state {
+                    core_contracts::ConnectionState::Connected => {
+                        is_conn_monitor.store(true, Ordering::Relaxed);
+                        let _ = client_monitor.connect().await;
+                        info!("PhotoCraft connected and authenticated successfully on socket 18492.");
+                    }
+                    core_contracts::ConnectionState::AuthRequired => {
+                        is_conn_monitor.store(false, Ordering::Relaxed);
+                        tracing::warn!("PhotoCraft detected on port 18492, but authentication failed or token is missing.");
+                    }
+                    core_contracts::ConnectionState::Offline => {
+                        is_conn_monitor.store(false, Ordering::Relaxed);
+                        tracing::warn!("PhotoCraft was closed or socket 18492 unreachable.");
+                    }
                 }
-            } else if !alive && was_connected {
-                is_conn_monitor.store(false, Ordering::Relaxed);
-                tracing::warn!("PhotoCraft was closed or disconnected.");
             }
             tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
         }
@@ -277,39 +332,107 @@ fn main() -> anyhow::Result<()> {
     let registry_exec = Arc::new(Mutex::new(registry));
     let data_dir_exec = data_dir.clone();
     let plugins_dir_exec = plugins_dir.clone();
+    let exec_status: SharedExecutionStatus = Arc::new(std::sync::Mutex::new(ExecutionState::Idle));
+    let exec_status_worker = exec_status.clone();
 
     rt.spawn(async move {
         while let Some(action_id) = action_rx.recv().await {
             info!("Dispatching action '{}'...", action_id);
+            let action_name = {
+                let reg = registry_exec.lock().await;
+                reg.get(&action_id)
+                    .map(|p| p.manifest().name.clone())
+                    .unwrap_or_else(|| action_id.clone())
+            };
+
+            let t_start = Instant::now();
+            *exec_status_worker.lock().unwrap() = ExecutionState::Running {
+                action_id: action_id.clone(),
+                action_name: action_name.clone(),
+                started_at: t_start,
+            };
+
             if let Some(cmd) = action_id.strip_prefix("engine:") {
                 info!("Executing PhotoCraft engine command '{}'...", cmd);
                 match client_exec
                     .execute_command(cmd, serde_json::json!({}))
                     .await
                 {
-                    Ok(res) => info!("Engine command '{}' executed successfully: {:?}", cmd, res),
-                    Err(e) => tracing::error!("Engine command '{}' failed: {}", cmd, e),
+                    Ok(res) => {
+                        let elapsed = t_start.elapsed().as_secs_f32();
+                        info!("Engine command '{}' executed successfully: {:?}", cmd, res);
+                        *exec_status_worker.lock().unwrap() = ExecutionState::Success {
+                            action_name,
+                            message: format!("Command '{cmd}' completed"),
+                            duration_secs: elapsed,
+                            finished_at: Instant::now(),
+                        };
+                    }
+                    Err(e) => {
+                        tracing::error!("Engine command '{}' failed: {}", cmd, e);
+                        *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                            action_name,
+                            error: e.to_string(),
+                            finished_at: Instant::now(),
+                        };
+                    }
                 }
             } else if let Ok(doc) = client_exec.get_document_info().await {
+                let reg = registry_exec.lock().await;
+                let plugin_dir = reg
+                    .get(&action_id)
+                    .and_then(|p| p.manifest().plugin_dir.clone())
+                    .unwrap_or_else(|| plugins_dir_exec.clone());
+
                 let ctx = PluginContext {
                     document: doc,
                     models_dir: data_dir_exec.join("models"),
-                    plugin_dir: plugins_dir_exec.join("remove_bg"),
+                    plugin_dir,
                     client: client_exec.clone(),
                 };
-                let reg = registry_exec.lock().await;
                 match reg.execute(&action_id, &ctx).await {
-                    Ok(res) => info!(
-                        "Action '{}' finished successfully: {}",
-                        action_id, res.message
-                    ),
-                    Err(e) => tracing::error!("Action '{}' failed: {}", action_id, e),
+                    Ok(res) => {
+                        let elapsed = t_start.elapsed().as_secs_f32();
+                        info!(
+                            "Action '{}' finished successfully: {}",
+                            action_id, res.message
+                        );
+                        *exec_status_worker.lock().unwrap() = ExecutionState::Success {
+                            action_name,
+                            message: res.message,
+                            duration_secs: elapsed,
+                            finished_at: Instant::now(),
+                        };
+                    }
+                    Err(e) => {
+                        tracing::error!("Action '{}' failed: {}", action_id, e);
+                        *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                            action_name,
+                            error: e.to_string(),
+                            finished_at: Instant::now(),
+                        };
+                    }
                 }
             } else {
-                tracing::warn!(
-                    "PhotoCraft is not ready or active document not found for action '{}'",
-                    action_id
-                );
+                let conn_st = client_exec.verify_connection().await;
+                let err_msg = match conn_st {
+                    core_contracts::ConnectionState::AuthRequired => {
+                        "PhotoCraft authentication required. Please set valid token in Settings."
+                            .to_string()
+                    }
+                    core_contracts::ConnectionState::Offline => {
+                        "PhotoCraft is offline or unreachable on port 18492.".to_string()
+                    }
+                    core_contracts::ConnectionState::Connected => {
+                        "No active document open in PhotoCraft.".to_string()
+                    }
+                };
+                tracing::warn!("Failed to execute action '{}': {}", action_id, err_msg);
+                *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                    action_name,
+                    error: err_msg,
+                    finished_at: Instant::now(),
+                };
             }
         }
     });
@@ -337,6 +460,15 @@ fn main() -> anyhow::Result<()> {
     println!("\n>>> Launching PhotoCraft Floating Toolstrip & Companion Overlay <<<");
     let buttons = OverlayBar::from_manifests(&manifests);
 
+    let client_for_ui = client.clone();
+    let on_token_saved: Arc<dyn Fn(Option<String>) + Send + Sync> = Arc::new(move |new_token| {
+        let c = client_for_ui.clone();
+        tokio::spawn(async move {
+            c.set_token(new_token).await;
+            info!("PhotoCraftClient token dynamically updated from UI settings.");
+        });
+    });
+
     overlay_ui::launch_companion_overlay(
         buttons,
         manifests,
@@ -345,6 +477,9 @@ fn main() -> anyhow::Result<()> {
         is_connected,
         Some(action_tx),
         tray_icon_handle,
+        Some(exec_status),
+        Some(connection_state),
+        Some(on_token_saved),
     )?;
 
     Ok(())

@@ -23,15 +23,77 @@ pub struct PluginManifest {
     #[serde(default)]
     pub commands: Vec<PluginCommandStep>,
     #[serde(default)]
+    pub post_commands: Vec<PluginCommandStep>,
+    #[serde(default)]
+    pub input: PluginInputSource,
+    #[serde(default)]
+    pub output_mode: PluginOutputMode,
+    #[serde(default)]
     pub models: Vec<ModelRequirement>,
     #[serde(default)]
     pub action_id: Option<String>,
     #[serde(default)]
     pub entrypoint: Option<String>,
+    #[serde(default)]
+    pub ai: Option<AiPipelineConfig>,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(skip)]
     pub plugin_dir: Option<PathBuf>,
+}
+
+/// Source of image data for plugin execution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginInputSource {
+    #[default]
+    ActiveLayer,
+    Selection,
+    Canvas,
+}
+
+/// Output integration mode of plugin result in PhotoCraft
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PluginOutputMode {
+    #[default]
+    InPlace,
+    NewLayer,
+    Mask,
+}
+
+/// Declarative AI pipeline specification for zero-code ONNX execution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AiTask {
+    ImageToImage,     // e.g. Denoise, deblur, restoration, colorization 1:1
+    SegmentationMask, // e.g. RMBG background removal
+    SuperResolution,  // e.g. Real-ESRGAN 2x
+    Inpainting,       // e.g. LaMa zero-prompt filling
+}
+
+/// Normalization modes for tensor inputs
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NormalizationMode {
+    #[default]
+    ZeroToOne, // pixel / 255.0 ([0.0, 1.0])
+    Centered, // (pixel / 255.0 - 0.5) / 1.0 (RMBG)
+    #[serde(alias = "raw_255")]
+    Raw255, // raw pixel 0.0..255.0 (LaMa)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiPipelineConfig {
+    pub task: AiTask,
+    #[serde(default)]
+    pub scale: Option<u32>,
+    #[serde(default)]
+    pub tile_size: Option<u32>,
+    #[serde(default)]
+    pub tile_pad: Option<u32>,
+    #[serde(default)]
+    pub normalize: Option<NormalizationMode>,
 }
 
 impl PluginManifest {
@@ -60,6 +122,31 @@ impl PluginManifest {
             .iter()
             .filter(|m| m.required)
             .all(|m| self.is_model_installed(m))
+    }
+}
+
+impl Default for PluginManifest {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            name: String::new(),
+            version: "1.0.0".to_string(),
+            description: String::new(),
+            author: default_author(),
+            plugin_type: PluginType::default(),
+            default_hotkey: None,
+            icon: None,
+            commands: Vec::new(),
+            post_commands: Vec::new(),
+            input: PluginInputSource::default(),
+            output_mode: PluginOutputMode::default(),
+            models: Vec::new(),
+            action_id: None,
+            entrypoint: None,
+            ai: None,
+            enabled: true,
+            plugin_dir: None,
+        }
     }
 }
 
@@ -105,6 +192,30 @@ pub struct ModelRequirement {
     #[serde(default)]
     pub sha256: Option<String>,
 }
+
+/// Execution status of an action for floating UI HUD visualization and progress tracking
+#[derive(Debug, Clone)]
+pub enum ExecutionState {
+    Idle,
+    Running {
+        action_id: String,
+        action_name: String,
+        started_at: std::time::Instant,
+    },
+    Success {
+        action_name: String,
+        message: String,
+        duration_secs: f32,
+        finished_at: std::time::Instant,
+    },
+    Error {
+        action_name: String,
+        error: String,
+        finished_at: std::time::Instant,
+    },
+}
+
+pub type SharedExecutionStatus = Arc<std::sync::Mutex<ExecutionState>>;
 
 /// Context provided to a plugin during execution
 pub struct PluginContext {
@@ -246,8 +357,10 @@ mod tests {
             ],
             action_id: None,
             entrypoint: None,
+            ai: None,
             enabled: true,
             plugin_dir: Some(temp_dir.clone()),
+            ..Default::default()
         };
 
         assert!(manifest.is_model_installed(&manifest.models[0]));
@@ -268,5 +381,33 @@ mod tests {
         assert!(manifest.is_model_installed(&flat_req));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_ai_pipeline_config_paradigms_serialization() {
+        let json_data = r#"{
+            "task": "image_to_image",
+            "tile_size": 512,
+            "tile_pad": 32,
+            "normalize": "zero_to_one"
+        }"#;
+
+        let cfg: AiPipelineConfig = serde_json::from_str(json_data).unwrap();
+        assert_eq!(cfg.task, AiTask::ImageToImage);
+        assert_eq!(cfg.tile_size, Some(512));
+        assert_eq!(cfg.tile_pad, Some(32));
+        assert_eq!(cfg.normalize, Some(NormalizationMode::ZeroToOne));
+
+        // Test super_resolution
+        let json_sr = r#"{"task": "super_resolution", "scale": 4}"#;
+        let cfg_sr: AiPipelineConfig = serde_json::from_str(json_sr).unwrap();
+        assert_eq!(cfg_sr.task, AiTask::SuperResolution);
+        assert_eq!(cfg_sr.scale, Some(4));
+
+        // Test inpainting
+        let json_inp = r#"{"task": "inpainting", "normalize": "raw_255"}"#;
+        let cfg_inp: AiPipelineConfig = serde_json::from_str(json_inp).unwrap();
+        assert_eq!(cfg_inp.task, AiTask::Inpainting);
+        assert_eq!(cfg_inp.normalize, Some(NormalizationMode::Raw255));
     }
 }

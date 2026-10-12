@@ -79,11 +79,14 @@ impl Plugin for NoCodePlugin {
     }
 }
 
+pub type AiPluginFactory = Arc<dyn Fn(&PluginManifest) -> Result<Arc<dyn Plugin>> + Send + Sync>;
+
 /// Registry that scans, loads, and manages all plugins in the system
 pub struct PluginRegistry {
     plugins: HashMap<String, Arc<dyn Plugin>>,
     manifests: Vec<PluginManifest>,
     plugins_dir: PathBuf,
+    ai_factory: Option<AiPluginFactory>,
 }
 
 impl PluginRegistry {
@@ -92,7 +95,14 @@ impl PluginRegistry {
             plugins: HashMap::new(),
             manifests: Vec::new(),
             plugins_dir: plugins_dir.as_ref().to_path_buf(),
+            ai_factory: None,
         }
+    }
+
+    /// Set an AI factory hook to instantiate NativeAi plugins dynamically
+    pub fn with_ai_factory(mut self, factory: AiPluginFactory) -> Self {
+        self.ai_factory = Some(factory);
+        self
     }
 
     /// Register a native compiled plugin (e.g. RemoveBgPlugin)
@@ -148,9 +158,30 @@ impl PluginRegistry {
                                             "Found Native AI plugin manifest: {} [{}]",
                                             manifest.name, manifest.id
                                         );
-                                        // Manifest is tracked; instance registered via register_native
                                         if !self.plugins.contains_key(&manifest.id) {
-                                            self.manifests.push(manifest);
+                                            if let Some(ref factory) = self.ai_factory {
+                                                match factory(&manifest) {
+                                                    Ok(plugin) => {
+                                                        info!(
+                                                            "Dynamically instantiated Native AI plugin: {} [{}]",
+                                                            manifest.name, manifest.id
+                                                        );
+                                                        self.plugins
+                                                            .insert(manifest.id.clone(), plugin);
+                                                        self.manifests.push(manifest);
+                                                        loaded_count += 1;
+                                                    }
+                                                    Err(e) => {
+                                                        warn!(
+                                                            "Failed to instantiate Native AI plugin {}: {}",
+                                                            manifest.id, e
+                                                        );
+                                                        self.manifests.push(manifest);
+                                                    }
+                                                }
+                                            } else {
+                                                self.manifests.push(manifest);
+                                            }
                                         }
                                     }
                                     PluginType::Script => {
@@ -197,9 +228,20 @@ impl PluginRegistry {
         Ok(loaded_count)
     }
 
-    /// Retrieve plugin by ID
-    pub fn get(&self, id: &str) -> Option<Arc<dyn Plugin>> {
-        self.plugins.get(id).cloned()
+    /// Retrieve plugin by ID or action_id
+    pub fn get(&self, id_or_action: &str) -> Option<Arc<dyn Plugin>> {
+        if let Some(p) = self.plugins.get(id_or_action) {
+            return Some(p.clone());
+        }
+        // Fallback: check if id_or_action matches manifest.action_id
+        for m in &self.manifests {
+            if m.action_id.as_deref() == Some(id_or_action) {
+                if let Some(p) = self.plugins.get(&m.id) {
+                    return Some(p.clone());
+                }
+            }
+        }
+        None
     }
 
     /// List all plugin manifests
@@ -207,10 +249,13 @@ impl PluginRegistry {
         &self.manifests
     }
 
-    /// Execute plugin by ID
-    pub async fn execute(&self, id: &str, ctx: &PluginContext) -> Result<PluginResult> {
-        let plugin = self.get(id).ok_or_else(|| {
-            CompanionError::Plugin(format!("Plugin with id '{}' not found in registry", id))
+    /// Execute plugin by ID or action_id
+    pub async fn execute(&self, id_or_action: &str, ctx: &PluginContext) -> Result<PluginResult> {
+        let plugin = self.get(id_or_action).ok_or_else(|| {
+            CompanionError::Plugin(format!(
+                "Plugin with id or action '{}' not found in registry",
+                id_or_action
+            ))
         })?;
         plugin.execute(ctx).await
     }
@@ -284,6 +329,8 @@ mod tests {
                 height: 600,
                 active_layer: Some(1),
                 active_layer_name: Some("Layer 1".to_string()),
+                has_selection: false,
+                selection_bounds: None,
             })
         }
     }
@@ -314,8 +361,10 @@ mod tests {
             models: vec![],
             action_id: None,
             entrypoint: None,
+            ai: None,
             enabled: true,
             plugin_dir: None,
+            ..Default::default()
         };
 
         let plugin = NoCodePlugin::new(manifest);
@@ -327,6 +376,8 @@ mod tests {
                 height: 100,
                 active_layer: Some(1),
                 active_layer_name: Some("L1".to_string()),
+                has_selection: false,
+                selection_bounds: None,
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
@@ -360,8 +411,10 @@ mod tests {
             models: vec![],
             action_id: None,
             entrypoint: None,
+            ai: None,
             enabled: true,
             plugin_dir: None,
+            ..Default::default()
         };
 
         let plugin = NoCodePlugin::new(manifest);
@@ -373,6 +426,8 @@ mod tests {
                 height: 100,
                 active_layer: None,
                 active_layer_name: None,
+                has_selection: false,
+                selection_bounds: None,
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
@@ -446,6 +501,8 @@ mod tests {
                 height: 10,
                 active_layer: None,
                 active_layer_name: None,
+                has_selection: false,
+                selection_bounds: None,
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins"),

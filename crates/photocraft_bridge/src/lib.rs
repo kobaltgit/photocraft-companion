@@ -27,9 +27,11 @@ struct JsonRpcResponse {
     error: Option<Value>,
 }
 
+use core_contracts::ConnectionState;
+
 pub struct PhotoCraftClient {
     port: u16,
-    token: Option<String>,
+    token: Arc<tokio::sync::RwLock<Option<String>>>,
     next_id: AtomicU64,
     writer: Arc<Mutex<Option<OwnedWriteHalf>>>,
     reader: Arc<Mutex<Option<BufReader<OwnedReadHalf>>>>,
@@ -39,18 +41,77 @@ impl PhotoCraftClient {
     pub fn new(port: u16, token: Option<String>) -> Self {
         Self {
             port,
-            token,
+            token: Arc::new(tokio::sync::RwLock::new(token)),
             next_id: AtomicU64::new(1),
             writer: Arc::new(Mutex::new(None)),
             reader: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Try to locate the token automatically from environment or default path
+    /// Try to locate running photocraft process directory
+    pub fn find_running_photocraft_dir() -> Option<std::path::PathBuf> {
+        #[cfg(target_os = "windows")]
+        {
+            // Try lightweight PowerShell query for photocraft.exe path
+            let output = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    "(Get-Process -Name photocraft -ErrorAction SilentlyContinue).Path",
+                ])
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            let p = std::path::PathBuf::from(trimmed);
+                            if let Some(parent) = p.parent() {
+                                if parent.is_dir() {
+                                    return Some(parent.to_path_buf());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Check /proc for running photocraft binary
+            if let Ok(entries) = std::fs::read_dir("/proc") {
+                for entry in entries.flatten() {
+                    let file_name = entry.file_name();
+                    if let Some(pid_str) = file_name.to_str() {
+                        if pid_str.chars().all(|c| c.is_ascii_digit()) {
+                            let exe_link = entry.path().join("exe");
+                            if let Ok(target) = std::fs::read_link(&exe_link) {
+                                if target.file_name().and_then(|n| n.to_str()) == Some("photocraft")
+                                {
+                                    if let Some(parent) = target.parent() {
+                                        return Some(parent.to_path_buf());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Try to locate the token automatically from environment, process, or standard candidate paths
     pub fn default_token() -> Option<String> {
+        // 1. Environment variables
         if let Ok(token) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN") {
-            if !token.is_empty() {
-                return Some(token);
+            let trimmed = token.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
             }
         }
         if let Ok(path) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN_FILE") {
@@ -61,15 +122,76 @@ impl PhotoCraftClient {
                 }
             }
         }
-        // Fallback default portable location
-        let default_path = r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\control.token";
-        if let Ok(content) = std::fs::read_to_string(default_path) {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
+
+        // 2. Running photocraft process executable directory -> PhotoCraftData/control.token
+        if let Some(proc_dir) = Self::find_running_photocraft_dir() {
+            let candidate = proc_dir.join("PhotoCraftData").join("control.token");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
             }
         }
+
+        // 3. Candidate search directories: relative and AppData / user config
+        let mut candidate_paths = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            candidate_paths.push(cwd.join("PhotoCraftData").join("control.token"));
+            candidate_paths.push(cwd.join("..").join("PhotoCraftData").join("control.token"));
+            candidate_paths.push(
+                cwd.join("..")
+                    .join("..")
+                    .join("PhotoCraftData")
+                    .join("control.token"),
+            );
+        }
+        candidate_paths.push(std::path::PathBuf::from("PhotoCraftData").join("control.token"));
+        candidate_paths.push(std::path::PathBuf::from("../PhotoCraftData").join("control.token"));
+
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            candidate_paths.push(
+                std::path::PathBuf::from(appdata)
+                    .join("PhotoCraft")
+                    .join("control.token"),
+            );
+        }
+        if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+            candidate_paths.push(
+                std::path::PathBuf::from(&home)
+                    .join(".config")
+                    .join("photocraft")
+                    .join("control.token"),
+            );
+            candidate_paths.push(
+                std::path::PathBuf::from(&home)
+                    .join("PhotoCraftData")
+                    .join("control.token"),
+            );
+        }
+
+        for path in candidate_paths {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let trimmed = content.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
         None
+    }
+
+    /// Dynamically update token, disconnect existing stream, and prepare for new auth
+    pub async fn set_token(&self, new_token: Option<String>) {
+        *self.token.write().await = new_token;
+        *self.writer.lock().await = None;
+        *self.reader.lock().await = None;
+    }
+
+    /// Get current token if set
+    pub async fn get_token(&self) -> Option<String> {
+        self.token.read().await.clone()
     }
 
     pub async fn connect(&self) -> Result<()> {
@@ -83,7 +205,8 @@ impl PhotoCraftClient {
         let mut writer = write_half;
 
         // Perform authentication
-        let token = self.token.clone().or_else(Self::default_token);
+        let current_token = self.token.read().await.clone();
+        let token = current_token.or_else(Self::default_token);
         if let Some(token_val) = token {
             let auth_req = json!({
                 "id": self.next_id.fetch_add(1, Ordering::SeqCst),
@@ -133,6 +256,59 @@ impl PhotoCraftClient {
         Ok(())
     }
 
+    /// Check honest 3-state connection status: Offline, AuthRequired, or Connected
+    pub async fn verify_connection(&self) -> ConnectionState {
+        let stream = match TcpStream::connect(("127.0.0.1", self.port)).await {
+            Ok(s) => s,
+            Err(_) => return ConnectionState::Offline,
+        };
+
+        let (read_half, mut write_half) = stream.into_split();
+        let mut reader = BufReader::new(read_half);
+
+        let current_token = self.token.read().await.clone();
+        let token = current_token.or_else(Self::default_token);
+
+        let token_val = match token {
+            Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+            _ => return ConnectionState::AuthRequired,
+        };
+
+        let auth_req = json!({
+            "id": self.next_id.fetch_add(1, Ordering::SeqCst),
+            "method": "auth",
+            "params": {
+                "token": token_val
+            }
+        });
+        let mut line = match serde_json::to_string(&auth_req) {
+            Ok(l) => l,
+            Err(_) => return ConnectionState::AuthRequired,
+        };
+        line.push('\n');
+
+        if write_half.write_all(line.as_bytes()).await.is_err() || write_half.flush().await.is_err()
+        {
+            return ConnectionState::AuthRequired;
+        }
+
+        let mut resp_line = String::new();
+        match reader.read_line(&mut resp_line).await {
+            Ok(n) if n > 0 => {
+                if let Ok(resp) = serde_json::from_str::<JsonRpcResponse>(&resp_line) {
+                    if resp.ok {
+                        ConnectionState::Connected
+                    } else {
+                        ConnectionState::AuthRequired
+                    }
+                } else {
+                    ConnectionState::AuthRequired
+                }
+            }
+            _ => ConnectionState::AuthRequired,
+        }
+    }
+
     pub async fn is_alive(&self) -> bool {
         TcpStream::connect(("127.0.0.1", self.port)).await.is_ok()
     }
@@ -166,20 +342,35 @@ impl PhotoCraftClient {
         let mut line = serde_json::to_string(&req)?;
         line.push('\n');
 
+        let map_socket_err = |e: std::io::Error, op: &str| -> CompanionError {
+            let err_str = e.to_string();
+            if err_str.contains("10053")
+                || err_str.contains("ConnectionReset")
+                || err_str.contains("connection was aborted")
+                || err_str.contains("Broken pipe")
+            {
+                CompanionError::Bridge(format!(
+                    "Authentication error: PhotoCraft aborted connection during {op}. Valid control token required."
+                ))
+            } else {
+                CompanionError::Bridge(format!("Socket {op} error: {e}"))
+            }
+        };
+
         writer
             .write_all(line.as_bytes())
             .await
-            .map_err(|e| CompanionError::Bridge(format!("Socket write error: {e}")))?;
+            .map_err(|e| map_socket_err(e, "write"))?;
         writer
             .flush()
             .await
-            .map_err(|e| CompanionError::Bridge(e.to_string()))?;
+            .map_err(|e| map_socket_err(e, "flush"))?;
 
         let mut resp_line = String::new();
         reader
             .read_line(&mut resp_line)
             .await
-            .map_err(|e| CompanionError::Bridge(format!("Socket read error: {e}")))?;
+            .map_err(|e| map_socket_err(e, "read"))?;
 
         let resp: JsonRpcResponse = serde_json::from_str(&resp_line).map_err(|e| {
             CompanionError::Bridge(format!("Invalid response JSON: {e} (raw: {resp_line})"))
@@ -261,12 +452,34 @@ impl PhotoCraftClient {
             }
         }
 
+        let has_selection = inspect
+            .get("hasSelection")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let selection_bounds = inspect
+            .get("selectionBounds")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                if arr.len() == 4 {
+                    Some([
+                        arr[0].as_i64().unwrap_or(0) as i32,
+                        arr[1].as_i64().unwrap_or(0) as i32,
+                        arr[2].as_i64().unwrap_or(0) as i32,
+                        arr[3].as_i64().unwrap_or(0) as i32,
+                    ])
+                } else {
+                    None
+                }
+            });
+
         Ok(DocumentInfo {
             name,
             width,
             height,
             active_layer,
             active_layer_name,
+            has_selection,
+            selection_bounds,
         })
     }
 
@@ -686,6 +899,72 @@ mod tests {
         // The next call will detect socket EOF/failure, auto-reconnect, and succeed!
         let res = client.call("test.cmd", json!({})).await.unwrap();
         assert_eq!(res["reconnected"], true);
+    }
+
+    #[tokio::test]
+    async fn test_client_dynamic_token_update() {
+        let client = PhotoCraftClient::new(18492, Some("initial_token".to_string()));
+        assert_eq!(client.get_token().await, Some("initial_token".to_string()));
+
+        client.set_token(Some("updated_token".to_string())).await;
+        assert_eq!(client.get_token().await, Some("updated_token".to_string()));
+
+        client.set_token(None).await;
+        assert_eq!(client.get_token().await, None);
+    }
+
+    #[tokio::test]
+    async fn test_connection_state_transitions() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (read_half, mut write_half) = stream.into_split();
+                    let mut reader = BufReader::new(read_half);
+                    let mut line = String::new();
+
+                    if reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+                        if let Ok(req) = serde_json::from_str::<Value>(&line) {
+                            let token = req["params"]["token"].as_str().unwrap_or("");
+                            if token == "valid_token" {
+                                let resp = json!({ "id": req["id"], "ok": true, "result": null });
+                                let _ =
+                                    write_half.write_all(format!("{}\n", resp).as_bytes()).await;
+                                let _ = write_half.flush().await;
+                            } else {
+                                let resp = json!({ "id": req["id"], "ok": false, "error": "Invalid token" });
+                                let _ =
+                                    write_half.write_all(format!("{}\n", resp).as_bytes()).await;
+                                let _ = write_half.flush().await;
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        // 1. Valid token -> Connected
+        let client_valid = PhotoCraftClient::new(port, Some("valid_token".to_string()));
+        assert_eq!(
+            client_valid.verify_connection().await,
+            ConnectionState::Connected
+        );
+
+        // 2. Wrong token -> AuthRequired
+        let client_invalid = PhotoCraftClient::new(port, Some("wrong_token".to_string()));
+        assert_eq!(
+            client_invalid.verify_connection().await,
+            ConnectionState::AuthRequired
+        );
+
+        // 3. Unopened port -> Offline
+        let client_offline = PhotoCraftClient::new(65530, Some("any".to_string()));
+        assert_eq!(
+            client_offline.verify_connection().await,
+            ConnectionState::Offline
+        );
     }
 
     #[test]

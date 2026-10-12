@@ -8,6 +8,12 @@
   "action_id": "plugin:remove_bg",
   "default_hotkey": "Ctrl+Shift+B",
   "icon": "scissors",
+  "input": "active_layer",
+  "output_mode": "new_layer",
+  "post_commands": [],
+  "ai": {
+    "task": "segmentation_mask"
+  },
   "models": [
     {
       "name": "rmbg-1.4.onnx",
