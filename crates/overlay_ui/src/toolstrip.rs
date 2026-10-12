@@ -114,11 +114,7 @@ impl ToolstripApp {
                     .min_size(Vec2::new(32.0, 32.0))
                     .corner_radius(3.0);
 
-                    let tooltip = if let Some(ref hk) = btn.hotkey {
-                        format!("{} ({})", btn.label, hk)
-                    } else {
-                        btn.label.clone()
-                    };
+                    let tooltip = btn.label.clone();
 
                     // Disable clicking other buttons while a heavy operation is busy
                     let resp = ui.add_enabled(!is_busy || is_this_active, b);
@@ -415,7 +411,6 @@ mod tests {
             .map(|i| ButtonConfig {
                 label: format!("Tool {}", i + 1),
                 action: format!("action_{}", i + 1),
-                hotkey: None,
                 icon: if i == 0 {
                     Some("wand".to_string())
                 } else {
@@ -562,4 +557,3 @@ mod tests {
         assert_eq!(app_h.calculate_size().y, 78.0);
     }
 }
-

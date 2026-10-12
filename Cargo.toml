@@ -5,7 +5,6 @@ members = [
     "crates/photocraft_bridge",
     "crates/ai_engine",
     "crates/overlay_ui",
-    "crates/hotkey_service",
     "crates/companion_app",
 ]
 
@@ -28,7 +27,6 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 arboard = "3.4"
 ort = { version = "2.0.0-rc.13" }
 ndarray = "0.17"
-global-hotkey = "0.8.0"
 async-trait = "0.1"
 eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 egui = { version = "0.36.2", default-features = false, features = ["default_fonts"] }

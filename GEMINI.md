@@ -37,7 +37,6 @@ photocraft-plugins/
 │   ├── photocraft_bridge/         # Асинхронный клиент к сокету PhotoCraft (tokio, JSON-RPC)
 │   ├── ai_engine/                 # Локальный инференс (ort / ONNX Runtime C++ backend)
 │   ├── overlay_ui/                # Кроссплатформенная панель кнопок на egui (Windows, macOS, Linux, BSD)
-│   ├── hotkey_service/            # Кроссплатформенный перехват горячих клавиш (global-hotkey)
 │   └── companion_app/             # Главный бинарник компаньона (системный трей, DI, запуск)
 └── plugins/                       # Каталог действий (JSON-манифесты и конфиги)
     └── remove_bg/                 # Плагин качественного нейросетевого удаления фона

@@ -866,4 +866,39 @@ When using the PhotoCraft Companion daily, artists often position the floating t
 - All 63 Cargo workspace tests pass with **100% green status** (`cargo test --workspace -j 1`).
 - `i18n_lint_test` translation integrity verified.
 
+---
+
+## Chapter 32: Eliminating Key Conflicts and Complete Removal of Global Hotkeys in Favor of the Floating Toolstrip
+
+*Timestamp: October 12, 2026, 23:20 (~30 mins)*
+
+### 1. Problem Statement & Audit
+When working in PhotoCraft or with the floating panel active, keyboard shortcuts did not trigger actions. A comprehensive codebase audit revealed:
+1. `global-hotkey` calls Win32 `RegisterHotKey`, aggressively consuming shortcuts desktop-wide and blocking them from reaching active applications (including PhotoCraft, Photoshop, or browsers).
+2. The UI event loop never polled the `GlobalHotKeyEvent` receiver channel in normal graphical mode.
+3. Raster graphics editors already heavily utilize keyboard combinations, creating significant collision risks with core workflow shortcuts.
+The user instructed: *"Let's save what we currently have in a new branch, and in the main branch completely remove hotkeys from the program."*
+
+### 2. Implementation & Zero Work Loss Migration
+1. **Safe Archive Branch (`backup/hotkey-service-archive`):**
+   All current progress (including new plugins `inpaint`, `upscale`, packaging scripts, and prior hotkey components) was committed in `main`, and an archive branch `backup/hotkey-service-archive` was created to permanently preserve the legacy hotkey implementation.
+2. **Complete Removal from `main`:**
+   - Deleted the entire `crates/hotkey_service/` crate directory.
+   - Removed `crates/hotkey_service` from workspace members and `global-hotkey` dependency from root `Cargo.toml`.
+   - Removed `hotkey_service` dependency from `companion_app`.
+3. **Core Contracts & Manifest Cleanup:**
+   - Removed `hotkey_overrides` from `CompanionConfig`.
+   - Removed `hotkey` from `ButtonConfig`.
+   - Removed `default_hotkey` from `PluginManifest` and all installed `plugin.json` files.
+4. **UI Refactoring (`crates/overlay_ui`):**
+   - Removed the `[ Hotkeys ]` tab from the Plugin Manager (leaving a clean 3-tab layout: `[ General ]`, `[ Plugins ]`, `[ About ]`).
+   - Removed hotkey badges from plugin list cards.
+   - Stripped shortcut suffix brackets from toolstrip button tooltips.
+
+### 3. Verification
+- All 60 Cargo workspace tests across all 5 remaining crates pass with **100% green status** (`cargo test --workspace -j 1`).
+- Translation linter `i18n_lint_test` verified clean.
+- The floating toolstrip is confirmed as the sole, non-intrusive, and reliable control surface for PhotoCraft extensions.
+
+
 

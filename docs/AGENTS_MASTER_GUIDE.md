@@ -12,7 +12,6 @@
 * `crates/photocraft_bridge/` — **Зона Агента 1 (Мост)**. Асинхронный клиент на `tokio` к сокету PhotoCraft (порт 18492), выполнение JSON-RPC методов (`engine.execute`, `doc.inspect`, буфер обмена).
 * `crates/ai_engine/` — **Зона Агента 2 (ИИ-движок)**. Крейт `ort` (ONNX Runtime bindings) для запуска RMBG-1.4 с DirectML (Windows), CoreML (macOS) и CUDA/CPU (Linux/BSD).
 * `crates/overlay_ui/` — **Зона Агента 3 (Интерфейс)**. Кроссплатформенная панель на `egui`/`eframe`, оформленная в едином стиле с PhotoCraft.
-* `crates/hotkey_service/` — **Служба горячих клавиш**. Кроссплатформенный перехват хоткеев на `global-hotkey` (Windows, macOS, Linux X11/Wayland).
 * `crates/companion_app/` — **Главное приложение**. Сборка dependency injection, системный трей (`tray-icon`), точка входа.
 * `plugins/` — **Каталог действий**. Конфигурационные манифесты действий (например, `remove_bg`).
 * `chronicle_writer` — **Агент-Летописец**. Ведение двуязычной летописи разработки в `docs/CHRONICLE.md` и `CHRONICLE.en.md`.

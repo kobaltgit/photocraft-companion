@@ -344,7 +344,6 @@ mod tests {
             description: "Test macro".to_string(),
             author: "Tester".to_string(),
             plugin_type: PluginType::NoCode,
-            default_hotkey: None,
             icon: None,
             commands: vec![
                 PluginCommandStep {
@@ -401,7 +400,6 @@ mod tests {
             description: "Failing macro".to_string(),
             author: "Tester".to_string(),
             plugin_type: PluginType::NoCode,
-            default_hotkey: None,
             icon: None,
             commands: vec![PluginCommandStep {
                 command: "fail.cmd".to_string(),

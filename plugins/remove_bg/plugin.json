@@ -6,7 +6,6 @@
   "author": "kobaltGIT",
   "plugin_type": "native_ai",
   "action_id": "plugin:remove_bg",
-  "default_hotkey": "Ctrl+Shift+B",
   "icon": "scissors",
   "input": "active_layer",
   "output_mode": "new_layer",

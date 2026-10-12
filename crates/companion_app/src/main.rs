@@ -5,7 +5,6 @@ use ai_engine::{AiEngine, GenericAiPlugin};
 use core_contracts::{
     ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
 };
-use hotkey_service::HotkeyManager;
 use overlay_ui::{get_icon_rgba, OverlayBar, ThemeMode};
 use photocraft_bridge::PhotoCraftClient;
 use std::path::PathBuf;
@@ -144,27 +143,13 @@ fn main() -> anyhow::Result<()> {
             PluginType::Script => "Script Automation",
             PluginType::ExternalCli => "External CLI Tool",
         };
-        let hk = m.default_hotkey.as_deref().unwrap_or("None");
         println!(
-            "  - [{}] [{}] {} (v{}) by {}",
-            hk, p_type, m.name, m.version, m.author
+            "  - [{}] {} (v{}) by {}",
+            p_type, m.name, m.version, m.author
         );
     }
 
-    // 2. Setup Hotkeys from Plugins & UI bar
-    println!("\n=== REGISTERING HOTKEYS ===");
-    let mut hotkeys = HotkeyManager::new()?;
-    for m in registry.list_manifests() {
-        if let Some(ref hk) = m.default_hotkey {
-            if let Err(e) = hotkeys.register(hk, &m.id) {
-                tracing::warn!("Failed to register hotkey {}: {}", hk, e);
-            } else {
-                println!("  Registered hotkey [{}] for plugin '{}'", hk, m.id);
-            }
-        }
-    }
-
-    // 3. Load companion configuration first to obtain user token and connection settings
+    // 2. Load companion configuration first to obtain user token and connection settings
     let config_path = core_contracts::CompanionConfig::resolve_config_path(&data_dir);
     let companion_cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
     let initial_token = companion_cfg
@@ -325,7 +310,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    // Action execution worker for toolstrip clicks and hotkeys
+    // Action execution worker for toolstrip clicks
     let manifests = registry.list_manifests().to_vec();
     let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     let client_exec = client.clone();
@@ -438,7 +423,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     if is_daemon_only {
-        println!("\nPhotoCraft Companion is active in system tray and listening for hotkeys! (Press Ctrl+C to stop)");
+        println!("\nPhotoCraft Companion is active in system tray! (Press Ctrl+C to stop)");
         // Register direct tray exit handler for daemon mode
         tray_icon::menu::MenuEvent::set_event_handler(Some(|event: tray_icon::menu::MenuEvent| {
             if event.id.as_ref() == "tray_exit" {
@@ -448,11 +433,7 @@ fn main() -> anyhow::Result<()> {
         }));
 
         loop {
-            if let Some(action_id) = hotkeys.poll_event() {
-                println!("\n[HOTKEY TRIGGERED] -> Action: {}", action_id);
-                let _ = action_tx.send(action_id);
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 

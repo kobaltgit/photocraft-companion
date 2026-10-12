@@ -28,7 +28,6 @@ pub enum ConnectionState {
 pub struct ButtonConfig {
     pub label: String,
     pub action: String,
-    pub hotkey: Option<String>,
     pub icon: Option<String>,
 }
 

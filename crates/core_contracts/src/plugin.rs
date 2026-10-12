@@ -17,8 +17,6 @@ pub struct PluginManifest {
     #[serde(default)]
     pub plugin_type: PluginType,
     #[serde(default)]
-    pub default_hotkey: Option<String>,
-    #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
     pub commands: Vec<PluginCommandStep>,
@@ -134,7 +132,6 @@ impl Default for PluginManifest {
             description: String::new(),
             author: default_author(),
             plugin_type: PluginType::default(),
-            default_hotkey: None,
             icon: None,
             commands: Vec::new(),
             post_commands: Vec::new(),
@@ -336,7 +333,6 @@ mod tests {
             description: "A test plugin".to_string(),
             author: "Tester".to_string(),
             plugin_type: PluginType::NativeAi,
-            default_hotkey: None,
             icon: None,
             commands: vec![],
             models: vec![

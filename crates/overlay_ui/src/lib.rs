@@ -40,7 +40,6 @@ impl OverlayBar {
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
-                    hotkey: m.default_hotkey.clone(),
                     icon,
                 });
             }
@@ -57,13 +56,11 @@ impl OverlayBar {
             ButtonConfig {
                 label: "AI Remove BG".to_string(),
                 action: "ai.photocraft.plugins.remove_bg".to_string(),
-                hotkey: Some("Ctrl+Shift+B".to_string()),
                 icon: Some("wand".to_string()),
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
                 action: "macro.photocraft.plugins.black_and_white".to_string(),
-                hotkey: Some("Ctrl+Shift+U".to_string()),
                 icon: Some("bw".to_string()),
             },
         ]
@@ -262,7 +259,11 @@ impl eframe::App for CompanionOverlayApp {
                 ui.ctx()
                     .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
                 if let Some(pos) = self.last_saved_pos {
-                    if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0 {
+                    if pos[0].is_finite()
+                        && pos[1].is_finite()
+                        && pos[0] >= -100.0
+                        && pos[1] >= -100.0
+                    {
                         ui.ctx()
                             .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                                 pos[0], pos[1],
@@ -777,7 +778,6 @@ mod tests {
             description: "".to_string(),
             author: "".to_string(),
             plugin_type: core_contracts::PluginType::NativeAi,
-            default_hotkey: Some("Ctrl+1".to_string()),
             icon: None,
             commands: vec![],
             models: vec![],
@@ -795,7 +795,6 @@ mod tests {
             description: "".to_string(),
             author: "".to_string(),
             plugin_type: core_contracts::PluginType::NoCode,
-            default_hotkey: None,
             icon: None,
             commands: vec![],
             models: vec![],
@@ -832,7 +831,6 @@ mod tests {
         let sample_buttons = vec![ButtonConfig {
             label: "Custom Action".to_string(),
             action: "custom.action".to_string(),
-            hotkey: Some("F5".to_string()),
             icon: Some("custom".to_string()),
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
@@ -919,4 +917,3 @@ mod tests {
         let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
-

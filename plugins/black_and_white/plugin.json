@@ -5,7 +5,6 @@
   "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
   "author": "kobaltGIT",
   "plugin_type": "no_code",
-  "default_hotkey": "Ctrl+Shift+U",
   "icon": "adjust",
   "commands": [
     {

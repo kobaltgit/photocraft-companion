@@ -1,7 +1,6 @@
 use crate::theme::{ThemeMode, ThemePalette};
 use core_contracts::{CompanionConfig, ConnectionState, Language, PluginManifest, PluginType};
 use eframe::egui::{self, Color32, RichText, Stroke, Ui, Vec2};
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -11,7 +10,6 @@ use tracing::info;
 pub enum ActiveTab {
     General,
     Plugins,
-    Hotkeys,
     About,
 }
 
@@ -27,11 +25,9 @@ pub struct PluginManagerApp {
     pub prefs_path: PathBuf,
     pub plugins_dir: PathBuf,
     pub config_path: PathBuf,
-    pub hotkey_overrides: HashMap<String, String>,
     pub downloading_model: Option<String>,
     pub is_connected: Arc<AtomicBool>,
     pub connection_state: Arc<std::sync::RwLock<ConnectionState>>,
-    pub recording_hotkey_for: Option<String>,
     pub on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 }
 
@@ -94,11 +90,9 @@ impl PluginManagerApp {
             prefs_path,
             plugins_dir,
             config_path,
-            hotkey_overrides: cfg.hotkey_overrides,
             downloading_model: None,
             is_connected,
             connection_state: Arc::new(std::sync::RwLock::new(init_state)),
-            recording_hotkey_for: None,
             on_token_saved: None,
         }
     }
@@ -151,7 +145,6 @@ impl PluginManagerApp {
             .filter(|m| m.enabled)
             .map(|m| m.id.clone())
             .collect();
-        cfg.hotkey_overrides = self.hotkey_overrides.clone();
 
         cfg.save(&self.config_path)?;
         info!("Saved settings to {}", self.config_path.display());
@@ -175,7 +168,6 @@ impl PluginManagerApp {
         let tabs = [
             (ActiveTab::General, self.t("General", "Общие")),
             (ActiveTab::Plugins, self.t("Plugins", "Плагины")),
-            (ActiveTab::Hotkeys, self.t("Hotkeys", "Горячие клавиши")),
             (ActiveTab::About, self.t("About", "О программе")),
         ];
 
@@ -568,14 +560,6 @@ impl PluginManagerApp {
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if let Some(ref hk) = manifest.default_hotkey {
-                            ui.label(
-                                RichText::new(format!("[{}]", hk))
-                                    .size(10.0)
-                                    .color(palette.accent_blue),
-                            );
-                        }
-
                         ui.label(
                             RichText::new(format!("• {}", manifest.author))
                                 .size(10.0)
@@ -656,229 +640,7 @@ impl PluginManagerApp {
         }
     }
 
-    /// Tab 3: Hotkeys configuration with interactive key capture
-    pub fn render_hotkeys_tab(&mut self, ui: &mut Ui, palette: &ThemePalette) {
-        ui.heading(
-            RichText::new(self.t("Keyboard Shortcuts", "Горячие клавиши"))
-                .size(14.0)
-                .color(palette.text_primary),
-        );
-        ui.add_space(4.0);
-        ui.label(
-            RichText::new(self.t(
-                "Click a shortcut button to record a key combination. Press Esc to cancel.",
-                "Нажмите на кнопку с хоткеем, чтобы записать сочетание клавиш. Нажмите Esc для отмены.",
-            ))
-            .size(11.0)
-            .color(palette.text_muted),
-        );
-        ui.add_space(6.0);
-        ui.separator();
-        ui.add_space(8.0);
-
-        // Check for key recording events
-        let mut recorded_hotkey = None;
-        let mut stop_recording = false;
-        let mut clear_recording = false;
-
-        if let Some(ref target_id) = self.recording_hotkey_for {
-            ui.input(|i| {
-                if i.key_pressed(egui::Key::Escape) {
-                    stop_recording = true;
-                } else if i.key_pressed(egui::Key::Backspace) || i.key_pressed(egui::Key::Delete) {
-                    clear_recording = true;
-                } else {
-                    for event in &i.events {
-                        if let egui::Event::Key {
-                            key,
-                            pressed: true,
-                            modifiers,
-                            ..
-                        } = event
-                        {
-                            let key_str = format!("{:?}", key);
-                            // Avoid registering bare modifiers
-                            let is_modifier = key_str.starts_with("Control")
-                                || key_str.starts_with("Shift")
-                                || key_str.starts_with("Alt")
-                                || key_str.starts_with("Super")
-                                || key_str.starts_with("Meta");
-
-                            if !is_modifier {
-                                let mut parts = Vec::new();
-                                if modifiers.ctrl || modifiers.command {
-                                    parts.push("Ctrl");
-                                }
-                                if modifiers.alt {
-                                    parts.push("Alt");
-                                }
-                                if modifiers.shift {
-                                    parts.push("Shift");
-                                }
-                                let clean_key = match key_str.as_str() {
-                                    "Num0" => "0",
-                                    "Num1" => "1",
-                                    "Num2" => "2",
-                                    "Num3" => "3",
-                                    "Num4" => "4",
-                                    "Num5" => "5",
-                                    "Num6" => "6",
-                                    "Num7" => "7",
-                                    "Num8" => "8",
-                                    "Num9" => "9",
-                                    other => other,
-                                };
-                                parts.push(clean_key);
-                                recorded_hotkey = Some((target_id.clone(), parts.join("+")));
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        if stop_recording {
-            self.recording_hotkey_for = None;
-        } else if clear_recording {
-            if let Some(target_id) = self.recording_hotkey_for.take() {
-                self.hotkey_overrides.remove(&target_id);
-                for m in &mut self.manifests {
-                    if m.id == target_id {
-                        m.default_hotkey = None;
-                    }
-                }
-            }
-        } else if let Some((target_id, combo)) = recorded_hotkey {
-            self.hotkey_overrides
-                .insert(target_id.clone(), combo.clone());
-            for m in &mut self.manifests {
-                if m.id == target_id {
-                    m.default_hotkey = Some(combo.clone());
-                }
-            }
-            self.recording_hotkey_for = None;
-        }
-
-        let clear_tooltip = self.t("Clear hotkey", "Очистить хоткей").to_string();
-        let none_text = self.t("None", "Нет").to_string();
-        let press_keys_text = self.t("Press keys...", "Нажмите клавиши...").to_string();
-
-        for m in &mut self.manifests {
-            let plugin_id = m.id.clone();
-            let is_recording = self.recording_hotkey_for.as_deref() == Some(&plugin_id);
-
-            egui::Frame::new()
-                .fill(palette.card_inner)
-                .stroke(Stroke::new(
-                    1.0,
-                    if is_recording {
-                        palette.accent_blue
-                    } else {
-                        palette.border_stroke
-                    },
-                ))
-                .corner_radius(6.0)
-                .inner_margin(8.0)
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new(&m.name)
-                                    .size(12.0)
-                                    .strong()
-                                    .color(palette.text_primary),
-                            );
-                            ui.label(
-                                RichText::new(&m.description)
-                                    .size(10.0)
-                                    .color(palette.text_muted),
-                            );
-                        });
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // Clear hotkey button with standard cross symbol
-                            let clear_btn = egui::Button::new(
-                                RichText::new("×")
-                                    .size(14.0)
-                                    .strong()
-                                    .color(palette.text_muted),
-                            )
-                            .min_size(Vec2::new(20.0, 24.0))
-                            .corner_radius(4.0)
-                            .fill(Color32::TRANSPARENT);
-
-                            if ui.add(clear_btn).on_hover_text(&clear_tooltip).clicked() {
-                                self.hotkey_overrides.remove(&plugin_id);
-                                m.default_hotkey = None;
-                            }
-
-                            // Interactive hotkey capture button
-                            let current_val = self
-                                .hotkey_overrides
-                                .get(&plugin_id)
-                                .cloned()
-                                .or_else(|| m.default_hotkey.clone())
-                                .unwrap_or_else(|| none_text.clone());
-
-                            let button_text = if is_recording {
-                                let mut active_mods = Vec::new();
-                                ui.input(|i| {
-                                    if i.modifiers.ctrl || i.modifiers.command {
-                                        active_mods.push("Ctrl");
-                                    }
-                                    if i.modifiers.alt {
-                                        active_mods.push("Alt");
-                                    }
-                                    if i.modifiers.shift {
-                                        active_mods.push("Shift");
-                                    }
-                                });
-                                if active_mods.is_empty() {
-                                    press_keys_text.clone()
-                                } else {
-                                    format!("{}+...", active_mods.join("+"))
-                                }
-                            } else {
-                                current_val
-                            };
-
-                            let btn_color = if is_recording {
-                                palette.accent_blue
-                            } else {
-                                palette.button_secondary
-                            };
-                            let text_color = if is_recording {
-                                Color32::WHITE
-                            } else {
-                                palette.text_primary
-                            };
-
-                            let rec_btn = egui::Button::new(
-                                RichText::new(button_text)
-                                    .size(11.0)
-                                    .strong()
-                                    .color(text_color),
-                            )
-                            .fill(btn_color)
-                            .corner_radius(4.0)
-                            .min_size(Vec2::new(110.0, 24.0));
-
-                            if ui.add(rec_btn).clicked() {
-                                if is_recording {
-                                    self.recording_hotkey_for = None;
-                                } else {
-                                    self.recording_hotkey_for = Some(plugin_id.clone());
-                                }
-                            }
-                        });
-                    });
-                });
-            ui.add_space(4.0);
-        }
-    }
-
-    /// Tab 4: About
+    /// Tab 3: About
     pub fn render_about_tab(&mut self, ui: &mut Ui, palette: &ThemePalette) {
         ui.heading(
             RichText::new("PhotoCraft Companion")
@@ -1020,7 +782,6 @@ impl PluginManagerApp {
                             .show(ui, |ui| match self.active_tab {
                                 ActiveTab::General => self.render_general_tab(ui, palette),
                                 ActiveTab::Plugins => self.render_plugins_tab(ui, palette),
-                                ActiveTab::Hotkeys => self.render_hotkeys_tab(ui, palette),
                                 ActiveTab::About => self.render_about_tab(ui, palette),
                             });
                     });
@@ -1112,8 +873,6 @@ mod tests {
         app.config_path = temp_dir.join("companion_config.json");
         app.port = 19999;
         app.current_theme = ThemeMode::Light;
-        app.hotkey_overrides
-            .insert("test.plugin".to_string(), "Ctrl+Alt+P".to_string());
 
         let res = app.save_settings();
         assert!(res.is_ok());
@@ -1122,10 +881,6 @@ mod tests {
         let loaded = CompanionConfig::load_or_default(&app.config_path);
         assert_eq!(loaded.port, 19999);
         assert_eq!(loaded.theme, "light");
-        assert_eq!(
-            loaded.hotkey_overrides.get("test.plugin"),
-            Some(&"Ctrl+Alt+P".to_string())
-        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

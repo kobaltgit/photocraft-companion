@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -22,8 +21,6 @@ pub struct CompanionConfig {
     pub window_position: Option<[f32; 2]>,
     #[serde(default)]
     pub enabled_plugins: Vec<String>,
-    #[serde(default)]
-    pub hotkey_overrides: HashMap<String, String>,
 }
 
 fn default_host() -> String {
@@ -53,7 +50,6 @@ impl Default for CompanionConfig {
             is_vertical: false, // Per spec: default is horizontal
             window_position: None,
             enabled_plugins: Vec::new(),
-            hotkey_overrides: HashMap::new(),
         }
     }
 }
@@ -138,7 +134,6 @@ mod tests {
         assert!(cfg.token.is_none());
         assert!(cfg.window_position.is_none());
         assert!(cfg.enabled_plugins.is_empty());
-        assert!(cfg.hotkey_overrides.is_empty());
     }
 
     #[test]
