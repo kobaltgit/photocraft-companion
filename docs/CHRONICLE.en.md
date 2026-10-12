@@ -437,3 +437,28 @@ During the automated publication of the multiplatform release `v0.1.0` via GitHu
 3. **Ironclad Resource Guard Enforced Across All Agent Rules:** Updated all project agent guidelines (`AGENTS_MASTER_GUIDE.md`, `GEMINI.md`, `.antigravity/rules.md`) with a strict rule forbidding any cargo compilation without explicit CPU and memory resource throttling (`-j 1`, maximum `-j 2` and `codegen-units = 1`). No subagent or process is allowed to spike workstation resources or freeze the operating system.
 4. **Verification:** Re-ran the entire workspace test suite under single-thread mode (`-j 1`) with 100% pass rate. Closed `BUG-028`.
 
+---
+
+## Chapter 19: Resolving Winit Incompatibility on Linux and Securing Cross-Platform Release Build (October 12, 2026)
+
+*Time: October 12, 2026, 06:00 (~20 mins)*
+
+### 1. Anatomy of the Winit Failure on Linux (BUG-029)
+During the Linux build step on GitHub Actions, the rustc compiler failed with an explicit error:
+```text
+error: The platform you're compiling for is not supported by winit
+  --> .../winit-0.30.13/src/platform_impl/mod.rs:78:1
+   |
+78 | compile_error!("The platform you're compiling for is not supported by winit");
+```
+Unlike Windows (Win32) and macOS (Cocoa), where native windowing backends are automatically selected by the compiler without feature flags, `winit` on Linux/Unix requires at least one display protocol backend enabled (`x11` or `wayland`).
+In the root `Cargo.toml`, `eframe` was declared with `default-features = false, features = ["default_fonts", "glow"]`. This inadvertently stripped out both `x11` and `wayland` features, leaving `winit` with zero backend implementations for Unix.
+
+### 2. The Solution
+Added `"x11", "wayland"` to `workspace.dependencies.eframe` in `Cargo.toml`. On Windows and macOS, these features are harmless no-ops, but on Linux they properly link `eframe`, `egui-winit`, and `winit` with the host X11 and Wayland libraries.
+
+### 3. Verification
+- Updated `Cargo.lock` with resolved Linux-specific crates (`x11-dl`, `smithay-client-toolkit`).
+- Verified `cargo check -j 1` and full test suite `cargo test --workspace -j 1` passing 100% (all 62 tests green).
+- Resolved and closed `BUG-029`. The multi-OS release pipeline is now unblocked across all three platforms.
+
