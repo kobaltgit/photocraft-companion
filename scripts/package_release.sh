@@ -10,7 +10,8 @@ DIST_DIR="${ROOT_DIR}/dist"
 cd "${ROOT_DIR}"
 
 echo ">>> Building release binary (photocraft-companion)..."
-cargo build --package companion_app --release
+cargo build --package companion_app --release --verbose
+
 
 mkdir -p "${DIST_DIR}"
 OS_NAME="$(uname -s)"
