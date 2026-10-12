@@ -114,6 +114,13 @@
   - [x] Спецификация динамического C-ABI загрузчика (`PluginType::DynamicLib`) с заголовком `PhotoCraftContextC`, точкой входа `photocraft_plugin_execute` и `libloading`
   - [x] Синхронизация бэклога в [`docs/IDEAS_AND_BACKLOG.md`](file:///d:/Projects/active/photocraft-plugins/docs/IDEAS_AND_BACKLOG.md) и дорожной карты в [`docs/ROADMAP.md`](file:///d:/Projects/active/photocraft-plugins/docs/ROADMAP.md)
 
+- [x] **Фаза 17: Мультиплатформенная сборка, GitHub Actions CI и защита ресурсов ПК (BUG-027, BUG-028)**
+  - [x] **BUG-027**: Ограничение параллелизма компиляции и защита ресурсов ПК (`jobs = 1`, `codegen-units = 1`, `debug = 1`)
+  - [x] **BUG-028**: Корректировка скрипта Linux упаковки `scripts/package_release.sh` (права доступа `0755`/`0644` для `dpkg-deb`) и добавление зависимостей XCB (`libx11-xcb-dev`, `libxcb1-dev`) в workflow
+  - [x] Внедрение железного правила Resource Guard во все инструкции агентов (`AGENTS_MASTER_GUIDE.md`, `GEMINI.md`, `.antigravity/rules.md`)
+  - [x] Успешная верификация всех тестов воркспейса в однопоточном щадящем режиме
+
+
 
 
 

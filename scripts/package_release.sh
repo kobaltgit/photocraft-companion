@@ -72,8 +72,16 @@ Description: PhotoCraft Companion - floating toolstrip and AI plugin system
 EOF
 
         cp target/release/photocraft-companion "${DEB_DIR}/usr/bin/"
+        chmod 0755 "${DEB_DIR}/usr/bin/photocraft-companion"
         cp packaging/linux/photocraft-companion.desktop "${DEB_DIR}/usr/share/applications/"
-        cp -r plugins/* "${DEB_DIR}/usr/share/photocraft-companion/plugins/"
+        if [ -d plugins ]; then
+            cp -r plugins/* "${DEB_DIR}/usr/share/photocraft-companion/plugins/" || true
+        fi
+
+        # dpkg-deb requires strict permissions
+        chmod -R u=rwX,go=rX "${DEB_DIR}"
+        chmod 0755 "${DEB_DIR}/DEBIAN"
+        chmod 0644 "${DEB_DIR}/DEBIAN/control"
 
         dpkg-deb --build "${DEB_DIR}" "${DIST_DIR}/PhotoCraft-Companion-v${VERSION}-linux-amd64.deb"
         rm -rf "${DEB_DIR}"

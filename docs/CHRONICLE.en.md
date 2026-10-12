@@ -424,3 +424,16 @@ During the initial run of the GitHub Actions release workflow, the `Code Formatt
 - All **62 unit, integration, and UI tests** across the Cargo workspace run 100% green.
 - Registered and resolved `BUG-027` in the project bug tracker.
 - Pushed changes to GitHub, successfully launching a clean CI & Quality Gate pipeline run.
+
+---
+
+## Chapter 18: Multi-OS Release, Linux DEB Calibration, and the Ironclad Resource Guard Rule (October 12, 2026)
+
+*Time: October 12, 2026, 04:50 (~25 mins)*
+
+During the automated publication of the multiplatform release `v0.1.0` via GitHub Actions, the pipeline successfully built the Windows installer (Inno Setup) and macOS DMG image. However, the Linux packaging step encountered an edge case with `dpkg-deb`:
+1. **Debian Package Permission Calibration (BUG-028):** In `scripts/package_release.sh`, the packaging routine lacked explicit Unix permissions on the generated `DEBIAN/control` manifest and installed binaries. `dpkg-deb` strictly requires `0755` permissions for directories/executables and `0644` for control manifests. Enforced permissions via `chmod -R u=rwX,go=rX` and `chmod 0644`, alongside resilient plugin directory copying.
+2. **Linux Graphics Stack Dependencies:** Expanded the Ubuntu dependencies in `release.yml` to include `libx11-xcb-dev` and `libxcb1-dev` for clean X11/XCB linking.
+3. **Ironclad Resource Guard Enforced Across All Agent Rules:** Updated all project agent guidelines (`AGENTS_MASTER_GUIDE.md`, `GEMINI.md`, `.antigravity/rules.md`) with a strict rule forbidding any cargo compilation without explicit CPU and memory resource throttling (`-j 1`, maximum `-j 2` and `codegen-units = 1`). No subagent or process is allowed to spike workstation resources or freeze the operating system.
+4. **Verification:** Re-ran the entire workspace test suite under single-thread mode (`-j 1`) with 100% pass rate. Closed `BUG-028`.
+
