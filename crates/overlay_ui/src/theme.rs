@@ -22,26 +22,90 @@ impl ThemeMode {
     pub fn detect_system_dark() -> bool {
         #[cfg(windows)]
         {
-            use std::process::Command;
-            let output = Command::new("reg")
-                .args([
-                    "query",
-                    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-                    "/v",
-                    "AppsUseLightTheme",
-                ])
-                .output();
-            if let Ok(out) = output {
-                let s = String::from_utf8_lossy(&out.stdout);
-                if s.contains("0x0") {
-                    return true;
-                } else if s.contains("0x1") {
-                    return false;
-                }
+            use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+            use std::time::Instant;
+
+            static CACHED_DARK: AtomicBool = AtomicBool::new(true);
+            static LAST_CHECK_MS: AtomicU64 = AtomicU64::new(0);
+
+            // Simple monotonic millisecond counter
+            static START_INSTANT: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+            let start = START_INSTANT.get_or_init(Instant::now);
+            let now_ms = start.elapsed().as_millis() as u64;
+            let last_ms = LAST_CHECK_MS.load(Ordering::Relaxed);
+
+            if now_ms >= last_ms && now_ms - last_ms < 1000 {
+                return CACHED_DARK.load(Ordering::Relaxed);
             }
+
+            let is_dark = query_windows_apps_dark_theme();
+            CACHED_DARK.store(is_dark, Ordering::Relaxed);
+            LAST_CHECK_MS.store(now_ms, Ordering::Relaxed);
+            return is_dark;
         }
+
+        #[cfg(not(windows))]
         true
     }
+}
+
+#[cfg(windows)]
+fn query_windows_apps_dark_theme() -> bool {
+    type HKEY = *mut std::ffi::c_void;
+    const HKEY_CURRENT_USER: HKEY = 0x80000001usize as HKEY;
+    const KEY_READ: u32 = 0x20019;
+    const ERROR_SUCCESS: i32 = 0;
+
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn RegOpenKeyExW(
+            hKey: HKEY,
+            lpSubKey: *const u16,
+            ulOptions: u32,
+            samDesired: u32,
+            phkResult: *mut HKEY,
+        ) -> i32;
+        fn RegQueryValueExW(
+            hKey: HKEY,
+            lpValueName: *const u16,
+            lpReserved: *mut u32,
+            lpType: *mut u32,
+            lpData: *mut u8,
+            lpcbData: *mut u32,
+        ) -> i32;
+        fn RegCloseKey(hKey: HKEY) -> i32;
+    }
+
+    unsafe {
+        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+            .encode_utf16()
+            .collect();
+        let valname: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+        let mut hkey: HKEY = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey)
+            == ERROR_SUCCESS
+        {
+            let mut data: u32 = 0;
+            let mut data_size: u32 = std::mem::size_of::<u32>() as u32;
+            let mut val_type: u32 = 0;
+            let res = RegQueryValueExW(
+                hkey,
+                valname.as_ptr(),
+                std::ptr::null_mut(),
+                &mut val_type,
+                &mut data as *mut u32 as *mut u8,
+                &mut data_size,
+            );
+            RegCloseKey(hkey);
+            if res == ERROR_SUCCESS {
+                return data == 0; // 0 = dark, 1 = light
+            }
+        }
+    }
+    true
+}
+
+impl ThemeMode {
 
     pub fn from_preferences(prefs_path: impl AsRef<Path>) -> Self {
         let path = prefs_path.as_ref();

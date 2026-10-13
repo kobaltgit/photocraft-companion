@@ -87,9 +87,42 @@ jobs:
           name: macos-packages
           path: dist/*
 
+  publish-plugins:
+    name: Package & Publish Plugins to Marketplace
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate & Package Plugins & Build Registry
+        run: |
+          cargo run --package plugin_validator -- \
+            --validate plugins \
+            --build-registry \
+            --package-plugins
+
+      - name: Publish to GitHub Release 'plugins'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: plugins
+          name: "PhotoCraft Community Plugins Repository"
+          body: |
+            Automated repository of all community-contributed `.pcpl` plugins and registry index (`registry.json`).
+            Installed automatically via PhotoCraft Companion Plugin Manager.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.pcpl
+            dist/registry.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   publish-release:
     name: Publish GitHub Release
-    needs: [build-windows, build-linux, build-macos]
+    needs: [build-windows, build-linux, build-macos, publish-plugins]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') && needs.build-windows.result == 'success' && needs.build-linux.result == 'success' && needs.build-macos.result == 'success'
     steps:

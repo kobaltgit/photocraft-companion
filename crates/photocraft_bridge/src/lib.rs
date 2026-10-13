@@ -52,16 +52,23 @@ impl PhotoCraftClient {
     pub fn find_running_photocraft_dir() -> Option<std::path::PathBuf> {
         #[cfg(target_os = "windows")]
         {
-            // Try lightweight PowerShell query for photocraft.exe path
-            let output = std::process::Command::new("powershell")
-                .args([
-                    "-NoProfile",
-                    "-NonInteractive",
-                    "-Command",
-                    "(Get-Process -Name photocraft -ErrorAction SilentlyContinue).Path",
-                ])
-                .output();
-            if let Ok(out) = output {
+            if let Some(dir) = find_running_photocraft_dir_win32() {
+                return Some(dir);
+            }
+
+            // Fallback: PowerShell query with CREATE_NO_WINDOW
+            let mut cmd = std::process::Command::new("powershell");
+            cmd.args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-Process -Name photocraft -ErrorAction SilentlyContinue).Path",
+            ]);
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
+            if let Ok(out) = cmd.output() {
                 if out.status.success() {
                     let text = String::from_utf8_lossy(&out.stdout);
                     for line in text.lines() {
@@ -104,6 +111,98 @@ impl PhotoCraftClient {
 
         None
     }
+}
+
+#[cfg(target_os = "windows")]
+fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
+    type HANDLE = *mut std::ffi::c_void;
+    const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
+    const TH32CS_SNAPPROCESS: u32 = 0x00000002;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const MAX_PATH: usize = 260;
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct PROCESSENTRY32W {
+        dwSize: u32,
+        cntUsage: u32,
+        th32ProcessID: u32,
+        th32DefaultHeapID: usize,
+        th32ModuleID: u32,
+        cntThreads: u32,
+        th32ParentProcessID: u32,
+        pcPriClassBase: i32,
+        dwFlags: u32,
+        szExeFile: [u16; MAX_PATH],
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateToolhelp32Snapshot(dwFlags: u32, th32ProcessID: u32) -> HANDLE;
+        fn Process32FirstW(hSnapshot: HANDLE, lppe: *mut PROCESSENTRY32W) -> i32;
+        fn Process32NextW(hSnapshot: HANDLE, lppe: *mut PROCESSENTRY32W) -> i32;
+        fn OpenProcess(dwDesiredAccess: u32, bInheritHandle: i32, dwProcessId: u32) -> HANDLE;
+        fn QueryFullProcessImageNameW(
+            hProcess: HANDLE,
+            dwFlags: u32,
+            lpExeName: *mut u16,
+            lpdwSize: *mut u32,
+        ) -> i32;
+        fn CloseHandle(hObject: HANDLE) -> i32;
+    }
+
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            return None;
+        }
+
+        let mut entry = std::mem::zeroed::<PROCESSENTRY32W>();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+        let mut found_dir = None;
+
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                let null_pos = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let exe_name = String::from_utf16_lossy(&entry.szExeFile[..null_pos]);
+
+                if exe_name.eq_ignore_ascii_case("photocraft.exe") {
+                    let h_proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
+                    if !h_proc.is_null() && h_proc != INVALID_HANDLE_VALUE {
+                        let mut path_buf = [0u16; 1024];
+                        let mut size = path_buf.len() as u32;
+                        if QueryFullProcessImageNameW(h_proc, 0, path_buf.as_mut_ptr(), &mut size) != 0 {
+                            let full_path = String::from_utf16_lossy(&path_buf[..size as usize]);
+                            let pb = std::path::PathBuf::from(full_path);
+                            if let Some(parent) = pb.parent() {
+                                if parent.is_dir() {
+                                    found_dir = Some(parent.to_path_buf());
+                                    CloseHandle(h_proc);
+                                    break;
+                                }
+                            }
+                        }
+                        CloseHandle(h_proc);
+                    }
+                }
+
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(snapshot);
+        found_dir
+    }
+}
+
+impl PhotoCraftClient {
 
     /// Try to locate the token automatically from environment, process, or standard candidate paths
     pub fn default_token() -> Option<String> {

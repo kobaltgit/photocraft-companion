@@ -4,14 +4,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="1.0.0"
+VERSION="1.0.1"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"
 
 echo ">>> Building release binary (photocraft-companion)..."
-cargo build --package companion_app --release --verbose
+cargo build --package companion_app --release
 
+echo ">>> Building plugin registry and .pcpl packages..."
+cargo run --package plugin_validator -- --validate plugins --build-registry --package-plugins || true
 
 mkdir -p "${DIST_DIR}"
 OS_NAME="$(uname -s)"
@@ -26,6 +28,9 @@ if [ "${OS_NAME}" = "Darwin" ]; then
     cp target/release/photocraft-companion "${APP_BUNDLE}/Contents/MacOS/"
     cp packaging/macos/Info.plist "${APP_BUNDLE}/Contents/"
     cp -r plugins "${APP_BUNDLE}/Contents/Resources/"
+    if [ -f "${DIST_DIR}/registry.json" ]; then
+        cp "${DIST_DIR}/registry.json" "${APP_BUNDLE}/Contents/Resources/" || true
+    fi
 
     # Portable tar.gz
     PORTABLE_ARCHIVE="${DIST_DIR}/PhotoCraft-Companion-v${VERSION}-macos-portable.tar.gz"
@@ -47,6 +52,9 @@ elif [ "${OS_NAME}" = "Linux" ]; then
 
     cp target/release/photocraft-companion "${PORTABLE_DIR}/"
     cp -r plugins "${PORTABLE_DIR}/"
+    if [ -f "${DIST_DIR}/registry.json" ]; then
+        cp "${DIST_DIR}/registry.json" "${PORTABLE_DIR}/" || true
+    fi
     cp README.md LICENSE "${PORTABLE_DIR}/"
 
     PORTABLE_ARCHIVE="${DIST_DIR}/PhotoCraft-Companion-v${VERSION}-linux-x86_64-portable.tar.gz"

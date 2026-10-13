@@ -2,7 +2,7 @@
 ; Produces: PhotoCraft-Companion-Setup-Windows-x64.exe
 
 #define MyAppName "PhotoCraft Companion"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "kobaltGIT"
 #define MyAppURL "https://github.com/kobaltgit/photocraft-companion"
 #define MyAppExeName "photocraft-companion.exe"
@@ -42,6 +42,7 @@ Source: "..\..\plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recurs
 Source: "..\..\scripts\fetch_models.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\registry.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

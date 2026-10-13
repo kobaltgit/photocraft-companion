@@ -9,9 +9,9 @@ $RootDir = Split-Path -Parent $PSScriptRoot
 Set-Location $RootDir
 
 Write-Host ">>> Building release binary (photocraft-companion)..." -ForegroundColor Cyan
-cargo build --package companion_app --release
+cargo build --package companion_app --release -j 1
 
-$Version = "1.0.0"
+$Version = "1.0.1"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"
@@ -21,9 +21,15 @@ if (Test-Path $DistDir) {
 }
 New-Item -ItemType Directory -Force -Path $PortableDir | Out-Null
 
+Write-Host ">>> Building plugin registry and .pcpl packages..." -ForegroundColor Cyan
+cargo run --package plugin_validator -j 1 -- --validate plugins --build-registry --package-plugins
+
 Write-Host ">>> Assembling portable distribution bundle..." -ForegroundColor Cyan
 Copy-Item (Join-Path $RootDir "target\release\photocraft-companion.exe") -Destination $PortableDir
 Copy-Item -Recurse (Join-Path $RootDir "plugins") -Destination $PortableDir
+if (Test-Path (Join-Path $DistDir "registry.json")) {
+    Copy-Item (Join-Path $DistDir "registry.json") -Destination $PortableDir
+}
 New-Item -ItemType Directory -Force -Path (Join-Path $PortableDir "scripts") | Out-Null
 Copy-Item (Join-Path $RootDir "scripts\fetch_models.ps1") -Destination (Join-Path $PortableDir "scripts")
 Copy-Item (Join-Path $RootDir "README.md") -Destination $PortableDir

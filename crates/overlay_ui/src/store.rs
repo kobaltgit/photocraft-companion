@@ -198,14 +198,20 @@ pub fn fetch_registry_data(url: &str, cache_path: &Path) -> Result<(StoreRegistr
     let mut network_err = None;
 
     // 1. Try to download via curl or powershell
-    let output = Command::new("curl")
+    let mut curl_cmd = Command::new("curl");
+    curl_cmd
         .arg("-s")
         .arg("-L")
         .arg("-f")
         .arg("-H")
         .arg("User-Agent: PhotoCraft-Companion-Store")
-        .arg(url)
-        .output();
+        .arg(url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        curl_cmd.creation_flags(0x08000000);
+    }
+    let output = curl_cmd.output();
 
     let json_text = match output {
         Ok(out) if out.status.success() && !out.stdout.is_empty() => {
@@ -224,11 +230,16 @@ pub fn fetch_registry_data(url: &str, cache_path: &Path) -> Result<(StoreRegistr
                     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (Invoke-WebRequest -Uri '{}' -UseBasicParsing).Content",
                     url
                 );
-                let ps_out = Command::new("powershell")
-                    .arg("-NoProfile")
+                let mut ps = Command::new("powershell");
+                ps.arg("-NoProfile")
                     .arg("-Command")
-                    .arg(&ps_cmd)
-                    .output();
+                    .arg(&ps_cmd);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    ps.creation_flags(0x08000000);
+                }
+                let ps_out = ps.output();
                 match ps_out {
                     Ok(p) if p.status.success() && !p.stdout.is_empty() => {
                         String::from_utf8_lossy(&p.stdout).to_string()
@@ -267,15 +278,38 @@ pub fn fetch_registry_data(url: &str, cache_path: &Path) -> Result<(StoreRegistr
         }
     }
 
-    // 2. Fallback to local cache
-    if cache_path.exists() {
-        if let Ok(cached_content) = fs::read_to_string(cache_path) {
-            if let Ok(reg) = serde_json::from_str::<StoreRegistry>(&cached_content) {
-                info!(
-                    "Using cached marketplace registry from {}",
-                    cache_path.display()
-                );
-                return Ok((reg, true));
+    // 2. Fallback to local cache or bundled registry.json
+    let mut candidate_paths = vec![cache_path.to_path_buf()];
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            candidate_paths.push(parent.join("registry.json"));
+            candidate_paths.push(parent.join("dist").join("registry.json"));
+            if let Some(super_parent) = parent.parent() {
+                candidate_paths.push(super_parent.join("dist").join("registry.json"));
+            }
+        }
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        candidate_paths.push(cwd.join("dist").join("registry.json"));
+        candidate_paths.push(cwd.join("registry.json"));
+    }
+
+    for path in &candidate_paths {
+        if path.exists() {
+            if let Ok(cached_content) = fs::read_to_string(path) {
+                if let Ok(reg) = serde_json::from_str::<StoreRegistry>(&cached_content) {
+                    info!(
+                        "Using cached marketplace registry from {}",
+                        path.display()
+                    );
+                    if path != cache_path {
+                        if let Some(p) = cache_path.parent() {
+                            let _ = fs::create_dir_all(p);
+                        }
+                        let _ = fs::write(cache_path, &cached_content);
+                    }
+                    return Ok((reg, true));
+                }
             }
         }
     }
@@ -307,14 +341,20 @@ pub fn download_file_to_path(url: &str, target_path: &Path) -> Result<(), String
         let _ = fs::create_dir_all(parent);
     }
 
-    let output = Command::new("curl")
+    let mut curl_cmd = Command::new("curl");
+    curl_cmd
         .arg("-L")
         .arg("-f")
         .arg("-s")
         .arg("-o")
         .arg(target_path)
-        .arg(url)
-        .status();
+        .arg(url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        curl_cmd.creation_flags(0x08000000);
+    }
+    let output = curl_cmd.status();
 
     match output {
         Ok(s) if s.success() => Ok(()),
@@ -325,10 +365,16 @@ pub fn download_file_to_path(url: &str, target_path: &Path) -> Result<(), String
                     url,
                     target_path.to_string_lossy().replace('\'', "''")
                 );
-                let ps_out = Command::new("powershell")
-                    .arg("-NoProfile")
+                let mut ps = Command::new("powershell");
+                ps.arg("-NoProfile")
                     .arg("-Command")
-                    .arg(&ps_cmd)
+                    .arg(&ps_cmd);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    ps.creation_flags(0x08000000);
+                }
+                let ps_out = ps
                     .status()
                     .map_err(|e| format!("PowerShell error: {e}"))?;
 

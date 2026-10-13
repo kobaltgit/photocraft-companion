@@ -816,14 +816,19 @@ impl PluginManagerApp {
                                                 // Clean up any stale partial download first
                                                 let _ = std::fs::remove_file(&part_file_worker);
 
-                                                let status = std::process::Command::new("curl.exe")
-                                                    .args([
-                                                        "-L",
-                                                        "-o",
-                                                        part_file_worker.to_str().unwrap_or(""),
-                                                        &url_clone,
-                                                    ])
-                                                    .status();
+                                                let mut cmd = std::process::Command::new("curl.exe");
+                                                cmd.args([
+                                                    "-L",
+                                                    "-o",
+                                                    part_file_worker.to_str().unwrap_or(""),
+                                                    &url_clone,
+                                                ]);
+                                                #[cfg(windows)]
+                                                {
+                                                    use std::os::windows::process::CommandExt;
+                                                    cmd.creation_flags(0x08000000);
+                                                }
+                                                let status = cmd.status();
 
                                                 done_flag.store(true, Ordering::SeqCst);
 

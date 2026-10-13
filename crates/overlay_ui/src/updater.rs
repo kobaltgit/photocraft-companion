@@ -162,15 +162,21 @@ pub fn fetch_latest_release(repo: &str) -> Result<UpdateCheckResult, String> {
     info!("Fetching latest release from {}", api_url);
 
     // Try curl first (available on modern Windows 10/11, macOS, Linux)
-    let output = Command::new("curl")
+    let mut curl_cmd = Command::new("curl");
+    curl_cmd
         .arg("-s")
         .arg("-L")
         .arg("-H")
         .arg("User-Agent: PhotoCraft-Companion-Updater")
         .arg("-H")
         .arg("Accept: application/vnd.github.v3+json")
-        .arg(&api_url)
-        .output();
+        .arg(&api_url);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        curl_cmd.creation_flags(0x08000000);
+    }
+    let output = curl_cmd.output();
 
     let json_text = match output {
         Ok(out) if out.status.success() && !out.stdout.is_empty() => {
@@ -183,10 +189,16 @@ pub fn fetch_latest_release(repo: &str) -> Result<UpdateCheckResult, String> {
                     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (Invoke-RestMethod -Uri '{}' -Headers @{{'User-Agent'='PhotoCraft-Companion-Updater'}}) | ConvertTo-Json -Depth 5",
                     api_url
                 );
-                let ps_out = Command::new("powershell")
-                    .arg("-NoProfile")
+                let mut ps = Command::new("powershell");
+                ps.arg("-NoProfile")
                     .arg("-Command")
-                    .arg(&ps_cmd)
+                    .arg(&ps_cmd);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    ps.creation_flags(0x08000000);
+                }
+                let ps_out = ps
                     .output()
                     .map_err(|e| format!("PowerShell error: {e}"))?;
 
@@ -290,13 +302,19 @@ pub fn download_file_background(
 ) {
     thread::spawn(move || {
         info!("Starting download {} to {}", url, target_path.display());
-        let res = Command::new("curl")
+        let mut curl_cmd = Command::new("curl");
+        curl_cmd
             .arg("-L")
             .arg("-f")
             .arg("-o")
             .arg(&target_path)
-            .arg(&url)
-            .status();
+            .arg(&url);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            curl_cmd.creation_flags(0x08000000);
+        }
+        let res = curl_cmd.status();
 
         match res {
             Ok(status) if status.success() => {
@@ -316,11 +334,16 @@ pub fn download_file_background(
                         url,
                         target_path.to_string_lossy().replace('\\', "\\\\")
                     );
-                    let ps_res = Command::new("powershell")
-                        .arg("-NoProfile")
+                    let mut ps = Command::new("powershell");
+                    ps.arg("-NoProfile")
                         .arg("-Command")
-                        .arg(&ps_cmd)
-                        .status();
+                        .arg(&ps_cmd);
+                    #[cfg(windows)]
+                    {
+                        use std::os::windows::process::CommandExt;
+                        ps.creation_flags(0x08000000);
+                    }
+                    let ps_res = ps.status();
 
                     match ps_res {
                         Ok(st) if st.success() => {
@@ -440,9 +463,14 @@ rm "$0"
 /// Executes the generated update script and exits current application
 pub fn apply_update_and_restart(script_path: &Path) -> Result<(), String> {
     if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", "start", "", &script_path.to_string_lossy()])
-            .spawn()
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", &script_path.to_string_lossy()]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to spawn update script: {e}"))?;
     } else {
         Command::new("sh")
@@ -456,9 +484,14 @@ pub fn apply_update_and_restart(script_path: &Path) -> Result<(), String> {
 /// Launches installer executable (.exe / .msi / .pkg)
 pub fn launch_installer(path: &Path) -> Result<(), String> {
     if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
-            .spawn()
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", &path.to_string_lossy()]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        cmd.spawn()
             .map_err(|e| format!("Failed to launch installer: {e}"))?;
     } else if cfg!(target_os = "macos") {
         Command::new("open")
@@ -493,7 +526,14 @@ pub fn reveal_in_folder(path: &Path) {
 pub fn open_browser_url(url: &str) {
     if cfg!(target_os = "windows") {
         // "start" is a cmd built-in; first empty string is the window title parameter
-        let _ = Command::new("cmd").args(["/C", "start", "", url]).spawn();
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "start", "", url]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let _ = cmd.spawn();
     } else if cfg!(target_os = "macos") {
         let _ = Command::new("open").arg(url).spawn();
     } else {
