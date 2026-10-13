@@ -6,7 +6,7 @@
   "author": "kobaltGIT",
   "plugin_type": "native_ai",
   "action_id": "plugin:upscale",
-  "icon": "zoom-in",
+  "icon": "icon.svg",
   "input": "active_layer",
   "output_mode": "in_place",
   "post_commands": [

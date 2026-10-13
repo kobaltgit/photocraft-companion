@@ -96,23 +96,36 @@ pub struct AiPipelineConfig {
 
 impl PluginManifest {
     pub fn is_model_installed(&self, model: &ModelRequirement) -> bool {
+        let is_valid_file = |path: &PathBuf| {
+            if let Ok(meta) = std::fs::metadata(path) {
+                meta.is_file()
+                    && meta.len() > 0
+                    && !path
+                        .extension()
+                        .map(|ext| ext.eq_ignore_ascii_case("part"))
+                        .unwrap_or(false)
+            } else {
+                false
+            }
+        };
+
         if let Some(ref dir) = self.plugin_dir {
             let direct = dir.join("models").join(&model.name);
-            if direct.exists() {
+            if is_valid_file(&direct) {
                 return true;
             }
             let flat = dir.join(&model.name);
-            if flat.exists() {
+            if is_valid_file(&flat) {
                 return true;
             }
         }
         // Fallback global check in models/
         let global = PathBuf::from("models").join(&model.name);
-        if global.exists() {
+        if is_valid_file(&global) {
             return true;
         }
         let fallback = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models").join(&model.name);
-        fallback.exists()
+        is_valid_file(&fallback)
     }
 
     pub fn all_models_installed(&self) -> bool {
@@ -375,6 +388,29 @@ mod tests {
             sha256: None,
         };
         assert!(manifest.is_model_installed(&flat_req));
+
+        // Test 0-byte file and .part file
+        let zero_byte_model = models_dir.join("zero_byte.onnx");
+        std::fs::write(&zero_byte_model, b"").unwrap();
+        let zero_req = ModelRequirement {
+            name: "zero_byte.onnx".to_string(),
+            required: true,
+            size_mb: None,
+            url: None,
+            sha256: None,
+        };
+        assert!(!manifest.is_model_installed(&zero_req));
+
+        let part_model = models_dir.join("in_progress.onnx.part");
+        std::fs::write(&part_model, b"partial data").unwrap();
+        let part_req = ModelRequirement {
+            name: "in_progress.onnx.part".to_string(),
+            required: true,
+            size_mb: None,
+            url: None,
+            sha256: None,
+        };
+        assert!(!manifest.is_model_installed(&part_req));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

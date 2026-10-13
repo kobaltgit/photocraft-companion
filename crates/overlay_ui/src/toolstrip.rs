@@ -13,6 +13,7 @@ pub struct ToolstripApp {
     pub is_busy: bool,
     pub active_action: Option<String>,
     pub orientation_changed: bool,
+    pub icon_cache: crate::icons::SvgIconCache,
 }
 
 impl ToolstripApp {
@@ -28,6 +29,7 @@ impl ToolstripApp {
             is_busy: false,
             active_action: None,
             orientation_changed: false,
+            icon_cache: crate::icons::SvgIconCache::new(),
         }
     }
 
@@ -68,10 +70,12 @@ impl ToolstripApp {
 
         let is_busy = self.is_busy;
         let active_action = self.active_action.clone();
+        let is_dark = palette.is_dark;
 
         let render_button_items =
             |ui: &mut Ui,
              buttons: &[ButtonConfig],
+             icon_cache: &mut crate::icons::SvgIconCache,
              pending: &mut Option<String>,
              hovered_tt: &mut Option<(String, egui::Rect)>| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
@@ -81,40 +85,45 @@ impl ToolstripApp {
                         .map(|a| a == btn.action)
                         .unwrap_or(false);
 
-                    let label_text = match btn.icon.as_deref() {
-                        Some("wand") | Some("scissors") => "AI",
-                        Some("zoom-in") | Some("upscale") => "2X",
-                        Some("inpaint") | Some("fill") | Some("magic-wand") => "GF",
-                        Some("bw") | Some("film") | Some("adjust") => "BW",
-                        Some("copy") => "CP",
-                        Some("paste") => "PS",
-                        _ => {
-                            if btn.label.len() <= 3 {
-                                &btn.label
-                            } else {
-                                &btn.label[..3]
-                            }
-                        }
-                    };
-
-                    let display_label = if is_this_active { "..." } else { label_text };
-
-                    let text_color = if is_this_active {
-                        palette.accent_blue
-                    } else {
-                        palette.text_primary
-                    };
-
-                    let b = egui::Button::new(
-                        RichText::new(display_label)
-                            .strong()
-                            .size(11.0)
-                            .color(text_color),
-                    )
-                    .min_size(Vec2::new(32.0, 32.0))
-                    .corner_radius(3.0);
+                    let maybe_texture = icon_cache.get_or_load(
+                        ui.ctx(),
+                        &btn.action,
+                        btn.icon_path.as_deref(),
+                        is_dark,
+                    );
 
                     let tooltip = btn.label.clone();
+
+                    let b = if let Some(tex) = maybe_texture {
+                        let img = egui::Image::new(&tex)
+                            .fit_to_exact_size(Vec2::new(20.0, 20.0));
+                        egui::Button::image(img)
+                            .min_size(Vec2::new(32.0, 32.0))
+                            .corner_radius(3.0)
+                    } else {
+                        let display_label = if is_this_active {
+                            "..."
+                        } else if btn.label.len() <= 3 {
+                            &btn.label
+                        } else {
+                            &btn.label[..3]
+                        };
+
+                        let text_color = if is_this_active {
+                            palette.accent_blue
+                        } else {
+                            palette.text_primary
+                        };
+
+                        egui::Button::new(
+                            RichText::new(display_label)
+                                .strong()
+                                .size(11.0)
+                                .color(text_color),
+                        )
+                        .min_size(Vec2::new(32.0, 32.0))
+                        .corner_radius(3.0)
+                    };
 
                     // Disable clicking other buttons while a heavy operation is busy
                     let resp = ui.add_enabled(!is_busy || is_this_active, b);
@@ -265,6 +274,7 @@ impl ToolstripApp {
                     render_button_items(
                         ui,
                         &self.buttons,
+                        &mut self.icon_cache,
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                     );
@@ -393,6 +403,7 @@ impl ToolstripApp {
                     render_button_items(
                         ui,
                         &self.buttons,
+                        &mut self.icon_cache,
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                     );
@@ -416,6 +427,7 @@ mod tests {
                 } else {
                     Some("bw".to_string())
                 },
+                icon_path: None,
             })
             .collect()
     }

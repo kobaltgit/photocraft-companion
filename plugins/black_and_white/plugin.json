@@ -5,7 +5,7 @@
   "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
   "author": "kobaltGIT",
   "plugin_type": "no_code",
-  "icon": "adjust",
+  "icon": "icon.svg",
   "commands": [
     {
       "command": "layer.duplicate",

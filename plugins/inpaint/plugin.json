@@ -6,7 +6,7 @@
   "author": "kobaltGIT",
   "plugin_type": "native_ai",
   "action_id": "plugin:inpaint",
-  "icon": "inpaint",
+  "icon": "icon.svg",
   "input": "selection",
   "output_mode": "in_place",
   "post_commands": [

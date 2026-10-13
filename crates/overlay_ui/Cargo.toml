@@ -18,4 +18,5 @@ resvg = { workspace = true }
 rfd = { workspace = true }
 tokio = { workspace = true }
 tray-icon = { workspace = true }
+zip = { workspace = true }
 

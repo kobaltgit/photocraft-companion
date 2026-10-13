@@ -7,7 +7,13 @@ fn test_no_unlocalized_cyrillic_in_ui_crates() {
     let src_dir = Path::new(manifest_dir).join("src");
 
     // Files that should never contain any Cyrillic text at all
-    let strictly_latin_files = ["icons.rs", "theme.rs", "toolstrip.rs", "win32_window.rs"];
+    let strictly_latin_files = [
+        "icons.rs",
+        "theme.rs",
+        "toolstrip.rs",
+        "updater.rs",
+        "win32_window.rs",
+    ];
 
     for file_name in strictly_latin_files {
         let file_path = src_dir.join(file_name);

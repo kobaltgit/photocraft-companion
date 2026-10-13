@@ -243,6 +243,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut tray_builder = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
+        .with_menu_on_left_click(false) // Left click restores toolbar; Right click opens menu
         .with_tooltip("PhotoCraft Companion");
 
     if let Some(rgba) = get_icon_rgba(is_dark, 32) {

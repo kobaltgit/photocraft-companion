@@ -33,8 +33,20 @@ Get-ChildItem -Directory $PluginsDir | ForEach-Object {
         $tempZip = Join-Path $DistPackagesDir "$name.tmp.zip"
         if (Test-Path $tempZip) { Remove-Item -Force $tempZip }
         
+        $stagingDir = Join-Path $DistPackagesDir "$name.staging"
+        if (Test-Path $stagingDir) { Remove-Item -Recurse -Force $stagingDir }
+        New-Item -ItemType Directory -Force -Path $stagingDir | Out-Null
+        
+        # Strictly exclude models directory and any heavy onnx/weights binaries
+        Get-ChildItem -Path $pluginFolder | Where-Object {
+            $_.Name -ne "models" -and $_.Extension -notmatch '^\.(onnx|bin|weights|pth|pt)$'
+        } | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination $stagingDir -Recurse -Force
+        }
+        
         Write-Host "  Packing plugin '$name' -> '$targetPcpl'..." -ForegroundColor Green
-        Compress-Archive -Path "$pluginFolder\*" -DestinationPath $tempZip -Force
+        Compress-Archive -Path "$stagingDir\*" -DestinationPath $tempZip -Force
+        Remove-Item -Recurse -Force $stagingDir
         Move-Item -Path $tempZip -Destination $targetPcpl -Force
         
         $sizeKb = [math]::Round(((Get-Item $targetPcpl).Length / 1KB), 1)

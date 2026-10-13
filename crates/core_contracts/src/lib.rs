@@ -24,11 +24,15 @@ pub enum ConnectionState {
     AuthRequired,
 }
 
+use std::path::PathBuf;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ButtonConfig {
     pub label: String,
     pub action: String,
     pub icon: Option<String>,
+    #[serde(default)]
+    pub icon_path: Option<PathBuf>,
 }
 
 pub mod i18n;

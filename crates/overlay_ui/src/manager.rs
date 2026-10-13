@@ -13,6 +13,21 @@ pub enum ActiveTab {
     About,
 }
 
+#[derive(Debug, Clone)]
+pub struct ModelDownloadProgress {
+    pub model_name: String,
+    pub plugin_id: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: u64,
+    pub speed_bytes_sec: f32,
+}
+
+pub enum ModelDownloadEvent {
+    Progress(ModelDownloadProgress),
+    Finished { model_name: String },
+    Error { model_name: String, error: String },
+}
+
 pub struct PluginManagerApp {
     pub active_tab: ActiveTab,
     pub manifests: Vec<PluginManifest>,
@@ -22,13 +37,21 @@ pub struct PluginManagerApp {
     pub port: u16,
     pub token: String,
     pub status_text: String,
+    pub status_timestamp: Option<std::time::Instant>,
+    pub status_is_error: bool,
     pub prefs_path: PathBuf,
     pub plugins_dir: PathBuf,
     pub config_path: PathBuf,
     pub downloading_model: Option<String>,
+    pub active_download: Option<ModelDownloadProgress>,
+    pub download_event_rx: Option<std::sync::mpsc::Receiver<ModelDownloadEvent>>,
     pub is_connected: Arc<AtomicBool>,
     pub connection_state: Arc<std::sync::RwLock<ConnectionState>>,
     pub on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
+    pub update_state: Arc<std::sync::Mutex<crate::updater::UpdateState>>,
+    pub download_rx: Option<std::sync::mpsc::Receiver<Result<(PathBuf, bool), String>>>,
+    pub show_restart_modal: bool,
+    pub pending_restart_script: Option<PathBuf>,
 }
 
 impl PluginManagerApp {
@@ -87,13 +110,21 @@ impl PluginManagerApp {
             port: cfg.port,
             token,
             status_text: String::new(),
+            status_timestamp: None,
+            status_is_error: false,
             prefs_path,
             plugins_dir,
             config_path,
             downloading_model: None,
+            active_download: None,
+            download_event_rx: None,
             is_connected,
             connection_state: Arc::new(std::sync::RwLock::new(init_state)),
             on_token_saved: None,
+            update_state: Arc::new(std::sync::Mutex::new(crate::updater::UpdateState::Idle)),
+            download_rx: None,
+            show_restart_modal: false,
+            pending_restart_script: None,
         }
     }
 
@@ -117,6 +148,41 @@ impl PluginManagerApp {
         match self.current_language {
             Language::Ru => ru,
             _ => en,
+        }
+    }
+
+    pub fn set_status(&mut self, text: impl Into<String>, is_error: bool) {
+        self.status_text = text.into();
+        self.status_timestamp = Some(std::time::Instant::now());
+        self.status_is_error = is_error;
+    }
+
+    pub fn poll_download_events(&mut self) {
+        let mut events = Vec::new();
+        if let Some(ref rx) = self.download_event_rx {
+            while let Ok(event) = rx.try_recv() {
+                events.push(event);
+            }
+        }
+        for event in events {
+            match event {
+                ModelDownloadEvent::Progress(prog) => {
+                    self.active_download = Some(prog);
+                }
+                ModelDownloadEvent::Finished { model_name } => {
+                    self.active_download = None;
+                    let msg_success = self.t(
+                        "Model downloaded successfully!",
+                        "Модель успешно загружена!",
+                    );
+                    self.set_status(format!("✔ {}: {}", model_name, msg_success), false);
+                }
+                ModelDownloadEvent::Error { model_name, error } => {
+                    self.active_download = None;
+                    let msg_err = self.t("Download error", "Ошибка загрузки");
+                    self.set_status(format!("✖ {}: {}: {}", model_name, msg_err, error), true);
+                }
+            }
         }
     }
 
@@ -154,12 +220,13 @@ impl PluginManagerApp {
             cb(token_opt);
         }
 
-        self.status_text = self
+        let saved_msg = self
             .t(
                 "Settings saved successfully!",
                 "Настройки успешно сохранены!",
             )
             .to_string();
+        self.set_status(saved_msg, false);
         Ok(())
     }
 
@@ -415,13 +482,15 @@ impl PluginManagerApp {
 
                         if let Some(t) = found {
                             self.token = t;
-                            self.status_text = self
+                            let msg = self
                                 .t("Token updated successfully", "Токен успешно обновлен")
                                 .to_string();
+                            self.set_status(msg, false);
                         } else {
-                            self.status_text = self
+                            let msg = self
                                 .t("control.token not found", "Файл control.token не найден")
                                 .to_string();
+                            self.set_status(msg, true);
                         }
                     }
 
@@ -441,9 +510,10 @@ impl PluginManagerApp {
                                 let trimmed = content.trim();
                                 if !trimmed.is_empty() {
                                     self.token = trimmed.to_string();
-                                    self.status_text = self
+                                    let msg = self
                                         .t("Token loaded from file", "Токен загружен из файла")
                                         .to_string();
+                                    self.set_status(msg, false);
                                 }
                             }
                         }
@@ -483,16 +553,17 @@ impl PluginManagerApp {
                     {
                         match core_contracts::install_pcpl(&file, &self.plugins_dir) {
                             Ok(m) => {
-                                self.status_text = self
+                                let msg = self
                                     .t(
                                         "Plugin installed successfully!",
                                         "Плагин успешно установлен!",
                                     )
                                     .to_string();
+                                self.set_status(msg, false);
                                 self.manifests.push(m);
                             }
                             Err(e) => {
-                                self.status_text = format!("Error: {e}");
+                                self.set_status(format!("Error: {e}"), true);
                             }
                         }
                     }
@@ -591,8 +662,41 @@ impl PluginManagerApp {
                                         .color(Color32::from_rgb(0xea, 0x86, 0x00)),
                                 );
 
-                                // Button to trigger download if model has URL
-                                if let Some(req) = manifest.models.first() {
+                                // Check if this plugin's model is currently downloading
+                                let is_curr_downloading = self
+                                    .active_download
+                                    .as_ref()
+                                    .map(|d| d.plugin_id == manifest.id)
+                                    .unwrap_or(false);
+
+                                if is_curr_downloading {
+                                    if let Some(ref d) = self.active_download {
+                                        let frac = if d.total_bytes > 0 {
+                                            (d.downloaded_bytes as f32 / d.total_bytes as f32)
+                                                .clamp(0.0, 1.0)
+                                        } else {
+                                            0.0
+                                        };
+                                        let dl_mb = d.downloaded_bytes as f32 / (1024.0 * 1024.0);
+                                        let tot_mb = d.total_bytes as f32 / (1024.0 * 1024.0);
+                                        let progress_text = format!(
+                                            "{:.0}% ({:.1} / {:.1} MB)",
+                                            frac * 100.0,
+                                            dl_mb,
+                                            tot_mb
+                                        );
+
+                                        let bar = egui::ProgressBar::new(frac)
+                                            .text(
+                                                RichText::new(progress_text)
+                                                    .size(9.0)
+                                                    .color(Color32::WHITE),
+                                            )
+                                            .desired_width(140.0)
+                                            .corner_radius(2.0);
+                                        ui.add(bar);
+                                    }
+                                } else if let Some(req) = manifest.models.first() {
                                     if let Some(ref url) = req.url {
                                         let dl_btn = egui::Button::new(
                                             RichText::new(msg_download)
@@ -612,18 +716,142 @@ impl PluginManagerApp {
                                                 .join("models");
                                             let _ = std::fs::create_dir_all(&target_dir);
                                             let target_file = target_dir.join(&req.name);
+                                            let part_file =
+                                                target_dir.join(format!("{}.part", &req.name));
                                             let url_clone = url.clone();
+                                            let model_name = req.name.clone();
+                                            let plugin_id = manifest.id.clone();
+                                            let total_bytes =
+                                                req.size_mb.map(|mb| mb * 1024 * 1024).unwrap_or(0);
 
+                                            let (tx, rx) = std::sync::mpsc::channel();
+                                            self.download_event_rx = Some(rx);
+                                            self.active_download = Some(ModelDownloadProgress {
+                                                model_name: model_name.clone(),
+                                                plugin_id: plugin_id.clone(),
+                                                downloaded_bytes: 0,
+                                                total_bytes,
+                                                speed_bytes_sec: 0.0,
+                                            });
+
+                                            let done_flag = Arc::new(AtomicBool::new(false));
+                                            let done_flag_monitor = done_flag.clone();
+
+                                            // Worker thread: executes curl writing to .part file
+                                            let part_file_worker = part_file.clone();
+                                            let target_file_worker = target_file.clone();
+                                            let model_name_worker = model_name.clone();
+                                            let tx_worker = tx.clone();
                                             std::thread::spawn(move || {
-                                                let _ = std::process::Command::new("curl.exe")
+                                                // Clean up any stale partial download first
+                                                let _ = std::fs::remove_file(&part_file_worker);
+
+                                                let status = std::process::Command::new("curl.exe")
                                                     .args([
                                                         "-L",
                                                         "-o",
-                                                        target_file.to_str().unwrap_or(""),
+                                                        part_file_worker.to_str().unwrap_or(""),
                                                         &url_clone,
                                                     ])
-                                                    .output();
+                                                    .status();
+
+                                                done_flag.store(true, Ordering::SeqCst);
+
+                                                match status {
+                                                    Ok(exit_status) if exit_status.success() => {
+                                                        // Atomic rename from .part to final file
+                                                        if let Err(e) = std::fs::rename(
+                                                            &part_file_worker,
+                                                            &target_file_worker,
+                                                        ) {
+                                                            let _ = tx_worker.send(
+                                                                ModelDownloadEvent::Error {
+                                                                    model_name: model_name_worker,
+                                                                    error: e.to_string(),
+                                                                },
+                                                            );
+                                                        } else {
+                                                            let _ = tx_worker.send(
+                                                                ModelDownloadEvent::Finished {
+                                                                    model_name: model_name_worker,
+                                                                },
+                                                            );
+                                                        }
+                                                    }
+                                                    Ok(exit_status) => {
+                                                        let _ =
+                                                            std::fs::remove_file(&part_file_worker);
+                                                        let _ = tx_worker.send(
+                                                            ModelDownloadEvent::Error {
+                                                                model_name: model_name_worker,
+                                                                error: format!(
+                                                                    "curl exited with code {:?}",
+                                                                    exit_status.code()
+                                                                ),
+                                                            },
+                                                        );
+                                                    }
+                                                    Err(e) => {
+                                                        let _ =
+                                                            std::fs::remove_file(&part_file_worker);
+                                                        let _ = tx_worker.send(
+                                                            ModelDownloadEvent::Error {
+                                                                model_name: model_name_worker,
+                                                                error: e.to_string(),
+                                                            },
+                                                        );
+                                                    }
+                                                }
                                             });
+
+                                            // Monitor thread: polls .part file size every 100ms
+                                            let part_file_monitor = part_file.clone();
+                                            let model_name_monitor = model_name.clone();
+                                            let plugin_id_monitor = plugin_id.clone();
+                                            let tx_monitor = tx;
+                                            std::thread::spawn(move || {
+                                                let mut last_bytes = 0u64;
+                                                let mut last_time = std::time::Instant::now();
+
+                                                while !done_flag_monitor.load(Ordering::SeqCst) {
+                                                    std::thread::sleep(
+                                                        std::time::Duration::from_millis(100),
+                                                    );
+                                                    if let Ok(meta) =
+                                                        std::fs::metadata(&part_file_monitor)
+                                                    {
+                                                        let cur_bytes = meta.len();
+                                                        let now = std::time::Instant::now();
+                                                        let dt = now
+                                                            .duration_since(last_time)
+                                                            .as_secs_f32();
+                                                        let speed = if dt > 0.05
+                                                            && cur_bytes >= last_bytes
+                                                        {
+                                                            (cur_bytes - last_bytes) as f32 / dt
+                                                        } else {
+                                                            0.0
+                                                        };
+                                                        last_bytes = cur_bytes;
+                                                        last_time = now;
+
+                                                        let _ = tx_monitor.send(
+                                                            ModelDownloadEvent::Progress(
+                                                                ModelDownloadProgress {
+                                                                    model_name: model_name_monitor
+                                                                        .clone(),
+                                                                    plugin_id: plugin_id_monitor
+                                                                        .clone(),
+                                                                    downloaded_bytes: cur_bytes,
+                                                                    total_bytes,
+                                                                    speed_bytes_sec: speed,
+                                                                },
+                                                            ),
+                                                        );
+                                                    }
+                                                }
+                                            });
+
                                             download_notice = Some(msg_download_started);
                                         }
                                     }
@@ -636,21 +864,43 @@ impl PluginManagerApp {
         }
 
         if let Some(msg) = download_notice {
-            self.status_text = msg.to_string();
+            self.set_status(msg, false);
         }
     }
 
     /// Tab 3: About
     pub fn render_about_tab(&mut self, ui: &mut Ui, palette: &ThemePalette) {
+        // Poll any background download completion
+        if let Some(ref rx) = self.download_rx {
+            if let Ok(res) = rx.try_recv() {
+                let mut state_guard = self.update_state.lock().unwrap();
+                match res {
+                    Ok((path, is_portable)) => {
+                        *state_guard = crate::updater::UpdateState::Downloaded {
+                            target_path: path,
+                            is_portable,
+                        };
+                    }
+                    Err(e) => {
+                        *state_guard = crate::updater::UpdateState::Error(e);
+                    }
+                }
+                self.download_rx = None;
+            }
+        }
+
         ui.heading(
             RichText::new("PhotoCraft Companion")
                 .size(16.0)
                 .color(palette.text_primary),
         );
         ui.label(
-            RichText::new("Version 1.0.0 (Rust Cargo Workspace & DirectML GPU)")
-                .size(11.0)
-                .color(palette.text_muted),
+            RichText::new(format!(
+                "Version {} (Rust Cargo Workspace & DirectML GPU)",
+                env!("CARGO_PKG_VERSION")
+            ))
+            .size(11.0)
+            .color(palette.text_muted),
         );
         ui.add_space(8.0);
         ui.separator();
@@ -664,6 +914,319 @@ impl PluginManagerApp {
             .size(12.0)
             .color(palette.text_primary),
         );
+
+        ui.add_space(10.0);
+
+        // Community links
+        ui.horizontal(|ui| {
+            ui.hyperlink_to(
+                RichText::new(self.t("GitHub Repository", "Репозиторий GitHub"))
+                    .size(11.0)
+                    .color(palette.accent_blue),
+                crate::updater::COMPANION_GITHUB_URL,
+            );
+
+            ui.label(RichText::new("•").size(11.0).color(palette.text_muted));
+
+            ui.hyperlink_to(
+                RichText::new(self.t(
+                    "Report Issue / Feedback",
+                    "Сообщить об ошибке / Предложить идею",
+                ))
+                .size(11.0)
+                .color(palette.accent_blue),
+                crate::updater::COMPANION_ISSUES_URL,
+            );
+        });
+
+        ui.add_space(10.0);
+
+        // Updater Card
+        egui::Frame::new()
+            .fill(palette.card_inner)
+            .stroke(Stroke::new(1.0, palette.border_stroke))
+            .corner_radius(6.0)
+            .inner_margin(12.0)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(self.t("Software Updates", "Обновления программы"))
+                            .size(13.0)
+                            .strong()
+                            .color(palette.text_primary),
+                    );
+
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let check_btn = egui::Button::new(
+                            RichText::new(self.t("Check for Updates", "Проверить обновления"))
+                                .size(11.0)
+                                .color(Color32::WHITE),
+                        )
+                        .fill(palette.accent_blue)
+                        .corner_radius(4.0)
+                        .min_size(Vec2::new(130.0, 24.0));
+
+                        let is_checking = {
+                            let guard = self.update_state.lock().unwrap();
+                            matches!(*guard, crate::updater::UpdateState::Checking)
+                        };
+
+                        if !is_checking && ui.add(check_btn).clicked() {
+                            let state_arc = self.update_state.clone();
+                            {
+                                let mut guard = state_arc.lock().unwrap();
+                                *guard = crate::updater::UpdateState::Checking;
+                            }
+                            let current_ver = env!("CARGO_PKG_VERSION").to_string();
+                            std::thread::spawn(move || {
+                                match crate::updater::fetch_latest_release(crate::updater::COMPANION_REPO) {
+                                    Ok(res) => {
+                                        let is_newer = crate::updater::is_version_newer(&res.version, &current_ver);
+                                        let mut guard = state_arc.lock().unwrap();
+                                        if is_newer {
+                                            *guard = crate::updater::UpdateState::UpdateAvailable { result: res };
+                                        } else {
+                                            *guard = crate::updater::UpdateState::UpToDate {
+                                                checked_version: res.version,
+                                            };
+                                        }
+                                    }
+                                    Err(err) => {
+                                        let mut guard = state_arc.lock().unwrap();
+                                        *guard = crate::updater::UpdateState::Error(err);
+                                    }
+                                }
+                            });
+                        }
+                    });
+                });
+
+                ui.add_space(8.0);
+
+                // Render current update state
+                let state_clone = {
+                    let guard = self.update_state.lock().unwrap();
+                    guard.clone()
+                };
+
+                match state_clone {
+                    crate::updater::UpdateState::Idle => {
+                        ui.label(
+                            RichText::new(self.t(
+                                "Click 'Check for Updates' to verify the latest release on GitHub.",
+                                "Нажмите «Проверить обновления», чтобы узнать о свежих релизах на GitHub.",
+                            ))
+                            .size(11.0)
+                            .color(palette.text_muted),
+                        );
+                    }
+                    crate::updater::UpdateState::Checking => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                RichText::new(self.t("Checking GitHub for updates...", "Проверка обновлений на GitHub..."))
+                                    .size(11.0)
+                                    .color(palette.accent_blue),
+                            );
+                        });
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    }
+                    crate::updater::UpdateState::UpToDate { checked_version } => {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(self.t("You have the latest version installed", "У вас установлена самая последняя версия"))
+                                    .size(11.0)
+                                    .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
+                            );
+                            ui.label(
+                                RichText::new(format!("(v{})", checked_version))
+                                    .size(10.0)
+                                    .color(palette.text_muted),
+                            );
+                        });
+                    }
+                    crate::updater::UpdateState::UpdateAvailable { result } => {
+                        ui.label(
+                            RichText::new(format!(
+                                "{}: v{} -> v{}",
+                                self.t("New version available", "Доступна новая версия"),
+                                env!("CARGO_PKG_VERSION"),
+                                result.version
+                            ))
+                            .size(12.0)
+                            .strong()
+                            .color(palette.accent_blue),
+                        );
+
+                        if !result.release_notes.is_empty() {
+                            ui.add_space(4.0);
+                            let notes_preview = if result.release_notes.len() > 180 {
+                                format!("{}...", &result.release_notes[..180])
+                            } else {
+                                result.release_notes.clone()
+                            };
+                            ui.label(
+                                RichText::new(notes_preview)
+                                    .size(10.0)
+                                    .color(palette.text_muted),
+                            );
+                        }
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.hyperlink_to(
+                                RichText::new(self.t("View Release Notes", "Список изменений"))
+                                    .size(10.0)
+                                    .color(palette.accent_blue),
+                                &result.html_url,
+                            );
+
+                            for asset in &result.assets {
+                                let label = if asset.is_installer {
+                                    self.t("Download Setup", "Скачать установщик")
+                                } else {
+                                    self.t("Download Portable", "Скачать Portable")
+                                };
+
+                                let btn = egui::Button::new(
+                                    RichText::new(label)
+                                        .size(10.0)
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(palette.accent_blue)
+                                .corner_radius(4.0);
+
+                                if ui.add(btn).clicked() {
+                                    let downloads_dir = crate::updater::get_downloads_dir();
+                                    let target_path = downloads_dir.join(&asset.name);
+                                    let (tx, rx) = std::sync::mpsc::channel();
+                                    self.download_rx = Some(rx);
+
+                                    {
+                                        let mut guard = self.update_state.lock().unwrap();
+                                        *guard = crate::updater::UpdateState::Downloading {
+                                            asset_name: asset.name.clone(),
+                                            target_path: target_path.clone(),
+                                            is_portable: asset.is_portable,
+                                        };
+                                    }
+
+                                    crate::updater::download_file_background(
+                                        asset.download_url.clone(),
+                                        target_path,
+                                        asset.is_portable,
+                                        tx,
+                                    );
+                                }
+                            }
+                        });
+                    }
+                    crate::updater::UpdateState::Downloading {
+                        ref asset_name,
+                        ref target_path,
+                        ..
+                    } => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                RichText::new(format!(
+                                    "{} {}: {}",
+                                    self.t("Downloading", "Загрузка"),
+                                    asset_name,
+                                    target_path.display()
+                                ))
+                                .size(11.0)
+                                .color(palette.accent_blue),
+                            );
+                        });
+                        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+                    }
+                    crate::updater::UpdateState::Downloaded {
+                        ref target_path,
+                        is_portable,
+                    } => {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(self.t("Update downloaded successfully!", "Обновление успешно загружено!"))
+                                    .size(11.0)
+                                    .strong()
+                                    .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
+                            );
+                        });
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            if is_portable {
+                                let install_btn = egui::Button::new(
+                                    RichText::new(self.t("Apply and Restart", "Установить и перезапустить"))
+                                        .size(11.0)
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(palette.accent_blue)
+                                .corner_radius(4.0);
+
+                                if ui.add(install_btn).clicked() {
+                                    match crate::updater::prepare_portable_update(target_path) {
+                                        Ok(script) => {
+                                            self.pending_restart_script = Some(script);
+                                            self.show_restart_modal = true;
+                                        }
+                                        Err(e) => {
+                                            let mut guard = self.update_state.lock().unwrap();
+                                            *guard = crate::updater::UpdateState::Error(e);
+                                        }
+                                    }
+                                }
+                            } else {
+                                let run_btn = egui::Button::new(
+                                    RichText::new(self.t("Run Installer", "Запустить установщик"))
+                                        .size(11.0)
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(palette.accent_blue)
+                                .corner_radius(4.0);
+
+                                if ui.add(run_btn).clicked() {
+                                    if let Err(e) = crate::updater::launch_installer(target_path) {
+                                        let mut guard = self.update_state.lock().unwrap();
+                                        *guard = crate::updater::UpdateState::Error(e);
+                                    }
+                                }
+                            }
+
+                            let show_btn = egui::Button::new(
+                                RichText::new(self.t("Show in Folder", "Показать в папке"))
+                                    .size(11.0)
+                                    .color(palette.text_primary),
+                            )
+                            .corner_radius(4.0);
+
+                            if ui.add(show_btn).clicked() {
+                                crate::updater::reveal_in_folder(target_path);
+                            }
+                        });
+                    }
+                    crate::updater::UpdateState::ApplyingUpdate => {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(
+                                RichText::new(self.t("Restarting application...", "Перезапуск приложения..."))
+                                    .size(11.0)
+                                    .color(palette.accent_blue),
+                            );
+                        });
+                    }
+                    crate::updater::UpdateState::Error(ref err) => {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(format!("{}: {}", self.t("Error", "Ошибка"), err))
+                                    .size(11.0)
+                                    .color(Color32::from_rgb(0xe5, 0x39, 0x35)),
+                            );
+                        });
+                    }
+                }
+            });
 
         ui.add_space(12.0);
         ui.label(
@@ -685,6 +1248,9 @@ impl PluginManagerApp {
     ) {
         let card_fill = palette.card_fill;
 
+        // Poll background model download events
+        self.poll_download_events();
+
         // 1. Pinned bottom panel: status/connection indicator on left, [ Close ] [ Save ] on right
         egui::Panel::bottom("manager_bottom_panel")
             .frame(
@@ -694,37 +1260,96 @@ impl PluginManagerApp {
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    if !self.status_text.is_empty() {
+                    if let Some(ref d) = self.active_download {
+                        // Request frequent repaint while downloading
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(100));
+
+                        ui.spinner();
+                        ui.add_space(2.0);
+
+                        let frac = if d.total_bytes > 0 {
+                            (d.downloaded_bytes as f32 / d.total_bytes as f32).clamp(0.0, 1.0)
+                        } else {
+                            0.0
+                        };
+                        let dl_mb = d.downloaded_bytes as f32 / (1024.0 * 1024.0);
+                        let tot_mb = d.total_bytes as f32 / (1024.0 * 1024.0);
+                        let speed_mb = d.speed_bytes_sec / (1024.0 * 1024.0);
+
+                        let downloading_prefix = self.t("Downloading", "Загрузка");
+                        let status_line = format!(
+                            "⏳ {} {}: {:.0}% ({:.1} / {:.1} MB) • {:.1} MB/s",
+                            downloading_prefix,
+                            d.model_name,
+                            frac * 100.0,
+                            dl_mb,
+                            tot_mb,
+                            speed_mb
+                        );
+
                         ui.label(
-                            RichText::new(&self.status_text)
+                            RichText::new(status_line)
                                 .size(11.0)
                                 .color(palette.accent_blue),
                         );
                     } else {
-                        let state = *self.connection_state.read().unwrap();
-                        Self::render_status_bullet(ui, state);
-                        ui.add_space(2.0);
-                        let (text, color) = match state {
-                            ConnectionState::Connected => (
-                                self.t(
-                                    "Connected (127.0.0.1:18492)",
-                                    "Подключено (127.0.0.1:18492)",
+                        // Check if temporary status text has expired
+                        if !self.status_text.is_empty() {
+                            if let Some(ts) = self.status_timestamp {
+                                let timeout = if self.status_is_error {
+                                    std::time::Duration::from_millis(6000)
+                                } else {
+                                    std::time::Duration::from_millis(3500)
+                                };
+                                if ts.elapsed() >= timeout {
+                                    self.status_text.clear();
+                                    self.status_timestamp = None;
+                                } else {
+                                    ui.ctx().request_repaint_after(
+                                        std::time::Duration::from_millis(200),
+                                    );
+                                }
+                            }
+                        }
+
+                        if !self.status_text.is_empty() {
+                            let text_color = if self.status_is_error {
+                                Color32::from_rgb(0xe5, 0x39, 0x35)
+                            } else {
+                                Color32::from_rgb(0x28, 0xa7, 0x45)
+                            };
+                            ui.label(
+                                RichText::new(&self.status_text)
+                                    .size(11.0)
+                                    .color(text_color),
+                            );
+                        } else {
+                            let state = *self.connection_state.read().unwrap();
+                            Self::render_status_bullet(ui, state);
+                            ui.add_space(2.0);
+                            let (text, color) = match state {
+                                ConnectionState::Connected => (
+                                    self.t(
+                                        "Connected (127.0.0.1:18492)",
+                                        "Подключено (127.0.0.1:18492)",
+                                    ),
+                                    Color32::from_rgb(0x28, 0xa7, 0x45),
                                 ),
-                                Color32::from_rgb(0x28, 0xa7, 0x45),
-                            ),
-                            ConnectionState::AuthRequired => (
-                                self.t(
-                                    "Auth Required (Token Missing or Invalid)",
-                                    "Требуется авторизация (Токен отсутствует или неверен)",
+                                ConnectionState::AuthRequired => (
+                                    self.t(
+                                        "Auth Required (Token Missing or Invalid)",
+                                        "Требуется авторизация (Токен отсутствует или неверен)",
+                                    ),
+                                    Color32::from_rgb(0xea, 0x86, 0x00),
                                 ),
-                                Color32::from_rgb(0xea, 0x86, 0x00),
-                            ),
-                            ConnectionState::Offline => (
-                                self.t("Offline (Socket 18492)", "Офлайн (Сокет 18492)"),
-                                palette.text_muted,
-                            ),
-                        };
-                        ui.label(RichText::new(text).size(11.0).color(color));
+                                ConnectionState::Offline => (
+                                    self.t("Offline (Socket 18492)", "Офлайн (Сокет 18492)"),
+                                    palette.text_muted,
+                                ),
+                            };
+                            ui.label(RichText::new(text).size(11.0).color(color));
+                        }
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -786,6 +1411,74 @@ impl PluginManagerApp {
                             });
                     });
             });
+
+        // Restart confirmation modal for Portable updates
+        if self.show_restart_modal {
+            let mut close_modal = false;
+            let mut trigger_restart = false;
+
+            egui::Window::new(self.t("Confirm Application Restart", "Подтверждение перезапуска"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+                .min_width(380.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(palette.card_fill)
+                        .stroke(Stroke::new(1.0, palette.border_stroke))
+                        .corner_radius(8.0)
+                        .inner_margin(16.0),
+                )
+                .show(ui.ctx(), |ui| {
+                    ui.label(
+                        RichText::new(self.t(
+                            "PhotoCraft Companion needs to close to replace files and restart with the new version. Continue?",
+                            "Компаньону необходимо закрыться для замены файлов и перезапуститься с новой версией. Продолжить?",
+                        ))
+                        .size(12.0)
+                        .color(palette.text_primary),
+                    );
+
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        let ok_btn = egui::Button::new(
+                            RichText::new(self.t("Restart Now", "Перезапустить сейчас"))
+                                .size(11.0)
+                                .color(Color32::WHITE),
+                        )
+                        .fill(palette.accent_blue)
+                        .corner_radius(4.0)
+                        .min_size(Vec2::new(110.0, 24.0));
+
+                        if ui.add(ok_btn).clicked() {
+                            trigger_restart = true;
+                        }
+
+                        let cancel_btn = egui::Button::new(
+                            RichText::new(self.t("Cancel", "Отмена"))
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        )
+                        .fill(palette.button_secondary)
+                        .corner_radius(4.0)
+                        .min_size(Vec2::new(70.0, 24.0));
+
+                        if ui.add(cancel_btn).clicked() {
+                            close_modal = true;
+                        }
+                    });
+                });
+
+            if close_modal {
+                self.show_restart_modal = false;
+            }
+
+            if trigger_restart {
+                if let Some(ref script) = self.pending_restart_script {
+                    let _ = crate::updater::apply_update_and_restart(script);
+                }
+            }
+        }
     }
 }
 
@@ -881,6 +1574,73 @@ mod tests {
         let loaded = CompanionConfig::load_or_default(&app.config_path);
         assert_eq!(loaded.port, 19999);
         assert_eq!(loaded.theme, "light");
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_plugin_manager_app_status_and_download_events() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "mgr_status_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_file = temp_dir.join("preferences.json");
+        let is_connected = Arc::new(AtomicBool::new(false));
+
+        let mut app = PluginManagerApp::new(vec![], &prefs_file, is_connected);
+        app.current_language = Language::En;
+
+        // Test set_status
+        app.set_status("Operation complete", false);
+        assert_eq!(app.status_text, "Operation complete");
+        assert!(!app.status_is_error);
+        assert!(app.status_timestamp.is_some());
+
+        // Test download events channel
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.download_event_rx = Some(rx);
+
+        tx.send(ModelDownloadEvent::Progress(ModelDownloadProgress {
+            model_name: "test.onnx".to_string(),
+            plugin_id: "test_plugin".to_string(),
+            downloaded_bytes: 500,
+            total_bytes: 1000,
+            speed_bytes_sec: 100.0,
+        }))
+        .unwrap();
+
+        app.poll_download_events();
+        assert!(app.active_download.is_some());
+        let active = app.active_download.as_ref().unwrap();
+        assert_eq!(active.model_name, "test.onnx");
+        assert_eq!(active.downloaded_bytes, 500);
+
+        // Finished event
+        tx.send(ModelDownloadEvent::Finished {
+            model_name: "test.onnx".to_string(),
+        })
+        .unwrap();
+
+        app.poll_download_events();
+        assert!(app.active_download.is_none());
+        assert!(app.status_text.contains("test.onnx"));
+        assert!(!app.status_is_error);
+
+        // Error event
+        tx.send(ModelDownloadEvent::Error {
+            model_name: "err.onnx".to_string(),
+            error: "Connection timeout".to_string(),
+        })
+        .unwrap();
+
+        app.poll_download_events();
+        assert!(app.active_download.is_none());
+        assert!(app.status_text.contains("err.onnx"));
+        assert!(app.status_is_error);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

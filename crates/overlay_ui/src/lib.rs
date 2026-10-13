@@ -3,6 +3,7 @@ pub mod manager;
 pub mod offline_modal;
 pub mod theme;
 pub mod toolstrip;
+pub mod updater;
 pub mod win32_window;
 
 pub use icons::{get_egui_icon_data, get_icon_rgba, get_tray_icon, ICON_DARK_SVG, ICON_LIGHT_SVG};
@@ -10,6 +11,7 @@ pub use manager::{ActiveTab, PluginManagerApp};
 pub use offline_modal::OfflineModalApp;
 pub use theme::{ThemeMode, ThemePalette};
 pub use toolstrip::ToolstripApp;
+pub use updater::{UpdateCheckResult, UpdateState};
 pub use win32_window::{calculate_toolstrip_spawn_pos, find_photocraft_window_rect};
 
 use core_contracts::{ButtonConfig, CompanionError, Result};
@@ -37,10 +39,35 @@ impl OverlayBar {
                     core_contracts::PluginType::NoCode => Some("bw".to_string()),
                     _ => None,
                 });
+                let icon_path = match (&m.plugin_dir, &m.icon) {
+                    (Some(dir), Some(icon_file)) => {
+                        let path = dir.join(icon_file);
+                        if path.exists() {
+                            Some(path)
+                        } else {
+                            let default_svg = dir.join("icon.svg");
+                            if default_svg.exists() {
+                                Some(default_svg)
+                            } else {
+                                None
+                            }
+                        }
+                    }
+                    (Some(dir), None) => {
+                        let default_svg = dir.join("icon.svg");
+                        if default_svg.exists() {
+                            Some(default_svg)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
                     icon,
+                    icon_path,
                 });
             }
         }
@@ -57,11 +84,13 @@ impl OverlayBar {
                 label: "AI Remove BG".to_string(),
                 action: "ai.photocraft.plugins.remove_bg".to_string(),
                 icon: Some("wand".to_string()),
+                icon_path: None,
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
                 action: "macro.photocraft.plugins.black_and_white".to_string(),
                 icon: Some("bw".to_string()),
+                icon_path: None,
             },
         ]
     }
@@ -179,9 +208,78 @@ impl CompanionOverlayApp {
             tracing::warn!("Failed to save toolstrip layout config: {}", e);
         }
     }
+
+    /// Hides the floating toolbar into the system tray via standard Visible(false).
+    ///
+    /// In eframe 0.36.2, when the window is hidden (`Visible(false)`), eframe enters its
+    /// `is_invisible_or_minimized` state, which drives UI updates every 100ms
+    /// (`INVISIBLE_WINDOW_REPAINT_INTERVAL`) without needing Windows GDI / DWM `WM_PAINT` messages.
+    /// This completely avoids the deadlock of parking windows off-screen.
+    pub fn hide_toolbar_to_tray(&mut self, ctx: &egui::Context) {
+        self.is_hidden_to_tray = true;
+        self.save_layout_state();
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+    }
+
+    /// Restores the floating toolbar from the system tray back to its active size, saved position, and visibility.
+    pub fn restore_toolbar_from_tray(&mut self, ctx: &egui::Context) {
+        self.is_hidden_to_tray = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+
+        let connected = self.is_connected.load(Ordering::Relaxed);
+        if connected {
+            let size = self.toolstrip.calculate_size();
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            if let Some(pos) = self.last_saved_pos {
+                if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0
+                {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                        pos[0], pos[1],
+                    )));
+                } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                        pos[0], pos[1],
+                    )));
+                }
+            } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                    pos[0], pos[1],
+                )));
+            }
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
+                280.0, 160.0,
+            )));
+            if let Some(pos) = calculate_toolstrip_spawn_pos(280.0) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                    pos[0], pos[1],
+                )));
+            }
+        }
+
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    /// Processes atomic flags triggered by the system tray menu or tray icon clicks.
+    pub fn process_tray_flags(&mut self, ctx: &egui::Context) {
+        if self.restore_toolbar_flag.swap(false, Ordering::Relaxed) {
+            self.restore_toolbar_from_tray(ctx);
+        }
+        if self.open_manager_flag.swap(false, Ordering::Relaxed) {
+            // Restore toolbar first so event loop is in active WindowEvent::RedrawRequested context,
+            // preventing the eframe `new_events` panic on secondary viewports (BUG-042).
+            self.restore_toolbar_from_tray(ctx);
+            self.show_manager = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        }
+    }
 }
 
 impl eframe::App for CompanionOverlayApp {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.process_tray_flags(ctx);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
@@ -205,6 +303,7 @@ impl eframe::App for CompanionOverlayApp {
                     }
                     "tray_manager" => {
                         manager_flag.store(true, Ordering::Relaxed);
+                        ctx_tray.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                         ctx_tray.send_viewport_cmd(egui::ViewportCommand::Focus);
                         ctx_tray.request_repaint();
                     }
@@ -218,6 +317,7 @@ impl eframe::App for CompanionOverlayApp {
                 move |event: tray_icon::TrayIconEvent| {
                     if let tray_icon::TrayIconEvent::Click {
                         button: tray_icon::MouseButton::Left,
+                        button_state: tray_icon::MouseButtonState::Up,
                         ..
                     } = event
                     {
@@ -231,16 +331,7 @@ impl eframe::App for CompanionOverlayApp {
         }
 
         // Process asynchronous tray commands instantly
-        if self.restore_toolbar_flag.swap(false, Ordering::Relaxed) {
-            self.is_hidden_to_tray = false;
-            ui.ctx()
-                .send_viewport_cmd(egui::ViewportCommand::Visible(true));
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
-        }
-        if self.open_manager_flag.swap(false, Ordering::Relaxed) {
-            self.show_manager = true;
-            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Focus);
-        }
+        self.process_tray_flags(&ctx);
 
         // Keep reactive loop active so IPC connection state is updated
         ui.ctx()
@@ -251,40 +342,42 @@ impl eframe::App for CompanionOverlayApp {
 
         let connected = self.is_connected.load(Ordering::Relaxed);
 
-        // Adjust window size if connection state changed
+        // Adjust window size if connection state changed (only when not parked in tray)
         if connected != self.last_connected_state {
             self.last_connected_state = connected;
-            if connected {
-                let size = self.toolstrip.calculate_size();
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-                if let Some(pos) = self.last_saved_pos {
-                    if pos[0].is_finite()
-                        && pos[1].is_finite()
-                        && pos[0] >= -100.0
-                        && pos[1] >= -100.0
-                    {
-                        ui.ctx()
-                            .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                                pos[0], pos[1],
-                            )));
+            if !self.is_hidden_to_tray {
+                if connected {
+                    let size = self.toolstrip.calculate_size();
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                    if let Some(pos) = self.last_saved_pos {
+                        if pos[0].is_finite()
+                            && pos[1].is_finite()
+                            && pos[0] >= -100.0
+                            && pos[1] >= -100.0
+                        {
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::OuterPosition(
+                                    egui::pos2(pos[0], pos[1]),
+                                ));
+                        } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::OuterPosition(
+                                    egui::pos2(pos[0], pos[1]),
+                                ));
+                        }
                     } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
                         ui.ctx()
                             .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                                 pos[0], pos[1],
                             )));
                     }
-                } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                } else {
                     ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                            pos[0], pos[1],
+                        .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
+                            280.0, 160.0,
                         )));
                 }
-            } else {
-                ui.ctx()
-                    .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                        280.0, 160.0,
-                    )));
             }
         }
 
@@ -304,7 +397,7 @@ impl eframe::App for CompanionOverlayApp {
             .collect();
         if current_enabled != toolstrip_actions {
             self.toolstrip.buttons = OverlayBar::from_manifests(&self.manager.manifests);
-            if connected {
+            if connected && !self.is_hidden_to_tray {
                 let size = self.toolstrip.calculate_size();
                 ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
             }
@@ -362,6 +455,8 @@ impl eframe::App for CompanionOverlayApp {
                         let min = outer_rect.min;
                         if min.x.is_finite()
                             && min.y.is_finite()
+                            && min.x >= -100.0
+                            && min.y >= -100.0
                             && (min.x.abs() > 0.001 || min.y.abs() > 0.001)
                         {
                             let cur_pos = [min.x, min.y];
@@ -386,10 +481,7 @@ impl eframe::App for CompanionOverlayApp {
                 }
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
-                    self.is_hidden_to_tray = true;
-                    self.save_layout_state();
-                    ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                    self.hide_toolbar_to_tray(&ctx);
                 }
 
                 // BUG-023: Render external floating tooltip popup viewport if any tool button is hovered
@@ -406,8 +498,12 @@ impl eframe::App for CompanionOverlayApp {
                         window_min + egui::vec2(btn_rect.left(), btn_rect.bottom() + 6.0)
                     };
 
-                    let char_count = tt_text.chars().count();
-                    let tt_width = (char_count as f32 * 7.5 + 20.0).clamp(60.0, 320.0);
+                    let text_galley = ui.painter().layout_no_wrap(
+                        tt_text.clone(),
+                        egui::FontId::proportional(11.0),
+                        palette.text_primary,
+                    );
+                    let tt_width = (text_galley.size().x + 18.0).clamp(40.0, 320.0);
                     let tt_height = 24.0;
 
                     let vp = egui::ViewportBuilder::default()
@@ -539,8 +635,12 @@ impl eframe::App for CompanionOverlayApp {
                             window_rect.min + egui::vec2(0.0, window_rect.height() + 6.0)
                         };
 
-                        let char_count = hud_text.chars().count();
-                        let hud_width = (char_count as f32 * 7.5 + 24.0).clamp(140.0, 360.0);
+                        let hud_galley = ui.painter().layout_no_wrap(
+                            hud_text.clone(),
+                            egui::FontId::proportional(11.0),
+                            palette.text_primary,
+                        );
+                        let hud_width = (hud_galley.size().x + 32.0).clamp(80.0, 360.0);
                         let hud_height = 26.0;
 
                         let vp = egui::ViewportBuilder::default()
@@ -832,6 +932,7 @@ mod tests {
             label: "Custom Action".to_string(),
             action: "custom.action".to_string(),
             icon: Some("custom".to_string()),
+            icon_path: None,
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 
@@ -913,6 +1014,61 @@ mod tests {
         assert_eq!(app_restored.last_saved_pos, Some([420.0, 180.0]));
         assert!(app_restored.toolstrip.is_vertical);
         assert_eq!(app_restored.toolstrip.calculate_size().x, 50.0);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_tray_hide_and_open_manager_lifecycle() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "tray_lifecycle_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_file = temp_dir.join("preferences.json");
+        std::fs::write(&prefs_file, "{}").unwrap();
+
+        let is_connected = Arc::new(AtomicBool::new(true));
+        let mut app = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected,
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+        );
+
+        let ctx = egui::Context::default();
+        app.last_saved_pos = Some([300.0, 200.0]);
+
+        // 1. Hide toolbar to tray: must preserve saved position and set is_hidden_to_tray = true
+        app.hide_toolbar_to_tray(&ctx);
+        assert!(app.is_hidden_to_tray);
+        assert!(!app.show_manager);
+        assert_eq!(app.last_saved_pos, Some([300.0, 200.0]));
+
+        // 2. Trigger open_manager_flag while toolbar is hidden to tray:
+        // Both manager opens and toolbar is safely restored to prevent eframe secondary viewport panic (BUG-042).
+        app.open_manager_flag.store(true, Ordering::Relaxed);
+        app.process_tray_flags(&ctx);
+        assert!(app.show_manager);
+        assert!(!app.is_hidden_to_tray);
+        assert!(!app.open_manager_flag.load(Ordering::Relaxed));
+
+        // 3. Re-hide toolbar and trigger restore_toolbar_flag from tray
+        app.hide_toolbar_to_tray(&ctx);
+        assert!(app.is_hidden_to_tray);
+        app.restore_toolbar_flag.store(true, Ordering::Relaxed);
+        app.process_tray_flags(&ctx);
+        assert!(!app.is_hidden_to_tray);
+        assert!(!app.restore_toolbar_flag.load(Ordering::Relaxed));
+        assert_eq!(app.last_saved_pos, Some([300.0, 200.0]));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

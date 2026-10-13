@@ -890,15 +890,218 @@ The user instructed: *"Let's save what we currently have in a new branch, and in
    - Removed `hotkey_overrides` from `CompanionConfig`.
    - Removed `hotkey` from `ButtonConfig`.
    - Removed `default_hotkey` from `PluginManifest` and all installed `plugin.json` files.
-4. **UI Refactoring (`crates/overlay_ui`):**
+4. **UI Refactoring & Tooltip Exact Width Calibration (`crates/overlay_ui`, BUG-041):**
    - Removed the `[ Hotkeys ]` tab from the Plugin Manager (leaving a clean 3-tab layout: `[ General ]`, `[ Plugins ]`, `[ About ]`).
    - Removed hotkey badges from plugin list cards.
-   - Stripped shortcut suffix brackets from toolstrip button tooltips.
+   - Stripped shortcut suffix brackets from toolstrip button tooltips and replaced the rough character-count width heuristic (`char_count * 7.5 + 20.0`, which left ~60–82px of trailing blank space on the right) with exact glyph layout width measurement via `ui.painter().layout_no_wrap(...)` (`text_galley.size().x + 18.0`) for both hover tooltips and HUD progress toasts.
 
 ### 3. Verification
-- All 60 Cargo workspace tests across all 5 remaining crates pass with **100% green status** (`cargo test --workspace -j 1`).
+- All 63 Cargo workspace tests across all 5 remaining crates pass with **100% green status** (`cargo test --workspace -j 1`).
 - Translation linter `i18n_lint_test` verified clean.
 - The floating toolstrip is confirmed as the sole, non-intrusive, and reliable control surface for PhotoCraft extensions.
 
 
+
+
+
+---
+
+## Chapter 33: Unraveling the `eframe 0.36.2` Crash When Opening Plugins Manager from Hidden Tray State (BUG-042)
+
+*Timestamp: October 12, 2026, 23:50 (~20 mins)*
+
+### 1. Crash Scenario & Symptom
+During field testing of the system tray workflow, a critical crash surfaced: when the floating toolbar was visible on screen, clicking **Plugins Manager** in the system tray menu opened the manager window cleanly. However, if the toolbar was first hidden to the system tray (via the toolbar's hide button), clicking **Plugins Manager** in the tray menu immediately crashed the process with a panic inside `egui-0.36.2\src\context.rs:4168`:
+```text
+egui backend is implemented incorrectly - the user callback was never called
+```
+
+### 2. Deep Dive into `eframe 0.36.2` & `egui 0.36.2` Internals
+Tracing the execution path across `CompanionOverlayApp`, `eframe::native::run`, and `eframe::native::glow_integration` uncovered two interacting architectural pitfalls in `eframe 0.36.2` when `ViewportCommand::Visible(false)` is applied to the root viewport on Windows:
+
+1. **`App::ui` Skipped When `show_ui == false`:**
+   When `ViewportId::ROOT` is marked `Visible(false)` and no child viewports exist yet, `eframe` computes `show_ui = is_visible || is_viewport_or_descendant_visible(...) == false` and skips `App::ui(...)` entirely, calling only `App::logic(...)` (`update_logic_only`).
+2. **`run_ui_and_paint` Invoked Outside `event_loop_context` in `new_events`:**
+   In `eframe-0.36.2/src/native/run.rs`, `ApplicationHandler::new_events` calls `self.check_redraw_requests(event_loop)` **without** wrapping it in `event_loop_context::with_event_loop_context(...)`. For visible windows, `check_redraw_requests` merely calls `window.request_redraw()`, and the actual UI pass runs inside `window_event(RedrawRequested)` where `with_event_loop_context` is active. However, for invisible windows (`is_invisible_or_minimized(&window) == true`), `check_redraw_requests` invokes `run_ui_and_paint` **directly inside `new_events`** while the thread-local `CURRENT_EVENT_LOOP` pointer is `None`!
+3. **Early Return in `render_immediate_viewport`:**
+   When `ctx.show_viewport_immediate("plugin_manager_window", ...)` is called during that pass, `render_immediate_viewport` attempts to create the child window via `event_loop_context::with_current_event_loop(...)`, receives `None`, leaves `viewport.window = None`, and returns early without invoking `viewport_ui_cb`. `egui` immediately panics at `out.expect("egui backend is implemented incorrectly - the user callback was never called")`.
+
+### 3. Architectural Solution: Off-Screen Stealth Parking
+Because the root floating toolbar viewport is already borderless (`.with_decorations(false)`), transparent (`.with_transparent(true)`), and excluded from the Windows taskbar (`.with_taskbar(false)`):
+1. **`hide_toolbar_to_tray`:**
+   Instead of sending `ViewportCommand::Visible(false)` to the root window (which triggers `eframe`'s buggy `invisible_window_ids` path), hiding to tray saves the user's on-screen coordinates to `companion_config.json`, sets `is_hidden_to_tray = true`, and parks the root viewport off-screen (`OuterPosition(-32000.0, -32000.0)`, `InnerSize(1.0, 1.0)`) while keeping `Visible(true)`.
+2. **Independent Manager Launch (`process_tray_flags` & `App::logic`):**
+   Because the root window is never flagged as `is_invisible_or_minimized`, all redraws execute through standard `WindowEvent::RedrawRequested` with an active `CURRENT_EVENT_LOOP`. Clicking **Plugins Manager** in the tray opens `plugin_manager_window` cleanly and immediately while the toolbar remains parked in the tray.
+3. **Exact Toolbar Restoration (`restore_toolbar_from_tray`):**
+   Clicking **PhotoCraft Toolbar** in the tray menu or left-clicking the tray icon clears `is_hidden_to_tray`, restores the toolbar's adaptive dimensions (`calculate_size()`), and moves it back to `last_saved_pos`.
+
+### 4. Verification
+- Added unit test `test_tray_hide_and_open_manager_lifecycle` in `crates/overlay_ui/src/lib.rs`.
+- All **64 workspace tests** pass with 100% green status (`cargo test --workspace -j 1`).
+- Code formatting (`cargo fmt --all -- --check`) and release binary compilation (`cargo build --release -j 1`) verified cleanly.
+- Defect `BUG-042` is resolved and closed.
+
+---
+
+## Chapter 34: Tray Click Separation & Elimination of the DWM/GDI Sleep Trap (BUG-043)
+
+*Timestamp: October 13, 2026, 10:35 (~15 mins)*
+
+### 1. Symptoms and Challenges
+Following the initial fix for `eframe` secondary viewport panics, two interrelated usability and runtime issues surfaced:
+1. **Left-Click Conflict**: By default, `tray-icon` had `menu_on_left_click: true` enabled. A left click on the tray icon attempted to both emit a click event and show the modal Win32 `TrackPopupMenu`, causing the toolbar restore action to be obstructed by the context menu popup.
+2. **DWM/GDI Sleep Trap for Off-Screen Windows**: Parking the toolbar at `(-32000, -32000)` left the window with `Visible(true)`. For visible windows, `eframe` relies on GDI/DWM `RedrawWindow(RDW_INTERNALPAINT)` to receive `WM_PAINT`. However, Windows DWM and GDI **refuse to send `WM_PAINT`** to windows that have zero pixels on any physical monitor. As soon as the user opened the Plugins Manager from the tray and subsequently closed it, the application had no visible pixels on screen. `eframe` permanently fell asleep inside `MsgWaitForMultipleObjectsEx`, rendering tray interactions unresponsive.
+
+### 2. Robust Tray Architecture Implementation
+We implemented a clean, bulletproof solution:
+1. **Separating Left Click and Context Menu in `main.rs`:**
+   Added `.with_menu_on_left_click(false)` to `TrayIconBuilder`. Responsibilities are now strictly separated:
+   - **Left Click**: Instantly restores and focuses the floating toolbar.
+   - **Right Click**: Opens the Win32 context menu.
+2. **Returning to Standard `Visible(false)` in `overlay_ui/src/lib.rs`:**
+   Replaced off-screen coordinate parking in `hide_toolbar_to_tray` with standard `ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false))`. In this state, `eframe` activates its `is_invisible_or_minimized` path, running UI passes via internal `INVISIBLE_WINDOW_REPAINT_INTERVAL` (100 ms) timer and winit `UserEvent` wakeups without relying on GDI `WM_PAINT`. The application **never gets stuck or sleeps indefinitely**.
+3. **Preventing Secondary Viewport Panics (BUG-042 Guard):**
+   When the user selects **«Plugins Manager»** in the tray menu:
+   - `restore_toolbar_from_tray(ctx)` is invoked first, making the root toolbar visible at its normal position.
+   - This smoothly places `eframe` into its standard `WindowEvent::RedrawRequested` context where `CURRENT_EVENT_LOOP` is guaranteed valid.
+   - Then `self.show_manager = true` is set. The plugin manager window is created and shown instantly without panics or crashes.
+
+### 3. Results
+- All workspace tests passed with **100% green status** (`cargo test --workspace -j 1`).
+- Built the release binary `photocraft_companion.exe`.
+- Repeated tray hide/restore cycles (5+ times consecutively) respond instantly without any lag, freeze, or crash.
+
+---
+
+## Chapter 35: About Tab Overhaul & Built-in In-App Updater
+
+*Timestamp: October 13, 2026, 13:30 (~20 mins)*
+
+### 1. Background and Objectives
+The **About** tab in the settings window previously had a hardcoded version string `1.0.0` and static description text. For a complete release experience, we set out to:
+1. Dynamically display the current workspace package version via `env!("CARGO_PKG_VERSION")`.
+2. Provide clickable hyperlinks to the official GitHub repository (`kobaltgit/photocraft-companion`) and Issues / Feedback tracker.
+3. Build a native in-app update checker and downloader without requiring users to manually check releases in a web browser.
+
+### 2. Architecture of the `updater.rs` Module
+We designed a clean, autonomous, cross-platform module `updater.rs` inside `crates/overlay_ui`:
+- **GitHub Releases API Client:** Queries `api.github.com/repos/kobaltgit/photocraft-companion/releases/latest` in a background worker thread. To maintain a lightweight footprint without adding heavy HTTP dependencies, we utilize system `curl` (with PowerShell fallback on Windows).
+- **SemVer Comparison (`is_version_newer`):** Robust positional parsing and comparison of major, minor, and patch numbers, supporting `v`/`V` prefixes and prerelease suffixes.
+- **Cross-Platform Asset Matching (`is_asset_matching_os`):** Automatically selects compatible installer or portable assets matching the running OS (`Windows`, `macOS`, `Linux`) and architecture (`x86_64`, `aarch64`).
+- **Background Downloader:** Downloads installer or archive files directly into the system `Downloads` directory via an asynchronous channel.
+- **In-Place Portable Update (`prepare_portable_update`):** For `.zip` distributions, extracts files to a temporary directory using `zip`, generates a platform-native update script (`.cmd` for Windows / `.sh` for Unix) that waits for the parent process PID to terminate, copies new files over the existing installation, and restarts the companion automatically.
+- **Interactive UI:** Status spinner, Release Notes preview link, «Download Setup» / «Download Portable» buttons, «Run Installer», «Show in Folder», and a modal confirmation dialog before executing in-place restarts.
+
+### 3. Verification & Compliance
+- Added unit test suite `crates/overlay_ui/tests/updater_test.rs`: 4 unit tests (`test_semver_comparisons`, `test_os_asset_matching`, `test_categorize_asset`, `test_update_state_types`).
+- UI strings strictly formatted through `self.t(...)`, verified by `i18n_lint_test`.
+- All **68 workspace tests** passed with 100% green status (`cargo test --workspace -j 1`).
+
+---
+
+## Chapter 36: Resolving Duplicate Link Opening in Web Browser (BUG-044)
+
+*Timestamp: October 13, 2026, 14:18 (~10 mins)*
+
+### 1. Symptoms and Root Cause
+When clicking links in the "About" tab ("GitHub Repository", "Report Issue / Feedback", "View Release Notes"), the user noticed that two duplicate tabs opened simultaneously in their default browser.
+
+The cause was a conflict between the built-in `eframe` link mechanism and explicit manual code:
+- In `Cargo.toml`, the `"links"` feature was enabled for `eframe`.
+- Under this feature, egui/eframe's `ui.hyperlink_to(...)` automatically intercepts click events and delegates URL opening to the system default browser via `webbrowser`.
+- Our code in `manager.rs` also manually checked:
+  ```rust
+  let repo_resp = ui.hyperlink_to(...);
+  if repo_resp.clicked() {
+      crate::updater::open_browser_url(...);
+  }
+  ```
+  This resulted in both `eframe` and our manual helper triggering browser processes simultaneously upon a single click.
+
+### 2. Solution
+- In `crates/overlay_ui/src/manager.rs`, removed manual `.clicked()` checks and intermediate response variables (`repo_resp`, `issues_resp`, `notes_resp`).
+- Preserved clean declarative `ui.hyperlink_to(...)` calls, allowing `eframe` to handle navigation natively.
+- Kept `open_browser_url` in `updater.rs` intact for programmatic cross-platform browser invocations.
+
+### 3. Verification
+- Localization test `i18n_lint_test` passed cleanly.
+- Updater unit tests `updater_test` confirmed green.
+- Full workspace test suite passed with 100% success (`cargo test --workspace -j 1`, 68 tests).
+- Built release binary `photocraft_companion.exe`.
+- Closed defect `BUG-044`.
+
+---
+
+## Chapter 37: Real-Time Model Download Progress and Auto-Dismissing Status Bar (BUG-045)
+
+*Timestamp: October 13, 2026, 14:35 (~15 mins)*
+
+### 1. Background and Issues
+When clicking the «Download model» button in a plugin's card (Plugins Manager), three interrelated UX issues emerged:
+1. **Persistent Status Bar Notification:** The notification «Model download started...» was written once to `self.status_text` without an expiration timer, indefinitely hiding the PhotoCraft socket status (`🟢 Connected (127.0.0.1:18492)` / `⚪ Offline`). Settings save confirmations and `.pcpl` install alerts behaved similarly.
+2. **Missing Download Feedback:** `curl.exe` executed silently in a background thread. Users had no visibility into downloaded bytes, overall percentage, transfer speed, or completion.
+3. **Premature Model Readiness Badge:** Because `curl.exe` allocated the target file immediately (0 bytes), `manifest.is_model_installed()` (`file.exists()`) prematurely flipped the status badge to green «Model ready» before any weights were downloaded.
+
+### 2. Architectural Solution (Variant B)
+- **Strict Model Validity Contract:** In `crates/core_contracts/src/plugin.rs`, `PluginManifest::is_model_installed` was refined to require `meta.len() > 0` and explicitly exclude files with a `.part` extension. A model is only considered installed when the file exists, is non-empty, and is not an in-flight partial download.
+- **Atomic Downloading:** `curl.exe` downloads directly to `<model_name>.part`. Atomic renaming `.part -> .onnx` occurs only upon 100% exit success (code 0). Any error or interruption immediately cleans up the partial file.
+- **Progress Polling Thread:** A background monitor samples the `.part` file size every 100ms, calculates live throughput (MB/s), and dispatches `ModelDownloadProgress` updates over an `mpsc` channel to the UI.
+- **Card-Level Progress Indicator:** During active download, the download button is replaced with a compact `egui::ProgressBar` displaying completion and size: `45% (76.5 / 168.0 MB)`.
+- **Status Bar Live Telemetry:** The bottom status bar displays an animated spinner with detailed metrics: `⏳ Downloading rmbg-1.4.onnx: 45% (76.5 / 168.0 MB) • 12.4 MB/s`, triggering regular UI repaints every 100ms.
+- **Centralized Auto-Dismissal:** All transient status messages use `set_status(text, is_error)`. Completed downloads display a green status `✔ rmbg-1.4.onnx: Model downloaded successfully!` for **3.5 seconds** before automatically disappearing and restoring the PhotoCraft socket connection state. Errors remain visible for 6 seconds. This also applies to settings save, token load, and `.pcpl` package installations.
+
+### 3. Verification
+- Added unit test `test_plugin_manager_app_status_and_download_events` in `crates/overlay_ui/src/manager.rs`.
+- Added unit assertions for 0-byte and `.part` files in `crates/core_contracts/src/plugin.rs`.
+- All **70 workspace tests** passed with 100% success (`cargo test --workspace -j 1`).
+- Strictly validated with `i18n_lint_test`.
+- Defect `BUG-045` resolved and closed.
+
+---
+
+## Chapter 38: Vector SVG Icon Support for Plugins: Strict SVG, Author Icons, and Zero Hardcoding (October 13, 2026)
+
+*Timestamp: October 13, 2026, 15:20 (~25 mins)*
+
+### 1. Context and Problem Statement
+Until now, buttons on the floating toolstrip (`ToolstripApp`) relied on a temporary text-based workaround: the code contained a hardcoded `match` on plugin identifiers that mapped them to two-letter abbreviations (`"AI"`, `"2X"`, `"GF"`, `"BW"`). This violated the foundational project principle of **Zero-Core Hardcoding**: the companion runtime core must remain completely agnostic of specific plugins, allowing third-party authors to supply their own unique visual iconography and see it appear seamlessly on the toolstrip immediately upon installation.
+
+Furthermore, raster formats (`.png`/`.jpg`) were ruled out due to memory overhead and inevitable blurriness across varying screen scaling levels (HiDPI 125%, 150%, 200%). We adopted an uncompromising architectural standard: **Strict SVG** — purely scalable, resolution-independent vector graphics.
+
+### 2. Architectural Implementation
+
+1. **Dynamic GPU-Accelerated SVG Texture Cache (`SvgIconCache`):**
+   * Built the `SvgIconCache` in `crates/overlay_ui/src/icons.rs`.
+   * On first access, an icon is read from the plugin manifest's `icon_path`, adapted for the active theme, and rasterized on the fly via `resvg` / `tiny-skia` into a high-resolution RGBA buffer (48×48 px) for razor-sharp rendering on HiDPI displays.
+   * The texture is registered in GPU memory via `egui::Context::load_texture` with linear filtering and cached by unique action ID.
+   * When switching between Dark and Light themes, the cache is automatically invalidated and re-rasterized with theme-matched colors.
+
+2. **Intelligent Theme Adaptation (`adapt_svg_for_theme`):**
+   * Implemented automatic color adaptation for vector paths:
+     - Lines and fills using `currentColor` automatically map to the active theme's contrast tone: `#E6E6E6` in Dark Mode and `#1E1E1E` in Light Mode.
+     - White elements (`#ffffff`, `white`) in Light Mode safely invert to `#1E1E1E`, while black elements (`#000000`, `black`) in Dark Mode invert to `#E6E6E6`.
+     - Explicit author accent colors remain completely intact.
+
+3. **Button Rendering & Zero Hardcoding:**
+   * Removed all static two-letter fallback label matches from `crates/overlay_ui/src/toolstrip.rs`.
+   * Each 32×32 px button now renders a crisp `egui::Button::image` texture (sized at 20×20 px) drawn from the cache.
+   * Full interactive feedback is preserved: smooth hover states, immediate tooltips with the complete tool title, glowing blue accent borders during in-flight operations, and fallback rendering when no icon is present.
+
+4. **Dedicated Vector Icons for Base Plugins:**
+   * Authored clean, minimalist vector icons (`viewBox="0 0 24 24"`) for all 4 built-in plugins:
+     - `remove_bg`: Contoured scissors cutting along an extraction path.
+     - `inpaint`: Magic wand with sparkling stars for neural fill and object restoration.
+     - `upscale`: Focus lens with plus and high-res detail sparkles for 2x super-resolution.
+     - `black_and_white`: Split-contrast photography adjustment circle (half filled, half outlined).
+   * Updated all `plugin.json` manifests to declare `"icon": "icon.svg"`.
+
+5. **Lightweight Packager & Developer Guide:**
+   * Updated `scripts/package_plugins.ps1`: heavy `models/` folders and `*.onnx` files are strictly excluded during staging. As a result, `.pcpl` archives weigh **less than 1 KB** (`0.7–0.8 KB`).
+   * Created a comprehensive `docs/PLUGIN_DEVELOPMENT_GUIDE.md` detailing manifest standards, strict SVG requirements (24×24 viewBox, transparent background, adaptive lines via `currentColor`, strict prohibition of base64 embedded rasters), and packaging workflows.
+
+### 3. Verification
+* Added unit test coverage for cache lifecycle (`test_svg_icon_cache_lifecycle`) and markup adaptation (`test_adapt_svg_for_theme`).
+* All **72 workspace tests** pass with 100% green status (`cargo test --workspace -j 1`).
+* Full compliance with `i18n_lint_test`.
+* Verified `package_plugins.ps1` execution — all 4 packages assembled cleanly.
 
