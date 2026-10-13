@@ -190,17 +190,13 @@ pub fn fetch_latest_release(repo: &str) -> Result<UpdateCheckResult, String> {
                     api_url
                 );
                 let mut ps = Command::new("powershell");
-                ps.arg("-NoProfile")
-                    .arg("-Command")
-                    .arg(&ps_cmd);
+                ps.arg("-NoProfile").arg("-Command").arg(&ps_cmd);
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
                     ps.creation_flags(0x08000000);
                 }
-                let ps_out = ps
-                    .output()
-                    .map_err(|e| format!("PowerShell error: {e}"))?;
+                let ps_out = ps.output().map_err(|e| format!("PowerShell error: {e}"))?;
 
                 if !ps_out.status.success() {
                     return Err(format!(
@@ -335,9 +331,7 @@ pub fn download_file_background(
                         target_path.to_string_lossy().replace('\\', "\\\\")
                     );
                     let mut ps = Command::new("powershell");
-                    ps.arg("-NoProfile")
-                        .arg("-Command")
-                        .arg(&ps_cmd);
+                    ps.arg("-NoProfile").arg("-Command").arg(&ps_cmd);
                     #[cfg(windows)]
                     {
                         use std::os::windows::process::CommandExt;

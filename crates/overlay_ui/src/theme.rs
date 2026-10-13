@@ -77,9 +77,10 @@ fn query_windows_apps_dark_theme() -> bool {
     }
 
     unsafe {
-        let subkey: Vec<u16> = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
-            .encode_utf16()
-            .collect();
+        let subkey: Vec<u16> =
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+                .encode_utf16()
+                .collect();
         let valname: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
         let mut hkey: HKEY = std::ptr::null_mut();
         if RegOpenKeyExW(HKEY_CURRENT_USER, subkey.as_ptr(), 0, KEY_READ, &mut hkey)
@@ -106,7 +107,6 @@ fn query_windows_apps_dark_theme() -> bool {
 }
 
 impl ThemeMode {
-
     pub fn from_preferences(prefs_path: impl AsRef<Path>) -> Self {
         let path = prefs_path.as_ref();
         if path.exists() {

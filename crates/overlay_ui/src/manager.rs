@@ -816,7 +816,8 @@ impl PluginManagerApp {
                                                 // Clean up any stale partial download first
                                                 let _ = std::fs::remove_file(&part_file_worker);
 
-                                                let mut cmd = std::process::Command::new("curl.exe");
+                                                let mut cmd =
+                                                    std::process::Command::new("curl.exe");
                                                 cmd.args([
                                                     "-L",
                                                     "-o",

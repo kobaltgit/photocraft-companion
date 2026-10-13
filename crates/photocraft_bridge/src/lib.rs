@@ -172,11 +172,14 @@ fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
                 let exe_name = String::from_utf16_lossy(&entry.szExeFile[..null_pos]);
 
                 if exe_name.eq_ignore_ascii_case("photocraft.exe") {
-                    let h_proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
+                    let h_proc =
+                        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, entry.th32ProcessID);
                     if !h_proc.is_null() && h_proc != INVALID_HANDLE_VALUE {
                         let mut path_buf = [0u16; 1024];
                         let mut size = path_buf.len() as u32;
-                        if QueryFullProcessImageNameW(h_proc, 0, path_buf.as_mut_ptr(), &mut size) != 0 {
+                        if QueryFullProcessImageNameW(h_proc, 0, path_buf.as_mut_ptr(), &mut size)
+                            != 0
+                        {
                             let full_path = String::from_utf16_lossy(&path_buf[..size as usize]);
                             let pb = std::path::PathBuf::from(full_path);
                             if let Some(parent) = pb.parent() {
@@ -203,7 +206,6 @@ fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
 }
 
 impl PhotoCraftClient {
-
     /// Try to locate the token automatically from environment, process, or standard candidate paths
     pub fn default_token() -> Option<String> {
         // 1. Environment variables

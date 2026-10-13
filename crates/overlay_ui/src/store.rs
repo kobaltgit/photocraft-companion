@@ -231,9 +231,7 @@ pub fn fetch_registry_data(url: &str, cache_path: &Path) -> Result<(StoreRegistr
                     url
                 );
                 let mut ps = Command::new("powershell");
-                ps.arg("-NoProfile")
-                    .arg("-Command")
-                    .arg(&ps_cmd);
+                ps.arg("-NoProfile").arg("-Command").arg(&ps_cmd);
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
@@ -298,10 +296,7 @@ pub fn fetch_registry_data(url: &str, cache_path: &Path) -> Result<(StoreRegistr
         if path.exists() {
             if let Ok(cached_content) = fs::read_to_string(path) {
                 if let Ok(reg) = serde_json::from_str::<StoreRegistry>(&cached_content) {
-                    info!(
-                        "Using cached marketplace registry from {}",
-                        path.display()
-                    );
+                    info!("Using cached marketplace registry from {}", path.display());
                     if path != cache_path {
                         if let Some(p) = cache_path.parent() {
                             let _ = fs::create_dir_all(p);
@@ -366,17 +361,13 @@ pub fn download_file_to_path(url: &str, target_path: &Path) -> Result<(), String
                     target_path.to_string_lossy().replace('\'', "''")
                 );
                 let mut ps = Command::new("powershell");
-                ps.arg("-NoProfile")
-                    .arg("-Command")
-                    .arg(&ps_cmd);
+                ps.arg("-NoProfile").arg("-Command").arg(&ps_cmd);
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
                     ps.creation_flags(0x08000000);
                 }
-                let ps_out = ps
-                    .status()
-                    .map_err(|e| format!("PowerShell error: {e}"))?;
+                let ps_out = ps.status().map_err(|e| format!("PowerShell error: {e}"))?;
 
                 if ps_out.success() {
                     Ok(())
