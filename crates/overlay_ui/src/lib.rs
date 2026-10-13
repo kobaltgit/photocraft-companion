@@ -1,6 +1,7 @@
 pub mod icons;
 pub mod manager;
 pub mod offline_modal;
+pub mod store;
 pub mod theme;
 pub mod toolstrip;
 pub mod updater;
@@ -9,6 +10,9 @@ pub mod win32_window;
 pub use icons::{get_egui_icon_data, get_icon_rgba, get_tray_icon, ICON_DARK_SVG, ICON_LIGHT_SVG};
 pub use manager::{ActiveTab, PluginManagerApp};
 pub use offline_modal::OfflineModalApp;
+pub use store::{
+    StoreCategoryFilter, StoreEvent, StoreLoadStatus, StorePluginEntry, StoreRegistry, StoreState,
+};
 pub use theme::{ThemeMode, ThemePalette};
 pub use toolstrip::ToolstripApp;
 pub use updater::{UpdateCheckResult, UpdateState};

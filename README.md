@@ -11,16 +11,16 @@
 ---
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
-[![Release: v0.1.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v0.1.0)
+[![Release: v1.0.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
-[![Tests: 62 Passing](https://img.shields.io/badge/Tests-62_Passing-success.svg)](crates/)
+[![Tests: 78 Passing](https://img.shields.io/badge/Tests-78_Passing-success.svg)](crates/)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
-[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
+[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
 
 
 </div>
@@ -48,45 +48,48 @@ Here is how **PhotoCraft Companion** elevates the editing experience:
 | **Model Storage & Autonomy** | ❌ Strict memory limits; cannot package or download multi-hundred MB model weights | ✅ **Autonomous Storage:** Models live inside `plugins/<id>/models/` with SHA-256 validation & in-app downloader |
 | **No-Code Macro Authoring** | ❌ Requires Rust/C toolchains and manual WebAssembly compilation to `.wasm` | ✅ **Zero-Code JSON:** Just list desired PhotoCraft engine commands in `plugin.json` — ready in 60 seconds |
 | **Floating Palette (Toolstrip)** | ❌ Locked inside classic menu bars (`Filter › Plugins`); cannot render floating windows | ✅ **Two-Tier Floating Toolstrip:** Compact `egui` palette hovering over the canvas with orientation toggle & tray minimize |
-| **System Hotkeys** | ❌ Only responsive when PhotoCraft window is actively focused | ✅ **Global OS Hotkeys:** Continuous desktop listener (`global-hotkey`) triggering actions across the entire OS |
-| **Package Management** | ❌ Manual file manipulation into application directories | ✅ **1-Click `.pcpl` Packages:** Install and hot-reload plugins directly from the Plugin Manager UI without restarts |
+| **In-App Plugin Marketplace** | ❌ Manual file manipulation into application directories | ✅ **1-Click Marketplace:** Browse online catalog, install, and hot-reload plugins directly from the UI without restarts |
 | **In-Place Pixel Pipeline** | ⚠️ Bound to internal Wasm memory buffers | ✅ **Zero-Drift In-Place Execution:** Seamless round-trip active layer processing via JSON-RPC socket and clipboard |
 
 ---
 
-
 ## ✨ Key Features
 
-- ✂️ **In-Place AI Background Removal:**
-  - Bundled SOTA neural model: Bria AI **RMBG-1.4** (~168 MB).
-  - Hardware-accelerated **DirectML (DirectX 12 GPU)** for NVIDIA RTX, AMD Radeon, and Intel Arc graphics with transparent CPU fallback.
-  - Zero-drift coordinate alignment on high-resolution canvases up to 8K (tested at 8256 × 4608 px).
-  - Smart layer naming: automatic localized suffix `(No BG)` / `(Без фона)` without suffix stacking on repeated runs.
+- ✂️ **In-Place AI Tools & Neural Computer Vision (Zero-Core Architecture):**
+  - **AI Remove Background:** Bria AI **RMBG-1.4** (~168 MB) high-precision subject cutout with coordinate preservation up to 8K.
+  - **AI Generative Fill (LaMa):** Context-aware zero-prompt object removal and texture inpainting with lasso contour synthesis.
+  - **AI Super-Resolution (2x):** Real-ESRGAN Compact with seam-blended tiling to upscale arbitrarily large canvases without VRAM overflow.
+  - **Resilient AI Runtime:** Hardware-accelerated **DirectML (DirectX 12 GPU)** with automatic transparent fallback to CPU on unsupported operators.
+  - **Zero-Core Standard:** Zero plugin-specific logic hardcoded into the companion core; every workflow is strictly declarative via `plugin.json`.
+
+- 🏪 **In-App Community Plugin Marketplace:**
+  - Integrated 4th tab inside the Plugin Manager to discover and install community plugins directly from GitHub Releases.
+  - Instant 1-click installation of lightweight `.pcpl` archives (< 1 KB) with reactive toolbar hot-reloading (no restart required).
+  - Background SVG icon rendering with dark and light theme adaptation.
+  - Local offline registry caching for uninterrupted operation.
 
 - 🎛️ **Floating Two-Tier Toolstrip (`egui` / `eframe`):**
-  - Ultra-compact floating palette matching PhotoCraft's native UI aesthetics.
-  - Orientation toggle: seamlessly switch between Horizontal (78 px height) and Vertical (50 px width) modes with zero button clipping for any count of plugins $N$.
-  - Clean floating behavior: does not clutter the OS taskbar (`.with_taskbar(false)`).
-  - Out-of-bounds immediate tooltips hovering over the desktop workspace.
+  - Ultra-compact floating palette matching PhotoCraft's native UI aesthetics with pure vector SVG icons.
+  - Orientation toggle: seamlessly switch between Horizontal (78 px height) and Vertical (50 px width) modes with zero button clipping.
+  - Non-intrusive floating palette behavior: excluded from OS taskbar (`.with_taskbar(false)`), persistent drag & drop screen coordinates.
+  - Floating mini-HUD status badge with live timer and busy lock.
 
 - ⚙️ **Comprehensive Plugin Manager:**
-  - Tabbed interface: `[ General ]`, `[ Plugins ]`, `[ Hotkeys ]`, `[ About ]`.
-  - Live connection indicator: real-time socket status (`● Connected` / `○ Offline`).
+  - Tabbed interface: `[ General ]`, `[ Plugins ]`, `[ Store ]`, `[ About ]`.
+  - Live connection indicator: 3-state real-time socket status (`● Connected` / `● Auth Required` / `○ Offline`) with token browse dialog (`rfd`).
   - Native themes: instant synchronization between Dark and pure Light modes.
-  - Interactive hotkey recorder: records multi-modifier combos (`Ctrl+Shift+...`) with stuck-key prevention.
+  - In-App self-updater: checks for new GitHub releases, compares SemVer versions, and downloads platform installers with 1 click.
 
 - 📦 **100% Autonomous `.pcpl` Package Ecosystem:**
   - Plugin neural weights are fully self-contained inside each plugin directory (`plugins/<id>/models/`).
-  - One-click plugin installation from `.pcpl` (PhotoCraft Plugin Package) ZIP bundles via standard file dialogs.
-  - Model integrity verification and automatic missing weights downloader directly in the UI.
+  - Model integrity verification, progress bars with live transfer speed (MB/s), and automatic missing weights downloader directly in the UI.
 
 - ⏳ **Resilient Waiting / Offline Mode:**
   - The companion does not crash if PhotoCraft is not running; it displays a sleek standby window.
   - Background polling every 1.5s: when PhotoCraft starts, the toolbar smoothly appears above the canvas.
 
 - 🔔 **Instant Reactive System Tray (0 ms):**
-  - Continuous background global hotkey listener and window control from the system tray (Windows, Linux, macOS).
-  - Zero-latency event dispatching with native Win32 dark context menu support.
+  - System tray icon across Windows, Linux, and macOS with zero-latency dispatching and native Win32 dark context menu support.
 
 ---
 
@@ -94,16 +97,11 @@ Here is how **PhotoCraft Companion** elevates the editing experience:
 
 Ready-to-use binaries are built for every platform as both full **installers** and standalone **portable archives**:
 
-<p align="center">
-  <img src="assets/releases-preview.png" alt="PhotoCraft Companion GitHub Releases" width="90%">
-</p>
-
 | Platform                          | Installer (Setup)                             | Portable Archive                                           | Notes                                                              |
-
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v0.1.0-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v0.1.0-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v0.1.0-linux-amd64.deb` | `PhotoCraft-Companion-v0.1.0-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.0-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.0-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.0-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.0-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
 
 > [!TIP]
 > All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
@@ -152,7 +150,7 @@ Model weights are excluded from Git (`.gitignore`) to keep the repository lightw
 ### 3. Build & Run
 
 ```bash
-# Run full workspace test suite (62 tests) with single-thread resource guard
+# Run full workspace test suite (78 tests) with single-thread resource guard
 cargo test --workspace -j 1
 
 # Launch the companion application
@@ -171,12 +169,14 @@ photocraft-plugins/
 ├── crates/                         # Independent crates
 │   ├── core_contracts/            # Plugin traits, DTOs, Config, i18n, .pcpl installer
 │   ├── photocraft_bridge/         # Async PhotoCraft socket client (JSON-RPC 18492)
-│   ├── ai_engine/                 # DirectML GPU ONNX runtime inference (ort, RMBG-1.4)
-│   ├── overlay_ui/                # Floating Toolstrip, Plugin Manager & dialogs (egui 0.36)
-│   ├── hotkey_service/            # Cross-platform OS global hotkey service (global-hotkey)
+│   ├── ai_engine/                 # DirectML GPU ONNX runtime inference (RMBG, Real-ESRGAN, LaMa)
+│   ├── overlay_ui/                # Floating Toolstrip, In-App Store, Plugin Manager (egui 0.36)
+│   ├── plugin_validator/          # Ecosystem CLI: validation, packaging, marketplace generator
 │   └── companion_app/             # Main binary (system tray, lifecycle, DI container)
 ├── plugins/                       # Installed plugin directory
-│   ├── remove_bg/                 # Autonomous AI background removal plugin
+│   ├── remove_bg/                 # Autonomous AI background removal plugin (RMBG-1.4)
+│   ├── upscale/                   # Autonomous AI 2x super-resolution plugin (Real-ESRGAN)
+│   ├── inpaint/                   # Autonomous AI generative fill plugin (LaMa)
 │   └── black_and_white/          # Declarative No-Code macro plugin
 ├── scripts/
 │   ├── fetch_models.ps1           # PowerShell model downloader

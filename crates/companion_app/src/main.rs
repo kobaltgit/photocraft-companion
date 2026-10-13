@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod win32_theme;
 use win32_theme::apply_win32_menu_theme;
 

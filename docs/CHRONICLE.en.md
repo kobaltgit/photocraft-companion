@@ -1150,3 +1150,52 @@ Manual verification and ad-hoc releases would inevitably lead to broken links, h
 * Full workspace test suite (**76 tests**) passed with 100% green results (`cargo test --workspace -j 1`).
 * Linters passed with zero warnings: `cargo clippy --workspace --all-targets -j 1 -- -D warnings` and `cargo fmt --all -- --check`.
 
+---
+
+## Chapter 40: In-App Plugin Marketplace in Companion GUI (October 13, 2026)
+
+*Timestamp: October 13, 2026, 18:35 (~30 mins)*
+
+### 1. Context and Problem Statement
+With automated plugin publication to GitHub Releases (`plugins/registry.json`) in place, we arrived at the user-facing pinnacle: **how do we provide end-users with an effortless, 1-click in-app plugin installation and updating experience directly from the Companion GUI, eliminating the need to manually download zip files via a browser?**
+
+Users should simply open the Plugin Manager, browse available tools complete with custom vector icons and descriptions, click `[ Install ]`, and have the tool instantly appear on the floating toolstrip ready to use.
+
+### 2. Architectural Implementation
+
+1. **Marketplace Data Model & Network Client (`crates/overlay_ui/src/store.rs`):**
+   * Designed core data structures: `StorePluginEntry`, `StoreModelInfo`, `StoreRegistry`, `StoreState`.
+   * **Resilient Registry Caching (`fetch_registry_data`):** Queries the GitHub Releases catalog (`plugins/registry.json`). When successful, caches the payload to `PhotoCraftData/cache/registry.json`. In offline situations, seamlessly loads the catalog from disk with an offline badge.
+   * **Background Icon Caching (`ensure_icon_cached`):** Downloads original author vector SVG icons and saves them to `PhotoCraftData/cache/icons/<id>.svg`, rendering crisply across dark and light themes via `SvgIconCache`.
+   * **1-Click Installation (`download_and_install_pcpl`):** Safely downloads lightweight `.pcpl` archives (< 1 KB) to a temp location and delegates extraction to `core_contracts::install_pcpl`.
+   * **Two-Stage Native AI Plugin Onboarding:** The lightweight `.pcpl` installs instantaneously in under a second; heavy ONNX model weights are downloaded separately on demand via the dedicated progress-bar UI in the General tab.
+   * **SemVer Version Comparison (`is_store_version_newer`):** Automatically highlights updates when newer versions are detected in the repository.
+
+2. **Marketplace Graphical UI (`crates/overlay_ui/src/manager.rs`):**
+   * Added a 4th tab to the Plugin Manager: `ActiveTab::Store` (`[ General ] [ Plugins ] [ Store ] [ About ]`).
+   * Live search bar filtering by name, author, and description in real-time.
+   * Category filter pills: `[ All ]`, `[ AI Models ]`, `[ Macros ]`.
+   * Plugin cards: 24×24 author SVG icon, type badge (`AI GPU` / `NO-CODE`), title, version, author, description, and required model size (`• Model size: ~208 MB`).
+   * Action buttons:
+     - `[ 📥 Install ]` — for uninstalled plugins.
+     - `[ ✓ Installed ]` — disabled subtle badge for up-to-date plugins.
+     - `[ 🔄 Update (vX.Y.Z) ]` — vibrant update button preserving existing heavy model weights.
+     - `[ ⏳ Installing... ]` — animated spinner during active downloads.
+   * **Reactive Instant Toolstrip Hot-Reload:** Upon installation, `StoreEvent::PluginInstalled` updates local manifests, immediately exposing the new tool on the floating toolstrip without restarting the app.
+
+3. **Localization and Strict Quality Gate:**
+   * All marketplace strings are fully localized (EN / RU) via `self.t(...)`.
+   * `i18n_lint_test` updated and validated with 100% zero unlocalized Cyrillic leaks.
+   * Single-core resource guard (`-j 1`) strictly enforced throughout.
+
+### 3. Verification
+* Unit tests in `crates/overlay_ui/src/store.rs`:
+  - `test_parse_store_registry`: registry JSON deserialization.
+  - `test_version_newer_logic`: SemVer comparison correctness.
+  - `test_offline_cache_fallback`: graceful offline cache fallback on network failures.
+* Unit test in `crates/overlay_ui/src/manager.rs`:
+  - `test_plugin_manager_app_store_events`: verifies catalog events and reactive manifest injection.
+* All **78 workspace tests** pass with 100% green status (`cargo test --workspace -j 1`).
+* Full compliance with `cargo clippy --workspace --all-targets -j 1 -- -D warnings` and `cargo fmt --all -- --check`.
+
+

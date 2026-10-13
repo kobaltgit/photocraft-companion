@@ -10,6 +10,7 @@ use tracing::info;
 pub enum ActiveTab {
     General,
     Plugins,
+    Store,
     About,
 }
 
@@ -52,6 +53,8 @@ pub struct PluginManagerApp {
     pub download_rx: Option<std::sync::mpsc::Receiver<Result<(PathBuf, bool), String>>>,
     pub show_restart_modal: bool,
     pub pending_restart_script: Option<PathBuf>,
+    pub store_state: crate::store::StoreState,
+    pub store_icon_cache: crate::icons::SvgIconCache,
 }
 
 impl PluginManagerApp {
@@ -125,6 +128,8 @@ impl PluginManagerApp {
             download_rx: None,
             show_restart_modal: false,
             pending_restart_script: None,
+            store_state: crate::store::StoreState::new(&data_dir),
+            store_icon_cache: crate::icons::SvgIconCache::new(),
         }
     }
 
@@ -186,6 +191,70 @@ impl PluginManagerApp {
         }
     }
 
+    pub fn poll_store_events(&mut self) {
+        let mut events = Vec::new();
+        while let Ok(event) = self.store_state.event_rx.try_recv() {
+            events.push(event);
+        }
+
+        for event in events {
+            match event {
+                crate::store::StoreEvent::RegistryLoaded {
+                    registry,
+                    is_offline,
+                } => {
+                    self.store_state.status = crate::store::StoreLoadStatus::Ready { is_offline };
+                    self.store_state.registry = Some(registry);
+                    let msg = if is_offline {
+                        self.t(
+                            "Catalog loaded from offline cache",
+                            "Каталог загружен из оффлайн-кэша",
+                        )
+                    } else {
+                        self.t("Catalog updated successfully", "Каталог успешно обновлен")
+                    };
+                    self.set_status(msg, false);
+                }
+                crate::store::StoreEvent::RegistryFailed(err) => {
+                    self.store_state.status = crate::store::StoreLoadStatus::Error(err.clone());
+                    let msg_prefix = self.t("Catalog loading failed", "Ошибка загрузки каталога");
+                    self.set_status(format!("{}: {}", msg_prefix, err), true);
+                }
+                crate::store::StoreEvent::PluginInstalled {
+                    plugin_id,
+                    manifest,
+                } => {
+                    self.store_state
+                        .installing_plugins
+                        .retain(|id| id != &plugin_id);
+
+                    // If plugin already exists locally, update it in place; otherwise append
+                    if let Some(pos) = self.manifests.iter().position(|m| m.id == plugin_id) {
+                        self.manifests[pos] = *manifest;
+                    } else {
+                        self.manifests.push(*manifest);
+                    }
+
+                    let msg_inst = self.t(
+                        "Plugin installed successfully!",
+                        "Плагин успешно установлен!",
+                    );
+                    self.set_status(format!("✔ {}: {}", plugin_id, msg_inst), false);
+                }
+                crate::store::StoreEvent::PluginInstallFailed { plugin_id, error } => {
+                    self.store_state
+                        .installing_plugins
+                        .retain(|id| id != &plugin_id);
+                    let msg_err = self.t("Installation failed", "Ошибка установки");
+                    self.set_status(format!("✖ {}: {}: {}", plugin_id, msg_err, error), true);
+                }
+                crate::store::StoreEvent::IconDownloaded { .. } => {
+                    // Cache will be queried on next frame
+                }
+            }
+        }
+    }
+
     pub fn save_settings(&mut self) -> anyhow::Result<()> {
         let mut cfg = CompanionConfig::load_or_default(&self.config_path);
         cfg.host = self.host.clone();
@@ -235,6 +304,7 @@ impl PluginManagerApp {
         let tabs = [
             (ActiveTab::General, self.t("General", "Общие")),
             (ActiveTab::Plugins, self.t("Plugins", "Плагины")),
+            (ActiveTab::Store, self.t("Store", "Магазин")),
             (ActiveTab::About, self.t("About", "О программе")),
         ];
 
@@ -1239,6 +1309,375 @@ impl PluginManagerApp {
         );
     }
 
+    /// Tab 3: Marketplace / Catalog
+    pub fn render_store_tab(&mut self, ui: &mut Ui, palette: &ThemePalette) {
+        // Auto-fetch catalog if idle
+        if self.store_state.status == crate::store::StoreLoadStatus::Idle {
+            self.store_state.refresh_catalog(None);
+        }
+
+        // Top controls: Title, Refresh button, Search and Category filters
+        ui.horizontal(|ui| {
+            ui.heading(
+                RichText::new(self.t("Plugin Marketplace", "Магазин расширений"))
+                    .size(14.0)
+                    .color(palette.text_primary),
+            );
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let is_loading = self.store_state.status == crate::store::StoreLoadStatus::Loading;
+                let refresh_btn = egui::Button::new(
+                    RichText::new(if is_loading {
+                        self.t("Loading...", "Загрузка...")
+                    } else {
+                        self.t("Refresh Catalog", "Обновить каталог")
+                    })
+                    .size(11.0)
+                    .color(palette.text_primary),
+                )
+                .fill(palette.button_secondary)
+                .corner_radius(4.0);
+
+                if ui.add_enabled(!is_loading, refresh_btn).clicked() {
+                    self.store_state.refresh_catalog(None);
+                }
+            });
+        });
+
+        ui.add_space(8.0);
+
+        // Filter and Search Bar
+        let search_hint = self.t("Search plugins...", "Поиск плагинов...");
+        ui.horizontal(|ui| {
+            // Search field
+            ui.add(
+                egui::TextEdit::singleline(&mut self.store_state.search_query)
+                    .hint_text(search_hint)
+                    .desired_width(200.0),
+            );
+
+            ui.add_space(8.0);
+
+            // Category filter pills
+            let filters = [
+                (crate::store::StoreCategoryFilter::All, self.t("All", "Все")),
+                (
+                    crate::store::StoreCategoryFilter::Ai,
+                    self.t("AI Models", "Нейросети (AI)"),
+                ),
+                (
+                    crate::store::StoreCategoryFilter::Macro,
+                    self.t("Macros", "Макросы"),
+                ),
+            ];
+
+            for (filt, label) in filters {
+                let is_sel = self.store_state.category_filter == filt;
+                let bg = if is_sel {
+                    palette.accent_blue
+                } else {
+                    palette.button_secondary
+                };
+                let fg = if is_sel {
+                    Color32::WHITE
+                } else {
+                    palette.text_primary
+                };
+                let btn = egui::Button::new(RichText::new(label).size(10.0).color(fg))
+                    .fill(bg)
+                    .corner_radius(4.0)
+                    .min_size(Vec2::new(50.0, 20.0));
+                if ui.add(btn).clicked() {
+                    self.store_state.category_filter = filt;
+                }
+            }
+        });
+
+        ui.add_space(6.0);
+        ui.separator();
+        ui.add_space(6.0);
+
+        // Catalog Status Banner (Offline cache notice or Loading/Error)
+        match self.store_state.status {
+            crate::store::StoreLoadStatus::Loading => {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(
+                        RichText::new(self.t(
+                            "Checking plugin repository...",
+                            "Проверка репозитория плагинов...",
+                        ))
+                        .size(11.0)
+                        .color(palette.accent_blue),
+                    );
+                });
+                ui.add_space(6.0);
+            }
+            crate::store::StoreLoadStatus::Ready { is_offline: true } => {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(self.t(
+                            "Offline Mode: Showing cached catalog.",
+                            "Офлайн-режим: отображается кэшированный каталог.",
+                        ))
+                        .size(11.0)
+                        .color(palette.text_muted),
+                    );
+                });
+                ui.add_space(4.0);
+            }
+            crate::store::StoreLoadStatus::Error(ref err) => {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{}: {}",
+                            self.t("Catalog error", "Ошибка каталога"),
+                            err
+                        ))
+                        .size(11.0)
+                        .color(Color32::from_rgb(0xe5, 0x39, 0x35)),
+                    );
+                });
+                ui.add_space(6.0);
+            }
+            _ => {}
+        }
+
+        let plugins = match &self.store_state.registry {
+            Some(reg) => reg.plugins.clone(),
+            None => Vec::new(),
+        };
+
+        if plugins.is_empty() && self.store_state.status != crate::store::StoreLoadStatus::Loading {
+            ui.label(
+                RichText::new(self.t(
+                    "No plugins available in catalog.",
+                    "В каталоге нет доступных плагинов.",
+                ))
+                .size(12.0)
+                .color(palette.text_muted),
+            );
+            return;
+        }
+
+        let query = self.store_state.search_query.trim().to_lowercase();
+        let cat_filter = self.store_state.category_filter;
+
+        for entry in &plugins {
+            // Filter by search query
+            if !query.is_empty() {
+                let matches_name = entry.name.to_lowercase().contains(&query);
+                let matches_author = entry.author.to_lowercase().contains(&query);
+                let matches_desc = entry.description.to_lowercase().contains(&query);
+                if !matches_name && !matches_author && !matches_desc {
+                    continue;
+                }
+            }
+
+            // Filter by category
+            match cat_filter {
+                crate::store::StoreCategoryFilter::Ai => {
+                    if entry.plugin_type != "native_ai" {
+                        continue;
+                    }
+                }
+                crate::store::StoreCategoryFilter::Macro => {
+                    if entry.plugin_type == "native_ai" {
+                        continue;
+                    }
+                }
+                crate::store::StoreCategoryFilter::All => {}
+            }
+
+            // Ensure author SVG icon is cached in background
+            self.store_state.ensure_icon_cached(entry);
+
+            // Determine installation status and local version
+            let local_manifest = self.manifests.iter().find(|m| m.id == entry.id);
+            let is_installed = local_manifest.is_some();
+            let is_installing = self.store_state.installing_plugins.contains(&entry.id);
+            let has_update = if let Some(local) = local_manifest {
+                crate::store::is_store_version_newer(&entry.version, &local.version)
+            } else {
+                false
+            };
+
+            // Render plugin card
+            egui::Frame::new()
+                .fill(palette.card_inner)
+                .stroke(Stroke::new(1.0, palette.border_stroke))
+                .corner_radius(6.0)
+                .inner_margin(8.0)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // 1. Vector SVG Icon (24x24)
+                        let cached_icon_path = self.store_state.get_cached_icon_path(&entry.id);
+                        let is_dark = self.current_theme.is_dark();
+                        let texture = if cached_icon_path.exists() {
+                            self.store_icon_cache.get_or_load(
+                                ui.ctx(),
+                                &entry.id,
+                                Some(&cached_icon_path),
+                                is_dark,
+                            )
+                        } else {
+                            None
+                        };
+
+                        if let Some(tex) = texture {
+                            ui.image((tex.id(), Vec2::new(24.0, 24.0)));
+                        } else {
+                            // Fallback badge if icon not downloaded yet
+                            let fallback_icon = if entry.plugin_type == "native_ai" {
+                                "🤖"
+                            } else {
+                                "⚡"
+                            };
+                            ui.label(RichText::new(fallback_icon).size(16.0));
+                        }
+
+                        ui.add_space(4.0);
+
+                        // 2. Title, version, author and description
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                let type_str = if entry.plugin_type == "native_ai" {
+                                    "AI GPU"
+                                } else {
+                                    "NO-CODE"
+                                };
+                                let type_color = if entry.plugin_type == "native_ai" {
+                                    palette.accent_blue
+                                } else {
+                                    Color32::from_rgb(0x28, 0xa7, 0x45)
+                                };
+
+                                ui.label(
+                                    RichText::new(type_str).size(9.0).color(type_color).strong(),
+                                );
+                                ui.label(
+                                    RichText::new(&entry.name)
+                                        .size(12.0)
+                                        .strong()
+                                        .color(palette.text_primary),
+                                );
+                                ui.label(
+                                    RichText::new(format!("v{}", entry.version))
+                                        .size(10.0)
+                                        .color(palette.text_muted),
+                                );
+
+                                if has_update {
+                                    ui.label(
+                                        RichText::new(
+                                            self.t("Update Available", "Доступно обновление"),
+                                        )
+                                        .size(9.0)
+                                        .color(Color32::from_rgb(0xea, 0x86, 0x00))
+                                        .strong(),
+                                    );
+                                }
+                            });
+
+                            ui.label(
+                                RichText::new(&entry.description)
+                                    .size(11.0)
+                                    .color(palette.text_muted),
+                            );
+
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(format!("• {}", entry.author))
+                                        .size(10.0)
+                                        .color(palette.text_muted),
+                                );
+
+                                if let Some(m) = entry.models.first() {
+                                    if let Some(mb) = m.size_mb {
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "• {}: ~{} MB",
+                                                self.t("Model size", "Размер модели"),
+                                                mb
+                                            ))
+                                            .size(10.0)
+                                            .color(palette.text_muted),
+                                        );
+                                    }
+                                }
+                            });
+                        });
+
+                        // 3. Action button on the right
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if is_installing {
+                                ui.spinner();
+                                ui.label(
+                                    RichText::new(self.t("Installing...", "Установка..."))
+                                        .size(11.0)
+                                        .color(palette.accent_blue),
+                                );
+                            } else if has_update {
+                                let update_label = format!(
+                                    "🔄 {} (v{})",
+                                    self.t("Update", "Обновить"),
+                                    entry.version
+                                );
+                                let upd_btn = egui::Button::new(
+                                    RichText::new(update_label)
+                                        .size(10.0)
+                                        .strong()
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(Color32::from_rgb(0x28, 0xa7, 0x45))
+                                .corner_radius(4.0)
+                                .min_size(Vec2::new(100.0, 24.0));
+
+                                if ui.add(upd_btn).clicked() {
+                                    self.store_state
+                                        .install_plugin(entry, self.plugins_dir.clone());
+                                }
+                            } else if is_installed {
+                                let installed_btn = egui::Button::new(
+                                    RichText::new(format!(
+                                        "✓ {}",
+                                        self.t("Installed", "Установлен")
+                                    ))
+                                    .size(10.0)
+                                    .color(palette.text_muted),
+                                )
+                                .fill(palette.button_secondary)
+                                .corner_radius(4.0)
+                                .min_size(Vec2::new(90.0, 24.0));
+
+                                ui.add_enabled(false, installed_btn);
+                            } else {
+                                let inst_btn = egui::Button::new(
+                                    RichText::new(format!(
+                                        "📥 {}",
+                                        self.t("Install", "Установить")
+                                    ))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(Color32::WHITE),
+                                )
+                                .fill(palette.accent_blue)
+                                .corner_radius(4.0)
+                                .min_size(Vec2::new(90.0, 24.0));
+
+                                if ui.add(inst_btn).clicked() {
+                                    self.store_state
+                                        .install_plugin(entry, self.plugins_dir.clone());
+                                }
+                            }
+                        });
+                    });
+                });
+
+            ui.add_space(4.0);
+        }
+    }
+
     /// Master render function with horizontal tabs and pinned bottom buttons
     pub fn render_settings_window(
         &mut self,
@@ -1250,6 +1689,8 @@ impl PluginManagerApp {
 
         // Poll background model download events
         self.poll_download_events();
+        // Poll store catalog events
+        self.poll_store_events();
 
         // 1. Pinned bottom panel: status/connection indicator on left, [ Close ] [ Save ] on right
         egui::Panel::bottom("manager_bottom_panel")
@@ -1407,6 +1848,7 @@ impl PluginManagerApp {
                             .show(ui, |ui| match self.active_tab {
                                 ActiveTab::General => self.render_general_tab(ui, palette),
                                 ActiveTab::Plugins => self.render_plugins_tab(ui, palette),
+                                ActiveTab::Store => self.render_store_tab(ui, palette),
                                 ActiveTab::About => self.render_about_tab(ui, palette),
                             });
                     });
@@ -1641,6 +2083,91 @@ mod tests {
         assert!(app.active_download.is_none());
         assert!(app.status_text.contains("err.onnx"));
         assert!(app.status_is_error);
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_plugin_manager_app_store_events() {
+        let temp_dir =
+            std::env::temp_dir().join(format!("pc_store_app_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_path = temp_dir.join("prefs.json");
+
+        let mut app =
+            PluginManagerApp::new(Vec::new(), &prefs_path, Arc::new(AtomicBool::new(true)));
+
+        // 1. Registry loaded event
+        let sample_reg = crate::store::StoreRegistry {
+            generated_at: Some("2026-10-13T12:00:00Z".to_string()),
+            total_plugins: 1,
+            plugins: vec![crate::store::StorePluginEntry {
+                id: "test.plugin".to_string(),
+                name: "Test Plugin".to_string(),
+                version: "1.0.0".to_string(),
+                description: "Test description".to_string(),
+                author: "Test author".to_string(),
+                plugin_type: "no_code".to_string(),
+                download_url: "https://example.com/test.pcpl".to_string(),
+                icon_url: None,
+                models: Vec::new(),
+            }],
+        };
+
+        app.store_state
+            .event_tx
+            .send(crate::store::StoreEvent::RegistryLoaded {
+                registry: sample_reg.clone(),
+                is_offline: false,
+            })
+            .unwrap();
+
+        app.poll_store_events();
+        assert_eq!(
+            app.store_state.status,
+            crate::store::StoreLoadStatus::Ready { is_offline: false }
+        );
+        assert_eq!(app.store_state.registry, Some(sample_reg));
+
+        // 2. Plugin installed event
+        let dummy_manifest = PluginManifest {
+            id: "test.plugin".to_string(),
+            name: "Test Plugin".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: "Tester".to_string(),
+            plugin_type: PluginType::NoCode,
+            enabled: true,
+            icon: None,
+            models: Vec::new(),
+            commands: Vec::new(),
+            post_commands: Vec::new(),
+            input: core_contracts::PluginInputSource::ActiveLayer,
+            output_mode: core_contracts::PluginOutputMode::InPlace,
+            action_id: None,
+            entrypoint: None,
+            ai: None,
+            plugin_dir: None,
+        };
+
+        app.store_state
+            .installing_plugins
+            .push("test.plugin".to_string());
+        app.store_state
+            .event_tx
+            .send(crate::store::StoreEvent::PluginInstalled {
+                plugin_id: "test.plugin".to_string(),
+                manifest: Box::new(dummy_manifest.clone()),
+            })
+            .unwrap();
+
+        app.poll_store_events();
+        assert!(!app
+            .store_state
+            .installing_plugins
+            .contains(&"test.plugin".to_string()));
+        assert_eq!(app.manifests.len(), 1);
+        assert_eq!(app.manifests[0].id, "test.plugin");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

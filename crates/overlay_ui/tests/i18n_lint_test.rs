@@ -9,6 +9,7 @@ fn test_no_unlocalized_cyrillic_in_ui_crates() {
     // Files that should never contain any Cyrillic text at all
     let strictly_latin_files = [
         "icons.rs",
+        "store.rs",
         "theme.rs",
         "toolstrip.rs",
         "updater.rs",
