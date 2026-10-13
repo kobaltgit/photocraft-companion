@@ -115,6 +115,7 @@ impl PhotoCraftClient {
 
 #[cfg(target_os = "windows")]
 fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
+    #[allow(clippy::upper_case_acronyms)]
     type HANDLE = *mut std::ffi::c_void;
     const INVALID_HANDLE_VALUE: HANDLE = -1isize as HANDLE;
     const TH32CS_SNAPPROCESS: u32 = 0x00000002;
@@ -122,7 +123,7 @@ fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
     const MAX_PATH: usize = 260;
 
     #[repr(C)]
-    #[allow(non_snake_case)]
+    #[allow(non_snake_case, clippy::upper_case_acronyms)]
     struct PROCESSENTRY32W {
         dwSize: u32,
         cntUsage: u32,

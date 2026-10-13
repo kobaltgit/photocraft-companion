@@ -41,7 +41,7 @@ impl ThemeMode {
             let is_dark = query_windows_apps_dark_theme();
             CACHED_DARK.store(is_dark, Ordering::Relaxed);
             LAST_CHECK_MS.store(now_ms, Ordering::Relaxed);
-            return is_dark;
+            is_dark
         }
 
         #[cfg(not(windows))]
@@ -51,6 +51,7 @@ impl ThemeMode {
 
 #[cfg(windows)]
 fn query_windows_apps_dark_theme() -> bool {
+    #[allow(clippy::upper_case_acronyms)]
     type HKEY = *mut std::ffi::c_void;
     const HKEY_CURRENT_USER: HKEY = 0x80000001usize as HKEY;
     const KEY_READ: u32 = 0x20019;
