@@ -39,5 +39,8 @@ jobs:
       - name: Run All Workspace Tests
         run: cargo test --workspace --verbose
 
+      - name: Validate Plugin Ecosystem & Manifests
+        run: cargo run --package plugin_validator -- --validate plugins
+
       - name: Build Companion Binary
         run: cargo build --package companion_app --release

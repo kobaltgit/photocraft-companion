@@ -203,6 +203,26 @@ Install any `.pcpl` file with a single click via `[ + Install Plugin (.pcpl) ]` 
 
 ---
 
+## 🏪 Community Plugins & Marketplace
+
+Download community plugins as ready-to-use `.pcpl` packages and drop them into your Companion or install them in 1-click via the **Plugin Manager**:
+
+<!-- PLUGINS_CATALOG_START -->
+
+| Icon | Plugin & Description | Type | Version | Author | Package (.pcpl) |
+| :---: | :--- | :---: | :---: | :--- | :---: |
+| <img src="plugins/black_and_white/icon.svg" width="28" height="28"> | **B&W Film Pop (No-Code)**<br>_Duplicates active layer, converts to grayscale with auto-contrast adjustment._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/black_and_white.pcpl) |
+| <img src="plugins/inpaint/icon.svg" width="28" height="28"> | **AI Generative Fill (LaMa)**<br>_Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/inpaint.pcpl) |
+| <img src="plugins/remove_bg/icon.svg" width="28" height="28"> | **AI Remove Background (RMBG-1.4)**<br>_High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/remove_bg.pcpl) |
+| <img src="plugins/upscale/icon.svg" width="28" height="28"> | **AI Super-Resolution (2x)**<br>_2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime & DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/upscale.pcpl) |
+
+<!-- PLUGINS_CATALOG_END -->
+
+> [!TIP]
+> **Want to publish your own plugin?** Check out the [Plugin Development Guide](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md), create your plugin inside `plugins/<id>/`, and submit a Pull Request! Our automated CI validates your manifest, icon, and neural models before publishing.
+
+---
+
 ## 📚 Documentation
 
 Detailed specifications and development history can be found in [`docs/`](docs/):

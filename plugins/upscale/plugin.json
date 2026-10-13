@@ -26,7 +26,8 @@
       "name": "realesrgan-x2.onnx",
       "required": true,
       "size_mb": 68,
-      "url": "https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx"
+      "url": "https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx",
+      "sha256": "f1a5e0dc1b83a7b4641078ead62fd180046fb8eb7b0231b3a29e30c071be1b6f"
     }
   ]
 }

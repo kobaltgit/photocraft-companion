@@ -95,8 +95,7 @@ impl ToolstripApp {
                     let tooltip = btn.label.clone();
 
                     let b = if let Some(tex) = maybe_texture {
-                        let img = egui::Image::new(&tex)
-                            .fit_to_exact_size(Vec2::new(20.0, 20.0));
+                        let img = egui::Image::new(&tex).fit_to_exact_size(Vec2::new(20.0, 20.0));
                         egui::Button::image(img)
                             .min_size(Vec2::new(32.0, 32.0))
                             .corner_radius(3.0)

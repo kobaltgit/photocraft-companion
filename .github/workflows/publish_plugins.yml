@@ -1,0 +1,67 @@
+name: Publish Community Plugins & Marketplace
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'plugins/**'
+      - 'crates/plugin_validator/**'
+      - '.github/workflows/publish_plugins.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish_plugins:
+    name: Package & Publish Plugins
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate & Package Plugins & Build Registry
+        run: |
+          cargo run --package plugin_validator -- \
+            --validate plugins \
+            --build-registry \
+            --package-plugins \
+            --update-readme README.md \
+            --update-readme README.ru.md
+
+      - name: Publish to GitHub Release 'plugins'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: plugins
+          name: "PhotoCraft Community Plugins Repository"
+          body: |
+            Automated repository of all community-contributed `.pcpl` plugins and registry index (`registry.json`).
+            Installed automatically via PhotoCraft Companion Plugin Manager.
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.pcpl
+            dist/registry.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit updated README tables to main
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action [Plugin Marketplace]"
+          git add README.md README.ru.md
+          if git diff --staged --quiet; then
+            echo "No changes in README files."
+          else
+            git commit -m "docs(catalog): auto-update community plugin tables [skip ci]"
+            git push origin main
+          fi

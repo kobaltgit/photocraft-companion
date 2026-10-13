@@ -267,3 +267,17 @@
   - [x] **Авторские векторные иконки для базовых плагинов**: Добавлены уникальные векторные `icon.svg` (viewBox 24×24) для `remove_bg`, `inpaint`, `upscale` и `black_and_white`, обновлены их манифесты `plugin.json`.
   - [x] **Упаковщик и гайдлайн разработчика**: Скрипт `scripts/package_plugins.ps1` упаковывает легкие `.pcpl` архивы (< 1 КБ) с исключением тяжелых моделей и бинарников, подготовлено подробное руководство `docs/PLUGIN_DEVELOPMENT_GUIDE.md`.
   - [x] **Тестирование и верификация**: 100% прохождение всех тестов воркспейса (`cargo test --workspace -j 1`, 72 теста) и `i18n_lint_test`.
+
+- [x] **Фаза 36: Автоматизация магазина и экосистемы плагинов (Plugin Store & Marketplace CI/CD)**
+  - [x] **Rust-утилита валидации и каталогизации (`crates/plugin_validator`)**:
+    - Строгая проверка `plugin.json` через десериализацию `core_contracts::PluginManifest`.
+    - XML-аудит векторных `icon.svg` с полным запретом встроенных растровых тегов `<image>` и `data:image/` base64.
+    - Проверка 64-значного SHA-256 хэша моделей и быстрый HTTP HEAD запрос на доступность `download_url` моделей без выкачивания весов.
+    - Генератор сводного реестра `dist/registry.json` для будущего магазина в UI Компаньона.
+    - Автоматическая сборка легковесных `.pcpl` пакетов (`--package-plugins`) с исключением `.onnx`/`.bin`/`.safetensors`.
+    - Автоматическое обновление Markdown-таблицы витрины плагинов между маркерами `<!-- PLUGINS_CATALOG_START -->` и `<!-- PLUGINS_CATALOG_END -->` в `README.md` и `README.ru.md`.
+  - [x] **CI/CD в GitHub Actions**:
+    - Интеграция шага валидации плагинов в `.github/workflows/ci.yml` при Pull Request.
+    - Создание workflow публикации `.github/workflows/publish_plugins.yml`: автоматическая упаковка `.pcpl`, загрузка в релиз `plugins`, публикация `registry.json` и коммит актуализированных таблиц в `README.md` и `README.ru.md`.
+  - [x] **Витрина каталога сообщества в документации**: Внедрены секции «🏪 Community Plugins & Marketplace» / «🏪 Витрина и каталог плагинов» со ссылками на скачивание всех 4 базовых плагинов.
+  - [x] **Тестирование и качество**: Все 76 тестов воркспейса проходят успешно (`cargo test --workspace -j 1`), линтер `clippy` без предупреждений (`-D warnings`), соблюдено форматирование `cargo fmt`.

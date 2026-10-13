@@ -18,7 +18,8 @@
       "name": "rmbg-1.4.onnx",
       "required": true,
       "size_mb": 168,
-      "url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx"
+      "url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
+      "sha256": "8cafcf770b06757c4eaced21b1a88e57fd2b66de01b8045f35f01535ba742e0f"
     }
   ]
 }

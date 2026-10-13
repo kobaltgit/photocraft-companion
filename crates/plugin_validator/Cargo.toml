@@ -1,0 +1,15 @@
+[package]
+name = "plugin_validator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+core_contracts = { path = "../core_contracts" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+ureq = "3.4"
+roxmltree = "0.20"
+zip = { workspace = true }

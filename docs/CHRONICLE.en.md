@@ -1105,3 +1105,48 @@ Furthermore, raster formats (`.png`/`.jpg`) were ruled out due to memory overhea
 * Full compliance with `i18n_lint_test`.
 * Verified `package_plugins.ps1` execution — all 4 packages assembled cleanly.
 
+---
+
+## Chapter 39: Plugin Marketplace Automation (CI/CD) & Native Rust Validator (October 13, 2026)
+
+*Timestamp: October 13, 2026, 18:05 (~30 mins)*
+
+### 1. Context and Problem Statement
+Following the release of lightweight `.pcpl` bundles and native vector SVG support, we faced a major ecosystem scalability question: **how can any third-party contributor create a plugin, open a GitHub Pull Request, and have the ecosystem automatically validate quality, assemble packages, and publish them to the marketplace showcase?**
+
+Manual verification and ad-hoc releases would inevitably lead to broken links, heavy embedded raster bloat inside SVG files, and type mismatches. A fully automated, robust CI/CD pipeline built on native Rust was essential.
+
+### 2. Architectural Implementation
+
+1. **Native Rust Validator & Registry Generator (`crates/plugin_validator`):**
+   * Introduced a dedicated workspace crate: `crates/plugin_validator`.
+   * **Strict Manifest Validation:** Deserializing manifests via `core_contracts::PluginManifest` guarantees schema correctness for `id`, `name`, `version`, input/output paradigms, and declarative command chains.
+   * **Strict SVG Audit (XML inspection via `roxmltree`):**
+     - Root tag must be `<svg>`.
+     - Completely forbids embedded raster `<image>` tags.
+     - Rejects base64 raster data URIs (`data:image/`) within any attributes.
+   * **Model Weight Verification:**
+     - Validates SHA-256 formatting (strictly 64 hex characters).
+     - Performs an ultra-fast HTTP HEAD request with a 10s timeout to verify URL availability (200/300 status via lightweight `ureq`). No heavy downloads required during CI.
+   * **Lightweight Bundle Packaging (`--package-plugins`):**
+     - Compiles `.pcpl` (ZIP) packages into `dist/` directly from `plugins/`, strictly filtering out heavy neural weights (`*.onnx`, `*.bin`, `*.safetensors`, `*.part`).
+   * **Store Index Registry (`--build-registry`):**
+     - Emits `dist/registry.json` detailing all validated plugins, direct GitHub Release download URLs, and model metadata for consumption by the Companion UI.
+   * **Automated Showcase Synchronization (`--update-readme`):**
+     - Detects `<!-- PLUGINS_CATALOG_START -->` and `<!-- PLUGINS_CATALOG_END -->` markers in both `README.md` and `README.ru.md`, generating clean Markdown showcase tables with icons, type tags, and direct 1-click download links.
+
+2. **Continuous Integration & Delivery (GitHub Actions CI/CD):**
+   * Updated `.github/workflows/ci.yml`: Every Pull Request automatically runs `cargo run --package plugin_validator -- --validate plugins`. Pull requests with malformed manifests or raster-tainted SVGs are immediately blocked with informative diagnostics.
+   * Authored `.github/workflows/publish_plugins.yml`:
+     - Triggers on pushes to `main` affecting `plugins/**`.
+     - Runs validation, compiles lightweight `.pcpl` bundles, generates `dist/registry.json`, and updates documentation tables.
+     - Uploads `.pcpl` files and `registry.json` as assets to the `plugins` GitHub Release tag via `softprops/action-gh-release@v2`.
+     - Commits updated `README.md` and `README.ru.md` back to `main`.
+
+### 3. Verification
+* Added comprehensive unit tests in `plugin_validator`: vector SVG acceptance, raster `<image>` and `data:image/` rejection, and `RegistryIndex` serialization tests.
+* Validated all 4 base plugins (`black_and_white`, `inpaint`, `remove_bg`, `upscale`) locally — 100% pass rate.
+* Generated compact `.pcpl` packages weighing ~670 to 1020 bytes.
+* Full workspace test suite (**76 tests**) passed with 100% green results (`cargo test --workspace -j 1`).
+* Linters passed with zero warnings: `cargo clippy --workspace --all-targets -j 1 -- -D warnings` and `cargo fmt --all -- --check`.
+

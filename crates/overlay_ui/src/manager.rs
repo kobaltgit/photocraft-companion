@@ -717,7 +717,7 @@ impl PluginManagerApp {
                                             let _ = std::fs::create_dir_all(&target_dir);
                                             let target_file = target_dir.join(&req.name);
                                             let part_file =
-                                                target_dir.join(format!("{}.part", &req.name));
+                                                target_dir.join(format!("{}.part", req.name));
                                             let url_clone = url.clone();
                                             let model_name = req.name.clone();
                                             let plugin_id = manifest.id.clone();

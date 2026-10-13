@@ -55,7 +55,7 @@ pub enum UpdateState {
 /// Supports optional leading 'v' or 'V' (e.g. "v1.2.3" vs "1.2.0").
 pub fn is_version_newer(latest: &str, current: &str) -> bool {
     let parse_nums = |v: &str| -> Vec<u64> {
-        let cleaned = v.trim().trim_start_matches(|c| c == 'v' || c == 'V');
+        let cleaned = v.trim().trim_start_matches(['v', 'V']);
         // Cut prerelease/build suffix if any (e.g. 1.0.0-beta.1)
         let main_part = cleaned.split('-').next().unwrap_or(cleaned);
         main_part
@@ -93,10 +93,10 @@ pub fn is_asset_matching_os(asset_name: &str, os: &str, arch: &str) -> bool {
         if arch != "aarch64" {
             return false;
         }
-    } else if lower.contains("x86_64") || lower.contains("x64") || lower.contains("amd64") {
-        if arch != "x86_64" {
-            return false;
-        }
+    } else if (lower.contains("x86_64") || lower.contains("x64") || lower.contains("amd64"))
+        && arch != "x86_64"
+    {
+        return false;
     }
 
     match os {
@@ -221,9 +221,7 @@ pub fn fetch_latest_release(repo: &str) -> Result<UpdateCheckResult, String> {
         .ok_or_else(|| "Missing tag_name in GitHub release".to_string())?
         .to_string();
 
-    let clean_version = tag_name
-        .trim_start_matches(|c| c == 'v' || c == 'V')
-        .to_string();
+    let clean_version = tag_name.trim_start_matches(['v', 'V']).to_string();
     let release_notes = parsed
         .get("body")
         .and_then(|v| v.as_str())

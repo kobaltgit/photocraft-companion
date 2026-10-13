@@ -139,6 +139,7 @@ pub struct CompanionOverlayApp {
 }
 
 impl CompanionOverlayApp {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         buttons: Vec<ButtonConfig>,
         manifests: Vec<core_contracts::PluginManifest>,
@@ -741,6 +742,7 @@ impl eframe::App for CompanionOverlayApp {
 }
 
 /// Helper function to launch the unified floating companion overlay
+#[allow(clippy::too_many_arguments)]
 pub fn launch_companion_overlay(
     buttons: Vec<ButtonConfig>,
     manifests: Vec<core_contracts::PluginManifest>,
@@ -855,6 +857,7 @@ pub fn launch_plugin_manager(
 }
 
 #[cfg(test)]
+#[allow(clippy::arc_with_non_send_sync)]
 mod tests {
     use super::*;
 

@@ -6,6 +6,7 @@ members = [
     "crates/ai_engine",
     "crates/overlay_ui",
     "crates/companion_app",
+    "crates/plugin_validator",
 ]
 
 [workspace.package]

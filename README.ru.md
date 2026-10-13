@@ -203,6 +203,26 @@ my_plugin.pcpl
 
 ---
 
+## 🏪 Витрина и каталог плагинов (Plugin Marketplace)
+
+Готовые пакеты `.pcpl` можно скачать в 1 клик и сразу установить через **Менеджер плагинов** Компаньона:
+
+<!-- PLUGINS_CATALOG_START -->
+
+| Иконка | Название и плагин | Тип | Версия | Автор | Пакет (.pcpl) |
+| :---: | :--- | :---: | :---: | :--- | :---: |
+| <img src="plugins/black_and_white/icon.svg" width="28" height="28"> | **B&W Film Pop (No-Code)**<br>_Duplicates active layer, converts to grayscale with auto-contrast adjustment._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Скачать .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/black_and_white.pcpl) |
+| <img src="plugins/inpaint/icon.svg" width="28" height="28"> | **AI Generative Fill (LaMa)**<br>_Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Скачать .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/inpaint.pcpl) |
+| <img src="plugins/remove_bg/icon.svg" width="28" height="28"> | **AI Remove Background (RMBG-1.4)**<br>_High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Скачать .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/remove_bg.pcpl) |
+| <img src="plugins/upscale/icon.svg" width="28" height="28"> | **AI Super-Resolution (2x)**<br>_2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime & DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Скачать .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/upscale.pcpl) |
+
+<!-- PLUGINS_CATALOG_END -->
+
+> [!TIP]
+> **Хотите опубликовать свой плагин?** Изучите [Руководство разработчика плагинов](docs/PLUGIN_DEVELOPMENT_GUIDE.md), создайте директорию в `plugins/<id>/` и отправьте Pull Request! Наш автоматический CI проверит манифест, векторную иконку и веса моделей перед публикацией.
+
+---
+
 ## 📚 Документация проекта
 
 Подробные инженерные спецификации и журнал разработки находятся в папке [`docs/`](docs/):
