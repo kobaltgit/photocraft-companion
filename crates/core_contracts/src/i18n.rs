@@ -472,10 +472,7 @@ mod tests {
             ru.format_denoise_name("Portrait"),
             "Portrait (Очищено от шума)"
         );
-        assert_eq!(
-            en.format_denoise_name("Portrait"),
-            "Portrait (Denoised)"
-        );
+        assert_eq!(en.format_denoise_name("Portrait"), "Portrait (Denoised)");
 
         // Deduplication
         assert_eq!(

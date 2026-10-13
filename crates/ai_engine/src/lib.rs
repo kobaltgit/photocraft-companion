@@ -208,7 +208,6 @@ impl AiEngine {
         self.run_segmentation_inference(model_path, img, norm_mode)
     }
 
-
     /// Universal tiled inference for RGB processing (ImageToImage & SuperResolution)
     fn run_tiled_rgb_inference(
         &self,
@@ -1020,7 +1019,9 @@ impl Plugin for GenericAiPlugin {
             AiTask::SuperResolution => lang.format_upscale_name(&source_name),
             AiTask::Inpainting => lang.format_inpaint_name(&source_name),
             AiTask::ImageToImage => {
-                if self.manifest.id.contains("denoise") || self.manifest.name.to_lowercase().contains("denoise") {
+                if self.manifest.id.contains("denoise")
+                    || self.manifest.name.to_lowercase().contains("denoise")
+                {
                     lang.format_denoise_name(&source_name)
                 } else {
                     format!("{source_name} (AI)")
