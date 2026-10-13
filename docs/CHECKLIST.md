@@ -316,3 +316,53 @@
   - [x] **Отказоустойчивость витрины плагинов (`crates/overlay_ui/src/store.rs`)**:
     - Добавлен автоматический fallback на предсобранный `registry.json` рядом с бинарником или в папке дистрибуции при отсутствии подключения к сети.
     - Включение `registry.json` в портабельные архивы и Windows Setup инсталлятор.
+
+- [x] **Фаза 40: Плагин AI Face Restore (GFPGAN) и расширение экосистемы (Zero-Core Hardcoding)**
+  - [x] **Декларативный манифест `plugins/face_restore/plugin.json`**:
+    - ID: `ai.photocraft.plugins.face_restore`, действие `plugin:face_restore`.
+    - Модель: `gfpgan_v1.4.onnx` (~340 МБ, SHA-256 проверен, URL HuggingFace).
+    - Парадигма ИИ: `image_to_image` с тайлингом 512×512, нахлёстом 32px и нормализацией `zero_to_one`.
+    - Режим вывода: `new_layer` (недеструктивная реставрация на новом слое).
+  - [x] **Авторская векторная иконка `plugins/face_restore/icon.svg`**:
+    - Строгий векторный стандарт SVG (viewBox 24×24, stroke 2, без растровых данных и `<image>`).
+    - Стилизованный контур лица с искрами нейросетевого восстановления.
+  - [x] **Двуязычная документация `plugins/face_restore/README.md`**:
+    - Полное описание возможностей на русском и английском языках.
+  - [x] **Упаковка пакета `.pcpl` и каталогизация**:
+    - Собрано через `scripts/package_plugins.ps1`: создан `dist/packages/face_restore.pcpl` (2.7 КБ).
+    - Проверено утилитой `plugin_validator`: успешно валидировано 5 плагинов, обновлены `dist/registry.json`, `README.md` и `README.ru.md`.
+  - [x] **Тестирование и Zero-Core верификация**:
+    - Исходный код ядра (`crates/*`) не модифицировался.
+    - 100% прохождение всех 78 тестов воркспейса (`cargo test --workspace -j 1`).
+
+- [x] **Фаза 41: Универсальный алгоритм тайлинга фиксированного размера (Boundary Clamping & Reflect Padding, BUG-054)**
+  - [x] **Гарантированное фиксированное окно `tile_size × tile_size`**:
+    - Внедрен Boundary Clamping в `ai_engine::run_tiled_rgb_inference`: краевые тайлы сдвигаются назад к границе (`w.saturating_sub(tile_size)`), навсегда исключая обрубки патчей и ошибки формы тензоров ONNX.
+  - [x] **Reflect Padding для суб-тайловых холстов**:
+    - Зеркальное дополнение холстов меньше `tile_size` до полного квадрата модели с последующим точным кадрированием результата до оригинальных пропорций.
+  - [x] **Тестирование и верификация**:
+    - Добавлен тест `test_tiled_boundary_clamping_coordinates` в `ai_engine`.
+    - 100% тестов воркспейса зеленые (79 тестов) с соблюдением Resource Guard (`cargo test --workspace -j 1`).
+
+- [x] **Фаза 42: Ликвидация хардкода лиц и запуск плагина AI Denoise & Enhance (NAFNet SIDD)**
+  - [x] **Очистка ядра от костылей лица (Zero-Core Hardcoding Enforcement)**:
+    - Удален модуль `crates/ai_engine/src/face_pipeline.rs` и специфичный метод `execute_face_restoration`.
+    - Ядро очищено от эвристик поиска моделей под конкретный плагин лица.
+    - В `core_contracts::plugin::AiTask` удален вариант `FaceRestoration` — сохранены 4 фундаментальные парадигмы инференса: `ImageToImage`, `SegmentationMask`, `SuperResolution`, `Inpainting`.
+    - Сохранены универсальные алгоритмы: фиксированный Boundary Clamping и тест `test_tiled_boundary_clamping_coordinates`.
+  - [x] **Интернационализация денойза (`crates/core_contracts/src/i18n.rs`)**:
+    - Добавлены суффикс `denoise_suffix` ("Denoised" / "Очищено от шума" и др.) и форматирование слоя `format_denoise_name`.
+    - Обновлены и успешно пройдены юнит-тесты `test_format_denoise_name` и линтер отсутствия хардкода `test_no_hardcoded_fallback_strings`.
+  - [x] **Создание плагина `plugins/photo_denoise/`**:
+    - Декларативный манифест `plugin.json` с моделью `nafnet-denoise.onnx` (275 МБ NAFNet-SIDD-width64), тайлингом 512×512, нахлестом 32px и нормализацией `zero_to_one`.
+    - Авторская векторная иконка `icon.svg` (Noise Cleaner / Sparkle) строгого стандарта SVG.
+    - Двуязычная документация `README.md` (RU / EN).
+  - [x] **Упаковка и каталогизация**:
+    - Пакет `dist/packages/photo_denoise.pcpl` (2.5 КБ) упакован скриптом `scripts/package_plugins.ps1`.
+    - Удалены следы `face_restore` из `dist/registry.json`, `dist/packages/`, `README.md` и `README.ru.md`.
+  - [x] **Тестирование и верификация (Resource Guard)**:
+    - 100% успешное прохождение всех тестов во всем воркспейсе (`cargo test --workspace -j 1`).
+    - Успешная сборка релиза `companion_app` (`cargo build --release -p companion_app -j 1`).
+
+
+

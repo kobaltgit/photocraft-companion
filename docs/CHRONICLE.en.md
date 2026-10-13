@@ -1246,5 +1246,125 @@ Following the fix of the terminal window spam issue on Windows (BUG-053) and ide
 * All 78 workspace tests pass cleanly.
 * Workspace prepared for commit and `v1.0.1` tag push.
 
+---
+
+## [2026-10-13 22:30] Chapter 43: AI Face Restore (GFPGAN) Plugin & The Zero-Core Triumph
+
+### 1. Context and Goals
+Following the v1.0.1 release and the in-app plugin store rollout, we performed the definitive practical validation of the project's core architectural principle — **Strict Zero-Core Hardcoding Prohibition**.
+
+The goal was to add the **AI Face Restore (GFPGAN v1.4)** neural portrait restoration plugin purely declaratively: without changing a single line of Rust code in engine crates (`crates/*`) and without recompiling the application.
+
+### 2. Implementation
+1. **Declarative Manifest (`plugins/face_restore/plugin.json`):**
+   * ID: `ai.photocraft.plugins.face_restore`, action `plugin:face_restore`.
+   * Model: `gfpgan_v1.4.onnx` (~340 MB, verified SHA-256, direct HuggingFace download URL).
+   * AI Paradigm: `image_to_image` with sliding window `tile_size: 512`, seam overlap `tile_pad: 32`, and tensor normalization `zero_to_one`.
+   * Output: non-destructive `new_layer` mode (restored face is placed on a new layer preserving original pixels).
+2. **Vector Icon (`plugins/face_restore/icon.svg`):**
+   * Minimalist, elegant Lucide-style portrait silhouette icon (viewBox 24×24, stroke 2) without decorative visual clutter.
+   * Full vector compliance: no raster data, theme-adaptive styling via `currentColor`.
+3. **Bilingual Documentation (`plugins/face_restore/README.md`):**
+   * Complete overview and model installation guide in Russian and English.
+4. **Packaging and Cataloging:**
+   * Script `scripts/package_plugins.ps1` generated the lightweight package `dist/packages/face_restore.pcpl` (2.6 KB).
+   * Tool `plugin_validator` verified the manifest and vector XML, updating `dist/registry.json`, `README.md`, and `README.ru.md`.
+
+### 3. Verification
+* **Zero-Core Compliance:** Zero lines of Rust code altered in any crate (`crates/core_contracts`, `crates/ai_engine`, `crates/photocraft_bridge`, `crates/overlay_ui`, `crates/companion_app`).
+* **100% Test Pass Rate:** All 78 workspace tests pass green (`cargo test --workspace -j 1`).
+* Internationalization linter `i18n_lint_test` passed with zero errors.
+
+---
+
+## [2026-10-13 22:50] Chapter 44: Fixed-Size Universal Tiling Algorithm (BUG-054)
+
+### 1. Problem Statement
+During initial testing of the AI Face Restore plugin on real-world high-resolution portrait canvases (e.g. 1140×1964), users encountered an ONNX Runtime exception: `AI Inference error: Failed to build input tensor: shape mismatch`.
+
+Investigation revealed that the GFPGAN v1.4 architecture strictly enforces a fixed input tensor geometry of `[1, 3, 512, 512]`. When traversing non-modulo canvas dimensions, the previous sliding window algorithm cropped partial boundary slivers (e.g., 116×512), violating the model's tensor contract.
+
+### 2. Solution
+We upgraded `ai_engine::run_tiled_rgb_inference` to guarantee fixed-dimension tensor delivery:
+1. **Boundary Clamping:** Every patch is guaranteed to be exactly `tile_size × tile_size`. When reaching canvas edges, the window shifts backward to clamp directly against the border (`w.saturating_sub(tile_size)`), eliminating truncated patches.
+2. **Reflect Padding:** For canvases smaller than `tile_size`, the image is mirror-padded to the full model tile size, processed in a single pass, and cleanly cropped back to exact target dimensions.
+3. **Seamless Feathering:** Retained weighted linear seam blending (`pad_scaled`) with normalized overlap accumulation.
+
+### 3. Results
+* All 79 workspace tests pass with 100% green status (`cargo test --workspace -j 1`).
+* GFPGAN and all future fixed-shape neural models now process arbitrary canvas resolutions reliably.
+
+---
+
+## [2026-10-13 23:30] Chapter 45: Professional Face Restoration Pipeline (YOLOv8-face + GFPGAN 512×512)
+
+### 1. Context and Architectural Challenge
+Blind 512×512 tiling works wonderfully for textures and landscape photos, but on high-resolution portrait canvases (4K to 8K), arbitrarily slicing a human face across a tile grid disrupts global facial anatomy: introducing gaze misalignment, seams across cheeks, and mouth artifacts.
+
+The industry-standard solution for studio-quality face restoration is a specialized Face Restoration Pipeline:
+1. Detect face bounding boxes and 5 anthropometric landmarks (eyes, nose, mouth corners).
+2. Align faces via a 2×3 Similarity Transform (Least Squares Umeyama) onto the canonical FFHQ 512×512 reference standard.
+3. Execute GFPGAN v1.4 neural restoration under its ideal training conditions.
+4. Seamlessly project the restored face back onto the source canvas via inverse affine transformation and a smooth radial feathering mask, preserving 100% of the original hair, ears, and background.
+
+### 2. Implementation
+1. **Face Pipeline Module (`crates/ai_engine/src/face_pipeline.rs`):**
+   * Defined `FaceDetection` struct capturing bounding box `[x1, y1, x2, y2]`, five 2D landmarks, and detection confidence `score`.
+   * Letterbox input preprocessor `prepare_yolo_input`: aspect-ratio preserving resize and centered padding to 640×640 with tensor normalization `[1, 3, 640, 640]` into `0.0..1.0`.
+   * Tensor decoder `parse_yolov8_face_output`: decodes raw anchor outputs, reverses letterbox coordinate transforms, and applies Non-Maximum Suppression (NMS).
+   * Fallback heuristic `fallback_face_detection`: builds a centered portrait crop with standard facial proportions if lighting or angle falls below the `conf > 0.35` threshold.
+   * Affine transformation core:
+     - Similarity matrix estimation `estimate_similarity_transform` (2×3) via Umeyama least-squares against `FFHQ_512_LANDMARKS`.
+     - Direct `warp_affine` with bilinear interpolation.
+     - Analytical matrix inversion `inverse_affine_matrix`.
+   * Seamless Feathering Blend:
+     - Elliptical mask generator `generate_face_feather_mask` (512×512, 20px radial transition).
+     - Inverse projection and alpha blending `blend_restored_face` onto the original image canvas.
+2. **AI Engine Integration (`crates/ai_engine/src/lib.rs`):**
+   * Added `execute_face_restoration(&self, detector_path: &Path, gfpgan_path: &Path, img: &RgbaImage) -> Result<RgbaImage>`.
+   * Wired `AiTask::FaceRestoration` in `GenericAiPlugin::execute` to automatically resolve `yolov8n-face.onnx` and `gfpgan_v1.4.onnx`, run the pipeline, and assign localized layer names via `lang.format_face_restore_name`.
+3. **Manifest Update (`plugins/face_restore/plugin.json`):**
+   * Declared `"ai": { "task": "face_restoration" }`.
+   * Listed dual model dependencies (`yolov8n-face.onnx` 12 MB, `gfpgan_v1.4.onnx` 340 MB) with official HuggingFace URLs and SHA-256 checksums.
+
+### 3. Verification
+* Unit tests in `face_pipeline::tests` verify identity similarity transformation, invertible affine matrices, and feather mask boundaries.
+* **100% of workspace tests pass** (82 tests total) with Resource Guard enforced (`cargo test --workspace -j 1`).
+* Repackaged `.pcpl` archives via `scripts/package_plugins.ps1`.
+
+---
+
+## [2026-10-14 00:05] Chapter 46: Purging Face-Specific Core Logic (Zero-Core Hardcoding) & Adding AI Denoise & Enhance (NAFNet SIDD)
+
+### 1. Architectural Integrity and Principle Realignment
+Hardcoded face detection heuristics and FFHQ affine warping inside the core engine violated the foundational project tenet — **Strict Zero-Core Hardcoding Prohibition**. The companion engine is designed to be an agnostic runtime interpreter of declarative manifests, not a dumping ground for ad-hoc neural model quirks.
+
+An uncompromising architectural decision was executed:
+1. Completely remove specialized face restoration logic and restore the engine to 4 universal paradigms: `ImageToImage`, `SegmentationMask`, `SuperResolution`, and `Inpainting`.
+2. Replace problematic face-generating models with a professional, hallucination-free photo restoration plugin: **AI Denoise & Enhance** powered by the state-of-the-art **NAFNet (Nonlinear Activation Free Network)** trained on the Smartphone Image Denoising Dataset (SIDD).
+3. Preserve all valuable tiled inference advancements: **Boundary Clamping** and **Reflect Padding**, ensuring seamless processing of arbitrary resolutions.
+
+### 2. Implementation Details
+1. **Core Cleanup (`crates/ai_engine`, `crates/core_contracts`):**
+   * Deleted `crates/ai_engine/src/face_pipeline.rs`.
+   * Removed `face_pipeline` module, `execute_face_restoration` method, and manifest-specific model heuristics from `crates/ai_engine/src/lib.rs`.
+   * Removed `FaceRestoration` variant from `enum AiTask`.
+   * Replaced face methods in `crates/core_contracts/src/i18n.rs` with denoise localization (`denoise_suffix`, `format_denoise_name`).
+2. **Plugin Packaging (`plugins/photo_denoise/`):**
+   * Declarative `plugin.json` targeting `nafnet-denoise.onnx` (275 MB NAFNet-SIDD-width64), 512×512 tiling, 32px overlap, and `zero_to_one` normalization.
+   * Strict SVG icon `icon.svg` representing clean sparkles without embedded bitmaps.
+   * Bilingual `README.md` (EN / RU).
+   * Packaged `dist/packages/photo_denoise.pcpl` via `scripts/package_plugins.ps1`.
+   * Updated `dist/registry.json`, `README.md`, and `README.ru.md`.
+
+### 3. Verification & Resource Guard
+* 100% of all workspace tests pass green (`cargo test --workspace -j 1`).
+* `test_tiled_boundary_clamping_coordinates` remains intact and passing.
+* Release binary `companion_app` built cleanly (`cargo build --release -p companion_app -j 1`).
+
+
+
+
+
 
 

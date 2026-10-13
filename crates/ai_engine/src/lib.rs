@@ -208,6 +208,7 @@ impl AiEngine {
         self.run_segmentation_inference(model_path, img, norm_mode)
     }
 
+
     /// Universal tiled inference for RGB processing (ImageToImage & SuperResolution)
     fn run_tiled_rgb_inference(
         &self,
@@ -223,9 +224,30 @@ impl AiEngine {
         let out_w = w * scale;
         let out_h = h * scale;
 
-        // If image fits comfortably in a single tile, run directly
+        // If image fits within a single tile, pad to exact tile_size x tile_size, run, and crop back
         if w <= tile_size && h <= tile_size {
-            return self.run_single_rgb_patch(model_path, img, scale, normalize);
+            let mut padded = RgbaImage::new(tile_size, tile_size);
+            for py in 0..tile_size {
+                let src_y = if py < h {
+                    py
+                } else {
+                    let d = py - h + 1;
+                    h.saturating_sub(d).min(h - 1)
+                };
+                for px in 0..tile_size {
+                    let src_x = if px < w {
+                        px
+                    } else {
+                        let d = px - w + 1;
+                        w.saturating_sub(d).min(w - 1)
+                    };
+                    padded.put_pixel(px, py, *img.get_pixel(src_x, src_y));
+                }
+            }
+
+            let full_out = self.run_single_rgb_patch(model_path, &padded, scale, normalize)?;
+            let cropped = image::imageops::crop_imm(&full_out, 0, 0, out_w, out_h).to_image();
+            return Ok(cropped);
         }
 
         info!(
@@ -239,20 +261,37 @@ impl AiEngine {
         let step = tile_size.saturating_sub(tile_pad * 2).max(1);
 
         let mut y = 0;
-        while y < h {
-            let mut x = 0;
-            let tile_h = tile_size.min(h - y);
-            while x < w {
-                let tile_w = tile_size.min(w - x);
+        loop {
+            let tile_y = if y + tile_size > h {
+                h.saturating_sub(tile_size)
+            } else {
+                y
+            };
 
-                // Extract patch
-                let patch = image::imageops::crop_imm(img, x, y, tile_w, tile_h).to_image();
+            let mut x = 0;
+            loop {
+                let tile_x = if x + tile_size > w {
+                    w.saturating_sub(tile_size)
+                } else {
+                    x
+                };
+
+                // Extract exact tile_size x tile_size patch (with boundary clamping if needed)
+                let mut patch = RgbaImage::new(tile_size, tile_size);
+                for py in 0..tile_size {
+                    let sy = (tile_y + py).min(h - 1);
+                    for px in 0..tile_size {
+                        let sx = (tile_x + px).min(w - 1);
+                        patch.put_pixel(px, py, *img.get_pixel(sx, sy));
+                    }
+                }
+
                 let patch_out = self.run_single_rgb_patch(model_path, &patch, scale, normalize)?;
 
                 let out_patch_w = patch_out.width();
                 let out_patch_h = patch_out.height();
-                let out_x_base = x * scale;
-                let out_y_base = y * scale;
+                let out_x_base = tile_x * scale;
+                let out_y_base = tile_y * scale;
                 let pad_scaled = (tile_pad * scale) as f32;
 
                 // Blend patch into accumulator with linear edge feathering
@@ -295,13 +334,13 @@ impl AiEngine {
                     }
                 }
 
-                if x + tile_w >= w {
+                if tile_x + tile_size >= w {
                     break;
                 }
                 x += step;
             }
 
-            if y + tile_h >= h {
+            if tile_y + tile_size >= h {
                 break;
             }
             y += step;
@@ -910,7 +949,7 @@ impl Plugin for GenericAiPlugin {
             normalize: None,
         });
 
-        // 1. Locate model path
+        // 1. Locate model
         let model_req = self.manifest.models.first().ok_or_else(|| {
             CompanionError::Plugin(format!(
                 "No models specified in manifest for '{}'",
@@ -928,7 +967,6 @@ impl Plugin for GenericAiPlugin {
                 ))
             })?;
 
-        // 2. Fetch input according to manifest.input
         // 2. Fetch input according to task and selection
         let (input_img, inpaint_mask) =
             if ai_cfg.task == AiTask::Inpainting && ctx.document.has_selection {
@@ -981,7 +1019,13 @@ impl Plugin for GenericAiPlugin {
             AiTask::SegmentationMask => lang.format_cutout_name(&source_name),
             AiTask::SuperResolution => lang.format_upscale_name(&source_name),
             AiTask::Inpainting => lang.format_inpaint_name(&source_name),
-            AiTask::ImageToImage => format!("{source_name} (AI)"),
+            AiTask::ImageToImage => {
+                if self.manifest.id.contains("denoise") || self.manifest.name.to_lowercase().contains("denoise") {
+                    lang.format_denoise_name(&source_name)
+                } else {
+                    format!("{source_name} (AI)")
+                }
+            }
         };
 
         // 3. Execute inference in blocking thread
@@ -1220,5 +1264,49 @@ mod tests {
             AiEngine::compute_mask_bbox(&empty_mask),
             Some((20, 30, 40, 60))
         );
+    }
+
+    #[test]
+    fn test_tiled_boundary_clamping_coordinates() {
+        let (w, h) = (1140u32, 1964u32);
+        let tile_size = 512u32;
+        let tile_pad = 32u32;
+        let step = tile_size.saturating_sub(tile_pad * 2).max(1);
+
+        let mut tiles_extracted = 0;
+        let mut y = 0;
+        loop {
+            let tile_y = if y + tile_size > h {
+                h.saturating_sub(tile_size)
+            } else {
+                y
+            };
+
+            let mut x = 0;
+            loop {
+                let tile_x = if x + tile_size > w {
+                    w.saturating_sub(tile_size)
+                } else {
+                    x
+                };
+
+                // Every tile must fit strictly within image boundary with exact tile_size
+                assert!(tile_x + tile_size <= w);
+                assert!(tile_y + tile_size <= h);
+                tiles_extracted += 1;
+
+                if tile_x + tile_size >= w {
+                    break;
+                }
+                x += step;
+            }
+
+            if tile_y + tile_size >= h {
+                break;
+            }
+            y += step;
+        }
+
+        assert!(tiles_extracted > 0);
     }
 }

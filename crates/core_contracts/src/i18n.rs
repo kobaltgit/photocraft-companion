@@ -210,6 +210,55 @@ impl Language {
         let trimmed = source_name.trim();
         format!("{trimmed} ({suffix})")
     }
+
+    /// Suffix for denoise & enhance layers
+    pub fn denoise_suffix(&self) -> &'static str {
+        match self {
+            Language::En | Language::Auto => "Denoised",
+            Language::Ru => "Очищено от шума",
+            Language::De => "Entrauscht",
+            Language::Fr => "Débruité",
+            Language::Es => "Sin ruido",
+            Language::It => "Riduzione rumore",
+            Language::Ja => "ノイズ除去",
+            Language::Zh => "降噪清晰",
+            Language::Ko => "노이즈 제거",
+            Language::Pt => "Sem ruído",
+        }
+    }
+
+    /// Format denoise & enhance layer name
+    pub fn format_denoise_name(&self, source_name: &str) -> String {
+        let suffix = self.denoise_suffix();
+        let trimmed = source_name.trim();
+
+        let all_suffixes = [
+            "Denoised",
+            "Очищено от шума",
+            "Entrauscht",
+            "Débruité",
+            "Sin ruido",
+            "Riduzione rumore",
+            "ノイズ除去",
+            "降噪清晰",
+            "노이즈 제거",
+            "Sem ruído",
+        ];
+
+        for s in all_suffixes {
+            let pattern1 = format!("({s})");
+            let pattern2 = format!("[{s}]");
+            let pattern3 = format!("- {s}");
+            if trimmed.ends_with(&pattern1)
+                || trimmed.ends_with(&pattern2)
+                || trimmed.ends_with(&pattern3)
+            {
+                return trimmed.to_string();
+            }
+        }
+
+        format!("{trimmed} ({suffix})")
+    }
 }
 
 #[cfg(test)]
@@ -412,5 +461,30 @@ mod tests {
                 lang
             );
         }
+    }
+
+    #[test]
+    fn test_format_denoise_name() {
+        let ru = Language::Ru;
+        let en = Language::En;
+
+        assert_eq!(
+            ru.format_denoise_name("Portrait"),
+            "Portrait (Очищено от шума)"
+        );
+        assert_eq!(
+            en.format_denoise_name("Portrait"),
+            "Portrait (Denoised)"
+        );
+
+        // Deduplication
+        assert_eq!(
+            ru.format_denoise_name("Portrait (Очищено от шума)"),
+            "Portrait (Очищено от шума)"
+        );
+        assert_eq!(
+            en.format_denoise_name("Portrait [Denoised]"),
+            "Portrait [Denoised]"
+        );
     }
 }
