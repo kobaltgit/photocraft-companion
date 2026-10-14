@@ -1649,6 +1649,32 @@ Rather than patching a four-decade-old batch file, we retired CMD entirely and t
 * All workspace tests pass (`cargo test --workspace -j 1`) with 100% green status.
 * Portable self-updating is now rock-solid, silent, and immune to Desktop Heap exhaustion.
 
+---
+
+## [2026-10-14 22:50] Chapter 54: Overcoming macOS Gatekeeper and Releasing Patch v1.0.4 (BUG-057)
+
+*Time: October 14, 2026, 22:50 (~20 minutes)*
+
+### 1. Community Feedback: "The Application is Damaged"
+A few hours following the v1.0.3 release announcement, our first community bug report arrived in the repository tracker (Issue #1): on macOS, attempting to launch the downloaded companion bundle resulted in an alarming system dialog: *«PhotoCraft Companion.app is damaged and can't be opened. You should move it to the Trash»*.
+
+To seasoned open-source systems engineers, this warning is familiar. A newcomer might suspect real archive corruption during download or packaging, but systems programmers recognize the telltale signature of Apple Gatekeeper.
+
+### 2. Anatomy of the Failure: Browser Quarantine & Unsigned Bundle
+Under the hood of macOS, two security mechanisms interacted:
+1. **Quarantine Attribute (`com.apple.quarantine`):** When files are downloaded via modern web browsers, macOS attaches an extended quarantine attribute. Lacking an Apple Developer ID certificate ($99/year) and notarization tickets from Apple's verification cloud, Gatekeeper on modern macOS (Ventura, Sonoma, Sequoia 15+) intercepts launches with misleading "damaged application" warnings.
+2. **Missing Ad-Hoc Signing:** In `scripts/package_release.sh`, the `.app` bundle was assembled via simple filesystem copying without calling `codesign` and without explicitly setting executable bits (`chmod +x`) on `Contents/MacOS/photocraft-companion`. On Apple Silicon (M-series chips), binaries lacking valid code signatures are terminated at the kernel Darwin level.
+
+### 3. Engineering Solution and v1.0.4 Patch Release
+Rather than quietly force-pushing and overwriting release v1.0.3 assets (which would violate release immutability and leave existing v1.0.3 in-app updaters unaware of the fix), we opted for the proper engineering path: a dedicated patch release **v1.0.4**:
+1. **Ad-Hoc Bundle Signing in CI:** Updated `scripts/package_release.sh` to enforce `chmod +x` and execute `codesign --force --deep --sign -` across the entire `.app` bundle prior to `.tar.gz` and `.dmg` packaging, ensuring structural signature validity across Apple Silicon and Intel Darwin.
+2. **Documenting Quarantine Bypass:** Added clear, actionable guidance to `README.md`, `README.ru.md`, and automated release notes with the exact Terminal command:
+   ```bash
+   xattr -cr "/Applications/PhotoCraft Companion.app"
+   ```
+3. **Version Synchronization:** Synchronized version `1.0.4` across all 5 workspace manifests (`Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`).
+
+
 
 
 

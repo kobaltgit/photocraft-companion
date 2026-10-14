@@ -475,9 +475,20 @@
   - [x] **Фоновый скрытый запуск и автоочистка**:
     - Запуск процесса обновления с параметром `-WindowStyle Hidden` без всплывающих черных окон терминала.
     - Автоматическое удаление временной директории распакованного релиза после успешной синхронизации.
+  - [x] **Фаза 52: Ad-Hoc подпись бандла и запуск на macOS (BUG-057, Релиз v1.0.4)**
+  - [x] **Ad-Hoc подпись бандла macOS в CI (`package_release.sh`)**:
+    - Внедрение вызова `codesign --force --deep --sign -` для бандла `PhotoCraft Companion.app` перед упаковкой в `.tar.gz` и `.dmg`.
+    - Явное выставление прав исполнения `chmod +x` для бинарника внутри бандла `Contents/MacOS/photocraft-companion`.
+    - Предотвращение сброса процессов системой (SIGKILL / invalid signature) на Apple Silicon (M1/M2/M3/M4).
+  - [x] **Документирование снятия карантина Gatekeeper**:
+    - Добавление примечания в `README.md` и `README.ru.md` со снятием атрибута карантина через `xattr -cr "/Applications/PhotoCraft Companion.app"`.
+    - Включение инструкций в автоматические заметки о релизе (`generate_release_notes.py`).
+  - [x] **Синхронизация версий (v1.0.4)**:
+    - Синхронное обновление версии `1.0.4` в `Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`.
   - [x] **Тестирование и верификация (Resource Guard)**:
-    - Модульный тест генерации скрипта обновления в `crates/overlay_ui/src/updater.rs`.
-    - 100% успешный прогон всех тестов воркспейса (`cargo test --workspace -j 1`).
+    - 100% успешный прогон тестов воркспейса (`cargo test --workspace -j 1`).
+    - Валидация каталога плагинов (`plugin_validator`).
+
 
 
 

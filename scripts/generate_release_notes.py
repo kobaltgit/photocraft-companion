@@ -40,6 +40,7 @@ def generate_release_notes(version):
 ## 🌟 What's New in v{version} / Что нового в версии {version}
 
 ### 🇬🇧 English
+* **🍏 macOS Bundle Ad-Hoc Signing & Gatekeeper Support (BUG-057)**: App bundle on macOS is now explicitly ad-hoc signed (`codesign --force --deep --sign -`) and configured with executable permissions. Added explicit instructions for running on macOS Sequoia/Sonoma via `xattr -cr "/Applications/PhotoCraft Companion.app"`.
 * **🗺️ Depth Anything v2 (`depth_map`)**: State-of-the-art monocular depth estimation plugin with selectable Depth Anything V2 Small and Metric models, producing crisp depth maps and relief normals directly in active layers.
 * **📐 Vector Tracing (`vectorize`)**: High-performance algorithmic raster-to-vector tracing plugin converting silhouettes and line art into polygonal vector contours.
 * **📄 Interactive Plugin Documentation & Use Cases Modal**: Seamless vector document icon button in each plugin card displaying bilingual practical workflows, layer tips, and model links without restarting PhotoCraft.
@@ -47,6 +48,7 @@ def generate_release_notes(version):
 * **🤖 Automated Release Notes Publishing**: Integrated bilingual release notes compiler and automated GitHub Releases asset packaging.
 
 ### 🇷🇺 Русский
+* **🍏 Ad-Hoc подпись бандла и запуск на macOS (BUG-057)**: Бандл `PhotoCraft Companion.app` теперь автоматически подписывается ad-hoc сигнатурой (`codesign --force --deep --sign -`) при сборке с выставлением прав исполнения. В документацию добавлена подробная инструкция по снятию карантина Gatekeeper (`xattr -cr "/Applications/PhotoCraft Companion.app"`).
 * **🗺️ Depth Anything v2 (`depth_map`)**: Плагин генерации карт глубины на базе моделей Depth Anything V2 (Small и Metric) для рельефа, карт нормалей и 3D-композитинга прямо в активном документе.
 * **📐 Векторизация растра (`vectorize`)**: Высокоскоростной алгоритмический плагин трассировки контуров и силуэтов в полигональные векторные пути PhotoCraft.
 * **📄 Интерактивное окно документации и сценариев (Use Cases)**: Векторная кнопка в карточке каждого плагина для мгновенного просмотра практических приёмов, рекомендованных слоев и ссылок на веса прямо в редакторе.

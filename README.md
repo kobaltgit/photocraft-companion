@@ -106,6 +106,13 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 > [!TIP]
 > All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
 
+> [!NOTE]
+> **macOS Gatekeeper Note:** If macOS displays a warning saying *"The application is damaged and can't be opened"* or blocks unsigned open-source applications, open Terminal and remove the quarantine attribute:
+> ```bash
+> xattr -cr "/Applications/PhotoCraft Companion.app"
+> ```
+> Alternatively, go to **System Settings › Privacy & Security** and select **Open Anyway**.
+
 ### Building Packages Locally
 
 - **Windows:**

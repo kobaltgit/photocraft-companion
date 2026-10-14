@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="1.0.3"
+VERSION="1.0.4"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"
@@ -26,10 +26,16 @@ if [ "${OS_NAME}" = "Darwin" ]; then
     mkdir -p "${APP_BUNDLE}/Contents/Resources"
 
     cp target/release/photocraft-companion "${APP_BUNDLE}/Contents/MacOS/"
+    chmod +x "${APP_BUNDLE}/Contents/MacOS/photocraft-companion"
     cp packaging/macos/Info.plist "${APP_BUNDLE}/Contents/"
     cp -r plugins "${APP_BUNDLE}/Contents/Resources/"
     if [ -f "${DIST_DIR}/registry.json" ]; then
         cp "${DIST_DIR}/registry.json" "${APP_BUNDLE}/Contents/Resources/" || true
+    fi
+
+    echo ">>> Signing macOS app bundle (ad-hoc)..."
+    if command -v codesign >/dev/null 2>&1; then
+        codesign --force --deep --sign - "${APP_BUNDLE}" || true
     fi
 
     # Portable tar.gz
