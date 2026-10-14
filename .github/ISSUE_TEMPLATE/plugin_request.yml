@@ -1,0 +1,58 @@
+name: "🧩 New Plugin Proposal"
+description: Propose a new AI model, filter, or workflow plugin for PhotoCraft Companion
+title: "[Plugin]: "
+labels: ["plugin", "enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PhotoCraft Companion supports zero-code macros and native ONNX AI plugins.
+        Anyone can add plugins without recompiling the core companion application!
+  - type: input
+    id: plugin-name
+    attributes:
+      label: Proposed Plugin Name
+      placeholder: "e.g., Upscale 4x (RealESRGAN), Colorize, Background Blur"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Plugin Category
+      options:
+        - "AI: Segmentation / Background Removal"
+        - "AI: Inpainting / Generative Fill / Object Eraser"
+        - "AI: Super-Resolution / Upscaling"
+        - "AI: Style Transfer / Colorization / Enhancement"
+        - "AI: Depth Estimation / Normal Maps"
+        - "Utility: No-Code Action / Macro / Layer Commands"
+        - "Vector / Vectorization"
+        - "Other"
+    validations:
+      required: true
+  - type: input
+    id: model-link
+    attributes:
+      label: Model Source / Weights (Hugging Face / GitHub)
+      description: Link to ONNX model weights or repository (if it is an AI model).
+      placeholder: "https://huggingface.co/..."
+    validations:
+      required: false
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow & Expected Behavior
+      description: Describe what input the plugin needs from PhotoCraft and what it outputs.
+      placeholder: |
+        - Input: Active layer / Canvas / Selection
+        - Steps: Runs model / executes PhotoCraft commands
+        - Output: Replaces layer / Creates new layer / Mask
+    validations:
+      required: true
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Practical Use Cases
+      description: How will artists or photographers benefit from this plugin in PhotoCraft?
+    validations:
+      required: false

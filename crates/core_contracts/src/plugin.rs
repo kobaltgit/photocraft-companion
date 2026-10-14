@@ -34,6 +34,8 @@ pub struct PluginManifest {
     pub entrypoint: Option<String>,
     #[serde(default)]
     pub ai: Option<AiPipelineConfig>,
+    #[serde(default)]
+    pub algorithm: Option<AlgorithmConfig>,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(skip)]
@@ -79,6 +81,16 @@ pub enum NormalizationMode {
     Centered, // (pixel / 255.0 - 0.5) / 1.0 (RMBG)
     #[serde(alias = "raw_255")]
     Raw255, // raw pixel 0.0..255.0 (LaMa)
+    ImageNet, // (pixel / 255.0 - mean) / std (Depth Anything, ViT)
+}
+
+/// Output interpretation for single-channel or segmentation models
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AiOutputType {
+    #[default]
+    AlphaCutout,
+    GrayscaleLayer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +104,10 @@ pub struct AiPipelineConfig {
     pub tile_pad: Option<u32>,
     #[serde(default)]
     pub normalize: Option<NormalizationMode>,
+    #[serde(default)]
+    pub input_size: Option<u32>,
+    #[serde(default)]
+    pub output_type: Option<AiOutputType>,
 }
 
 impl PluginManifest {
@@ -154,6 +170,7 @@ impl Default for PluginManifest {
             action_id: None,
             entrypoint: None,
             ai: None,
+            algorithm: None,
             enabled: true,
             plugin_dir: None,
         }
@@ -176,10 +193,30 @@ pub enum PluginType {
     NoCode,
     /// Native Rust/C++ AI inference or high-perf memory processing
     NativeAi,
+    /// Native algorithmic processing without neural weights (e.g. VTracer vectorization)
+    NativeAlgorithm,
     /// Script-based automation (e.g. Rhai / Lua / JS)
     Script,
     /// External CLI process communicating via stdin/stdout or clipboard
     ExternalCli,
+}
+
+/// Declarative algorithm pipeline specification for non-neural tasks (vectorization, 3D LUT, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AlgorithmConfig {
+    pub task: String,
+    #[serde(default)]
+    pub mode: Option<String>,
+    #[serde(default)]
+    pub color_mode: Option<String>,
+    #[serde(default)]
+    pub filter_speckle: Option<usize>,
+    #[serde(default)]
+    pub corner_threshold: Option<i32>,
+    #[serde(default = "default_true")]
+    pub copy_clipboard: bool,
+    #[serde(default = "default_true")]
+    pub export_file: bool,
 }
 
 /// A step in a declarative No-Code pipeline
@@ -441,5 +478,50 @@ mod tests {
         let cfg_inp: AiPipelineConfig = serde_json::from_str(json_inp).unwrap();
         assert_eq!(cfg_inp.task, AiTask::Inpainting);
         assert_eq!(cfg_inp.normalize, Some(NormalizationMode::Raw255));
+
+        // Test depth_map / segmentation_mask with ImageNet & GrayscaleLayer
+        let json_depth = r#"{
+            "task": "segmentation_mask",
+            "input_size": 518,
+            "normalize": "image_net",
+            "output_type": "grayscale_layer"
+        }"#;
+        let cfg_depth: AiPipelineConfig = serde_json::from_str(json_depth).unwrap();
+        assert_eq!(cfg_depth.task, AiTask::SegmentationMask);
+        assert_eq!(cfg_depth.input_size, Some(518));
+        assert_eq!(cfg_depth.normalize, Some(NormalizationMode::ImageNet));
+        assert_eq!(cfg_depth.output_type, Some(AiOutputType::GrayscaleLayer));
+    }
+
+    #[test]
+    fn test_plugin_manifest_native_algorithm_deserialization() {
+        let manifest_json = r#"{
+            "id": "vectorize.tracer",
+            "name": "Vectorize Image",
+            "version": "1.0.0",
+            "description": "Convert raster images to vector SVG",
+            "plugin_type": "native_algorithm",
+            "algorithm": {
+                "task": "vector_trace",
+                "mode": "spline",
+                "color_mode": "color",
+                "filter_speckle": 4,
+                "corner_threshold": 60,
+                "copy_clipboard": true,
+                "export_file": false
+            }
+        }"#;
+
+        let manifest: PluginManifest = serde_json::from_str(manifest_json).unwrap();
+        assert_eq!(manifest.plugin_type, PluginType::NativeAlgorithm);
+        assert!(manifest.algorithm.is_some());
+        let algo = manifest.algorithm.unwrap();
+        assert_eq!(algo.task, "vector_trace");
+        assert_eq!(algo.mode.as_deref(), Some("spline"));
+        assert_eq!(algo.color_mode.as_deref(), Some("color"));
+        assert_eq!(algo.filter_speckle, Some(4));
+        assert_eq!(algo.corner_threshold, Some(60));
+        assert!(algo.copy_clipboard);
+        assert!(!algo.export_file);
     }
 }

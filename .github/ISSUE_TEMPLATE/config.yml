@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "💬 Discord Discussion: PhotoCraft Plugins & Companion"
+    url: "https://discord.com/channels/1359579021108842617/1558622191887720570"
+    about: "Join our dedicated project thread on ArtCraft Discord for discussions and questions."
+  - name: "📖 PhotoCraft Companion Documentation"
+    url: "https://github.com/kobaltgit/photocraft-companion#readme"
+    about: "Read setup guide, plugin specification, and architecture overview."

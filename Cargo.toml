@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
@@ -35,6 +35,7 @@ tray-icon = "0.26.1"
 resvg = "0.48"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
+vtracer = "0.6.5"
 
 [profile.dev]
 opt-level = 0

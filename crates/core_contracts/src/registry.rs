@@ -80,6 +80,8 @@ impl Plugin for NoCodePlugin {
 }
 
 pub type AiPluginFactory = Arc<dyn Fn(&PluginManifest) -> Result<Arc<dyn Plugin>> + Send + Sync>;
+pub type AlgorithmPluginFactory =
+    Arc<dyn Fn(&PluginManifest) -> Result<Arc<dyn Plugin>> + Send + Sync>;
 
 /// Registry that scans, loads, and manages all plugins in the system
 pub struct PluginRegistry {
@@ -87,6 +89,7 @@ pub struct PluginRegistry {
     manifests: Vec<PluginManifest>,
     plugins_dir: PathBuf,
     ai_factory: Option<AiPluginFactory>,
+    algorithm_factory: Option<AlgorithmPluginFactory>,
 }
 
 impl PluginRegistry {
@@ -96,12 +99,19 @@ impl PluginRegistry {
             manifests: Vec::new(),
             plugins_dir: plugins_dir.as_ref().to_path_buf(),
             ai_factory: None,
+            algorithm_factory: None,
         }
     }
 
     /// Set an AI factory hook to instantiate NativeAi plugins dynamically
     pub fn with_ai_factory(mut self, factory: AiPluginFactory) -> Self {
         self.ai_factory = Some(factory);
+        self
+    }
+
+    /// Set an algorithm factory hook to instantiate NativeAlgorithm plugins dynamically
+    pub fn with_algorithm_factory(mut self, factory: AlgorithmPluginFactory) -> Self {
+        self.algorithm_factory = Some(factory);
         self
     }
 
@@ -174,6 +184,37 @@ impl PluginRegistry {
                                                     Err(e) => {
                                                         warn!(
                                                             "Failed to instantiate Native AI plugin {}: {}",
+                                                            manifest.id, e
+                                                        );
+                                                        self.manifests.push(manifest);
+                                                    }
+                                                }
+                                            } else {
+                                                self.manifests.push(manifest);
+                                            }
+                                        }
+                                    }
+                                    PluginType::NativeAlgorithm => {
+                                        info!(
+                                            "Found Native Algorithm plugin manifest: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
+                                        if !self.plugins.contains_key(&manifest.id) {
+                                            if let Some(ref factory) = self.algorithm_factory {
+                                                match factory(&manifest) {
+                                                    Ok(plugin) => {
+                                                        info!(
+                                                            "Dynamically instantiated Native Algorithm plugin: {} [{}]",
+                                                            manifest.name, manifest.id
+                                                        );
+                                                        self.plugins
+                                                            .insert(manifest.id.clone(), plugin);
+                                                        self.manifests.push(manifest);
+                                                        loaded_count += 1;
+                                                    }
+                                                    Err(e) => {
+                                                        warn!(
+                                                            "Failed to instantiate Native Algorithm plugin {}: {}",
                                                             manifest.id, e
                                                         );
                                                         self.manifests.push(manifest);
@@ -509,5 +550,69 @@ mod tests {
 
         let res = registry.execute("unknown.plugin", &ctx).await;
         assert!(res.is_err());
+    }
+
+    struct MockAlgoPlugin {
+        manifest: PluginManifest,
+    }
+
+    #[async_trait]
+    impl Plugin for MockAlgoPlugin {
+        fn id(&self) -> &str {
+            &self.manifest.id
+        }
+
+        fn manifest(&self) -> &PluginManifest {
+            &self.manifest
+        }
+
+        async fn execute(&self, _ctx: &PluginContext) -> Result<PluginResult> {
+            Ok(PluginResult::ok("Vectorized successfully"))
+        }
+    }
+
+    #[test]
+    fn test_plugin_registry_native_algorithm_factory() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "registry_algo_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let p_algo = temp_dir.join("vectorize_plugin");
+        fs::create_dir_all(&p_algo).unwrap();
+        fs::write(
+            p_algo.join("plugin.json"),
+            r#"{
+                "id": "vectorize.vtracer",
+                "name": "Vectorize",
+                "version": "1.0.0",
+                "description": "Convert raster to vector",
+                "plugin_type": "native_algorithm",
+                "algorithm": {
+                    "task": "vector_trace"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let algo_factory: AlgorithmPluginFactory = Arc::new(|manifest: &PluginManifest| {
+            Ok(Arc::new(MockAlgoPlugin {
+                manifest: manifest.clone(),
+            }))
+        });
+
+        let mut registry = PluginRegistry::new(&temp_dir).with_algorithm_factory(algo_factory);
+        let count = registry.scan_and_load().unwrap();
+        assert_eq!(count, 1);
+        assert!(registry.get("vectorize.vtracer").is_some());
+
+        let manifests = registry.list_manifests();
+        assert_eq!(manifests.len(), 1);
+        assert_eq!(manifests[0].id, "vectorize.vtracer");
+        assert_eq!(manifests[0].plugin_type, PluginType::NativeAlgorithm);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

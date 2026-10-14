@@ -23,8 +23,9 @@ The ecosystem supports two primary formats for plugin distribution:
 
 ```text
 my_plugin/
-├── plugin.json              # Declarative manifest
-├── icon.svg                 # Vector icon for the floating palette
+├── plugin.json              # Declarative manifest (required)
+├── icon.svg                 # Vector icon for the floating palette (required)
+├── README.md                # Mandatory plugin documentation (EN & RU)
 └── models/                  # (Optional) Local ONNX neural weights
     └── my_model.onnx
 ```
@@ -34,10 +35,15 @@ Zero coding or compilation required. Authors describe a sequence of PhotoCraft e
 - **Barrier to entry:** Zero.
 - **Use cases:** Batch color grading, adjustment stacks, vignetting, frequency separation, export routines.
 
-### B. Native AI & Rust Plugins (`plugin_type: "native_ai"`)
-Leverage local deep neural networks (ONNX) and high-performance compiled Rust/C++ code.
-- **Capabilities:** Neural background removal, subject segmentation, generative fills, super-resolution, artistic style transfer.
+### B. Native AI Plugins (`plugin_type: "native_ai"`)
+Leverage local deep neural networks (ONNX) through ONNX Runtime (`ort`) with GPU acceleration (DirectML / CoreML / CPU fallback).
+- **Capabilities:** Neural background removal, subject segmentation, monocular 3D depth estimation, inpainting, super-resolution.
 - **Autonomy:** Neural weights are packaged inside the plugin folder or automatically downloaded from Hugging Face on first run with SHA-256 integrity verification.
+
+### C. Native Algorithm Plugins (`plugin_type: "native_algorithm"`)
+Leverage high-performance compiled Rust/C++ algorithms embedded in the companion core without neural networks.
+- **Capabilities:** High-fidelity raster-to-vector tracing (VTracer / Bezier curve fitting), direct clipboard export to Figma/Illustrator, SVG generation.
+- **Zero Weights:** Does not require heavy `.onnx` models, executes instantly on CPU.
 
 ---
 
@@ -92,42 +98,101 @@ Every plugin must include a `plugin.json` file at its root:
 | `version` | `string` | Yes | Semantic version string (`1.0.0`) |
 | `description` | `string` | Yes | Short explanation of functionality |
 | `author` | `string` | No | Author or organization name |
-| `plugin_type` | `string` | No | `"no_code"` (default), `"native_ai"`, `"script"`, `"external_cli"` |
+| `plugin_type` | `string` | No | `"no_code"`, `"native_ai"`, `"native_algorithm"`, `"script"`, `"external_cli"` |
 | `default_hotkey`| `string` | No | Default global hotkey (e.g., `"Ctrl+Shift+B"`, `"Alt+F8"`) |
-| `icon` | `string` | No | Built-in icon name (`"scissors"`, `"adjust"`) or relative path (`"icon.svg"`) |
+| `icon` | `string` | No | Built-in icon name or relative path (`"icon.svg"`) |
+| `input` | `string` | No | Image source: `"active_layer"`, `"selection"`, `"canvas"` |
+| `output_mode` | `string` | No | Insertion mode: `"in_place"`, `"new_layer"`, `"mask"` |
 | `commands` | `array` | For No-Code | Sequence of PhotoCraft engine steps |
+| `post_commands` | `array` | No | PhotoCraft engine commands run after inference (e.g. `layer.mergeDown`) |
+| `ai` | `object` | For Native AI | Declarative neural pipeline specification (`AiPipelineConfig`) |
+| `algorithm` | `object` | For Native Algo | Declarative algorithm parameters (`AlgorithmConfig`) |
 | `models` | `array` | For AI | Neural model requirements with download URLs and hashes |
 
 ---
 
-## 4. `models` Section (For Neural Plugins)
+## 4. Native AI Pipeline Specification (`ai` / `AiPipelineConfig`)
 
-When an AI plugin requires neural weights:
+When creating a `native_ai` plugin, configure the neural pipeline in `plugin.json`:
 
 ```json
 {
-  "id": "ai.author.portrait_bokeh",
-  "name": "Portrait Depth & Bokeh",
+  "id": "ai.photocraft.plugins.depth_map",
+  "name": "AI Depth Map (Depth Anything V2)",
   "version": "1.0.0",
-  "description": "Generates realistic synthetic depth maps and optical lens blur.",
   "plugin_type": "native_ai",
-  "action_id": "plugin:portrait_bokeh",
+  "input": "active_layer",
+  "output_mode": "new_layer",
+  "ai": {
+    "task": "segmentation_mask",
+    "input_size": 518,
+    "normalize": "image_net",
+    "output_type": "grayscale_layer"
+  },
   "models": [
     {
-      "name": "depth_anything_v2.onnx",
+      "name": "depth-anything-v2-small.onnx",
       "required": true,
-      "size_mb": 98,
-      "url": "https://huggingface.co/models/.../depth_v2.onnx",
-      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "size_mb": 99,
+      "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+      "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
     }
   ]
 }
 ```
 
-The companion automatically:
-- Checks if the file exists in `plugins/<id>/models/<name>`.
-- If missing, displays an alert and a **`[ ⬇ Download Model ]`** button inside the Plugin Manager UI.
-- Validates file integrity via SHA-256 after download.
+### Parameters:
+* **`task`** (required): Pipeline inference paradigm:
+  - `"segmentation_mask"`: Object segmentation or disparity/depth map estimation.
+  - `"image_to_image"`: 1:1 pixel transform (denoising, colorization).
+  - `"super_resolution"`: Upscaling resolution (e.g., Real-ESRGAN).
+  - `"inpainting"`: Content-aware fill / brush replacement (e.g., LaMa).
+* **`input_size`** (optional): Target square tensor resolution in pixels (e.g., `518` for Depth Anything V2, `1024` for RMBG-1.4). Defaults to `1024`.
+* **`normalize`** (optional): Input tensor normalization method:
+  - `"zero_to_one"`: `[0.0, 1.0]`.
+  - `"centered"`: `(pixel / 255.0 - 0.5) / 1.0` (RMBG).
+  - `"raw_255"`: Raw floating point `[0.0, 255.0]` (LaMa).
+  - `"image_net"`: ImageNet standardization `(pixel/255.0 - mean) / std` (ViT / Depth Anything V2).
+* **`output_type`** (optional): Result layer representation:
+  - `"alpha_cutout"` (default): Extracted subject cutout with soft transparent alpha channel.
+  - `"grayscale_layer"`: 8-bit monochromatic layer `Rgba([d, d, d, 255])` for depth maps, height maps, or masks.
+* **`scale`** (optional): Integer multiplier for super-resolution (e.g., `2` or `4`).
+* **`tile_size`** & **`tile_pad`** (optional): Tile dimensions and blend padding for processing ultra-high resolution images on limited GPU VRAM (e.g., `512` and `32`).
+
+---
+
+## 5. Native Algorithm Specification (`algorithm` / `AlgorithmConfig`)
+
+For plugins leveraging embedded high-speed compiled Rust/C++ algorithms without neural weights:
+
+```json
+{
+  "id": "algorithm.photocraft.plugins.vectorize",
+  "name": "Smart Vectorizer / SVG Trace",
+  "version": "1.0.0",
+  "plugin_type": "native_algorithm",
+  "input": "active_layer",
+  "output_mode": "new_layer",
+  "algorithm": {
+    "task": "vector_trace",
+    "mode": "spline",
+    "color_mode": "color",
+    "filter_speckle": 4,
+    "corner_threshold": 60,
+    "copy_clipboard": true,
+    "export_file": true
+  },
+  "models": []
+}
+```
+
+* **`task`**: Core algorithm identifier (`"vector_trace"`).
+* **`mode`**: Curve fitting mode (`"spline"`, `"polygon"`).
+* **`color_mode`**: Color segmentation strategy (`"color"`, `"binary"`).
+* **`filter_speckle`**: Noise suppression threshold in square pixels.
+* **`corner_threshold`**: Angle tolerance in degrees for smooth corners.
+* **`copy_clipboard`**: Automatically copies generated SVG markup to the OS clipboard.
+* **`export_file`**: Writes output `.svg` to local export folder.
 
 ---
 
@@ -200,6 +265,46 @@ zip -r my_super_plugin.pcpl plugin.json icon.svg
 
 ### Installation:
 Users open the **Plugin Manager** in PhotoCraft Companion and click **`[ + Install Plugin (.pcpl) ]`**. The companion extracts the plugin into `plugins/<id>/` and immediately mounts its button on the floating toolstrip without restarting the editor.
+
+---
+
+## 6.1. Mandatory Plugin Documentation (`README.md`)
+
+Every plugin directory in `plugins/<id>/` **must contain a `README.md` file**. Any plugin submitted without clear documentation violates the project's Definition of Done (DoD).
+
+> [!TIP]
+> **Interactive In-App Display:** The content of your `README.md` is rendered directly inside the **PhotoCraft Companion Manager**!
+> Users can click the vector document icon on any plugin card to open a styled modal with bilingual tabs `[ Russian | English ]`, vector bullet dots, code badges, and clickable links to model weights.
+
+### Structure Requirements:
+1. **Bilingual Presentation:** Include clear sections in both **English** and **Russian**.
+2. **Practical Use Cases:** Provide at least 2 concrete examples of how users apply the plugin's output in PhotoCraft (e.g. layer masks, bokeh blur, retouching).
+3. **Model Links:** If using neural models, provide direct download links to verified Hugging Face or GitHub Release sources.
+
+### Example Template:
+```markdown
+# <Plugin Name>
+
+[![Plugin: <Name>](https://img.shields.io/badge/Plugin-<Name>-blue.svg)](plugin.json)
+[![Model: <Model>](https://img.shields.io/badge/Model-<Model>-purple.svg)](<Model URL>)
+[![Type: Native AI](https://img.shields.io/badge/Type-Native_AI_(ONNX)-green.svg)](plugin.json)
+
+**English:**
+<Clear description of what the plugin does, input requirements, and underlying model/algorithm.>
+
+### Use Cases:
+- **<Use Case 1>:** <Step-by-step application in PhotoCraft, layers, effects, purpose.>
+- **<Use Case 2>:** <Integration with design workflows.>
+
+---
+
+**Русский:**
+<Русскоязычное описание возможностей плагина и формата входных данных.>
+
+### Практическое применение:
+- **<Сценарий 1>:** <Пошаговое описание использования в PhotoCraft, как комбинировать с инструментами редактора.>
+- **<Сценарий 2>:** <Второй пример практической пользы.>
+```
 
 ---
 

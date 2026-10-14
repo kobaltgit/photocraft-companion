@@ -1,0 +1,52 @@
+name: "💡 Feature Request"
+description: Suggest an idea or enhancement for PhotoCraft Companion
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement!
+        Please describe your idea and how it will improve workflow in PhotoCraft.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature Area
+      options:
+        - "Companion Core / Lifecycle"
+        - "Overlay UI (Toolbar / Plugin Manager / Themes)"
+        - "PhotoCraft Bridge / IPC Protocol"
+        - "AI Engine / Hardware Acceleration"
+        - "Plugin System / Manifest API"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement / Motivation
+      description: Is your feature request related to a specific problem or workflow friction?
+      placeholder: "I'm always frustrated when..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: Clear and concise description of what you want to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've considered.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context, UI mockups, or screenshots.
+    validations:
+      required: false

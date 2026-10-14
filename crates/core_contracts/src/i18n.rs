@@ -259,6 +259,99 @@ impl Language {
 
         format!("{trimmed} ({suffix})")
     }
+
+    /// Suffix for depth map layers
+    pub fn depth_suffix(&self) -> &'static str {
+        match self {
+            Language::En | Language::Auto => "Depth Map",
+            Language::Ru => "Карта глубины",
+            Language::De => "Tiefenkarte",
+            Language::Fr => "Carte de profondeur",
+            Language::Es => "Mapa de profundidad",
+            Language::It => "Mappa di profondità",
+            Language::Ja => "深度マップ",
+            Language::Zh => "深度图",
+            Language::Ko => "깊이 맵",
+            Language::Pt => "Mapa de profundidade",
+        }
+    }
+
+    /// Format depth map layer name preserving source name and preventing duplicate suffixes
+    pub fn format_depth_name(&self, source_name: &str) -> String {
+        let suffix = self.depth_suffix();
+        let trimmed = source_name.trim();
+
+        let all_suffixes = [
+            "Depth Map",
+            "Карта глубины",
+            "Tiefenkarte",
+            "Carte de profondeur",
+            "Mapa de profundidad",
+            "Mappa di profondità",
+            "深度マップ",
+            "深度图",
+            "깊이 맵",
+            "Mapa de profundidade",
+        ];
+
+        for s in all_suffixes {
+            let pattern1 = format!("({s})");
+            let pattern2 = format!("[{s}]");
+            let pattern3 = format!("- {s}");
+            if trimmed.ends_with(&pattern1)
+                || trimmed.ends_with(&pattern2)
+                || trimmed.ends_with(&pattern3)
+            {
+                return trimmed.to_string();
+            }
+        }
+
+        format!("{trimmed} ({suffix})")
+    }
+
+    /// Format vectorized layer name preserving source name and preventing duplicate suffixes
+    pub fn format_vectorized_name(&self, source_name: &str) -> String {
+        let suffix = match self {
+            Language::Ru => "Векторизация",
+            Language::De => "Vektorisiert",
+            Language::Fr => "Vectorisé",
+            Language::Es => "Vectorizado",
+            Language::It => "Vettorizzato",
+            Language::Ja => "ベクター化",
+            Language::Zh => "矢量化",
+            Language::Ko => "벡터화",
+            Language::Pt => "Vetorizado",
+            _ => "Vectorized",
+        };
+        let trimmed = source_name.trim();
+
+        let all_suffixes = [
+            "Vectorized",
+            "Векторизация",
+            "Vektorisiert",
+            "Vectorisé",
+            "Vectorizado",
+            "Vettorizzato",
+            "ベクター化",
+            "矢量化",
+            "벡터화",
+            "Vetorizado",
+        ];
+
+        for s in all_suffixes {
+            let pattern1 = format!("({s})");
+            let pattern2 = format!("[{s}]");
+            let pattern3 = format!("- {s}");
+            if trimmed.ends_with(&pattern1)
+                || trimmed.ends_with(&pattern2)
+                || trimmed.ends_with(&pattern3)
+            {
+                return trimmed.to_string();
+            }
+        }
+
+        format!("{trimmed} ({suffix})")
+    }
 }
 
 #[cfg(test)]
@@ -482,6 +575,44 @@ mod tests {
         assert_eq!(
             en.format_denoise_name("Portrait [Denoised]"),
             "Portrait [Denoised]"
+        );
+    }
+
+    #[test]
+    fn test_format_depth_name() {
+        let ru = Language::Ru;
+        let en = Language::En;
+
+        assert_eq!(ru.format_depth_name("Portrait"), "Portrait (Карта глубины)");
+        assert_eq!(en.format_depth_name("Portrait"), "Portrait (Depth Map)");
+
+        // Deduplication
+        assert_eq!(
+            ru.format_depth_name("Portrait (Карта глубины)"),
+            "Portrait (Карта глубины)"
+        );
+        assert_eq!(
+            en.format_depth_name("Portrait [Depth Map]"),
+            "Portrait [Depth Map]"
+        );
+    }
+
+    #[test]
+    fn test_format_vectorized_name() {
+        let ru = Language::Ru;
+        let en = Language::En;
+
+        assert_eq!(ru.format_vectorized_name("Icon"), "Icon (Векторизация)");
+        assert_eq!(en.format_vectorized_name("Icon"), "Icon (Vectorized)");
+
+        // Deduplication
+        assert_eq!(
+            ru.format_vectorized_name("Icon (Векторизация)"),
+            "Icon (Векторизация)"
+        );
+        assert_eq!(
+            en.format_vectorized_name("Icon [Vectorized]"),
+            "Icon [Vectorized]"
         );
     }
 }

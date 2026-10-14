@@ -311,6 +311,10 @@ fn validate_single_plugin(dir: &Path, skip_network: bool) -> Result<ValidatedPlu
         bail!("Field 'version' cannot be empty");
     }
 
+    // Validate Mandatory README.md Documentation
+    validate_plugin_readme(dir)
+        .with_context(|| format!("Documentation validation failed for {}", dir.display()))?;
+
     // Validate Icon if specified or if icon.svg exists
     let icon_filename = manifest.icon.as_deref().unwrap_or("icon.svg");
     let icon_path = dir.join(icon_filename);
@@ -414,6 +418,47 @@ fn validate_svg_icon(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_plugin_readme(dir: &Path) -> Result<()> {
+    let readme_path = dir.join("README.md");
+    if !readme_path.exists() {
+        bail!(
+            "Missing mandatory 'README.md' documentation in {}. Every plugin must provide clear documentation with practical use cases.",
+            dir.display()
+        );
+    }
+
+    let content = fs::read_to_string(&readme_path)
+        .with_context(|| format!("Failed to read {}", readme_path.display()))?;
+
+    if content.trim().len() < 50 {
+        bail!(
+            "'README.md' in {} is too short or empty (minimum 50 characters required)",
+            dir.display()
+        );
+    }
+
+    let has_english = content.contains("English")
+        || content.contains("Use Cases")
+        || content.contains("Use cases");
+    let has_russian = content.contains("Русский") || content.contains("Практическое применение");
+
+    if !has_english {
+        bail!(
+            "'README.md' in {} must contain an English documentation section (e.g., '**English:**' or '### Use Cases:')",
+            dir.display()
+        );
+    }
+
+    if !has_russian {
+        bail!(
+            "'README.md' in {} must contain a Russian documentation section (e.g., '**Русский:**' or '### Практическое применение:')",
+            dir.display()
+        );
+    }
+
+    Ok(())
+}
+
 fn check_model_url_head(url: &str) -> Result<()> {
     let agent = ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(10)))
@@ -459,6 +504,7 @@ pub fn build_registry_index(plugins: &[ValidatedPlugin], repo_url: &str) -> Regi
             let plugin_type_str = match m.plugin_type {
                 core_contracts::PluginType::NoCode => "no_code",
                 core_contracts::PluginType::NativeAi => "native_ai",
+                core_contracts::PluginType::NativeAlgorithm => "native_algorithm",
                 core_contracts::PluginType::Script => "script",
                 core_contracts::PluginType::ExternalCli => "external_cli",
             };
@@ -593,6 +639,7 @@ pub fn generate_markdown_catalog_table(
 
         let type_badge = match m.plugin_type {
             core_contracts::PluginType::NativeAi => "`🤖 AI (ONNX)`",
+            core_contracts::PluginType::NativeAlgorithm => "`📐 Algorithm`",
             core_contracts::PluginType::NoCode => "`⚡ Macro`",
             core_contracts::PluginType::Script => "`📜 Script`",
             core_contracts::PluginType::ExternalCli => "`💻 CLI`",
@@ -722,6 +769,7 @@ mod tests {
             action_id: None,
             entrypoint: None,
             ai: None,
+            algorithm: None,
             enabled: true,
             plugin_dir: None,
         };
@@ -744,5 +792,64 @@ mod tests {
             index.plugins[0].icon_url,
             Some("https://github.com/test/repo/raw/main/plugins/test_plugin/icon.svg".to_string())
         );
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_missing() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_no_readme");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let result = validate_plugin_readme(&tmp_dir);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing mandatory 'README.md'"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_success() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_valid_readme");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = r#"# My Plugin
+**English:**
+Awesome plugin description for tests.
+### Use Cases:
+- Case 1: Editing layers
+
+---
+**Русский:**
+Отличный плагин для тестирования валидатора.
+### Практическое применение:
+- Сценарий 1: Обработка слоев
+"#;
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        assert!(validate_plugin_readme(&tmp_dir).is_ok());
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_rejects_monolingual() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_mono_readme");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        // Only English, no Russian
+        let readme_content =
+            "# My Plugin\n**English:** Only english description here that is long enough.";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let result = validate_plugin_readme(&tmp_dir);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Russian"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
     }
 }

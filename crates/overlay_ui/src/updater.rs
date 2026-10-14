@@ -402,36 +402,42 @@ pub fn prepare_portable_update(zip_path: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| "Failed to get exe directory".to_string())?;
 
     let pid = std::process::id();
+    let (script_path, script_content) =
+        generate_update_script(pid, &temp_dir, install_dir, &current_exe);
 
+    std::fs::write(&script_path, script_content)
+        .map_err(|e| format!("Failed to write update script: {e}"))?;
+    Ok(script_path)
+}
+
+/// Generates platform-specific update script path and its script content
+pub fn generate_update_script(pid: u32, src: &Path, dest: &Path, exe: &Path) -> (PathBuf, String) {
     if cfg!(target_os = "windows") {
-        let script_path = std::env::temp_dir().join("photocraft_apply_update.cmd");
-        // Script waits for current process to terminate, copies files with robocopy or xcopy, and restarts
+        let script_path = std::env::temp_dir().join("photocraft_apply_update.ps1");
         let script_content = format!(
-            r#"@echo off
-setlocal
-echo Waiting for PhotoCraft Companion (PID: {pid}) to terminate...
-:waitloop
-tasklist /fi "PID eq {pid}" | find "{pid}" >nul
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto waitloop
-)
-echo Updating files...
-xcopy /E /Y /I "{src}\*" "{dest}\" >nul
-echo Restarting PhotoCraft Companion...
-start "" "{exe}"
-del "%~f0"
-exit
+            r#"try {{
+    Wait-Process -Id {pid} -Timeout 15 -ErrorAction SilentlyContinue
+}} catch {{}}
+Start-Sleep -Milliseconds 1200
+if (Get-Command robocopy -ErrorAction SilentlyContinue) {{
+    & robocopy "{src}" "{dest}" /E /R:3 /W:1 /NFL /NDL /NP /NJH /NJS | Out-Null
+}} else {{
+    Copy-Item -Path "{src}\*" -Destination "{dest}" -Recurse -Force -ErrorAction SilentlyContinue
+}}
+if (Test-Path "{exe}") {{
+    Start-Process -FilePath "{exe}"
+}}
+try {{
+    Remove-Item -Recurse -Force "{src}" -ErrorAction SilentlyContinue
+    Remove-Item -Force $MyInvocation.MyCommand.Path -ErrorAction SilentlyContinue
+}} catch {{}}
 "#,
             pid = pid,
-            src = temp_dir.display(),
-            dest = install_dir.display(),
-            exe = current_exe.display()
+            src = src.display(),
+            dest = dest.display(),
+            exe = exe.display()
         );
-
-        std::fs::write(&script_path, script_content)
-            .map_err(|e| format!("Failed to write update script: {e}"))?;
-        Ok(script_path)
+        (script_path, script_content)
     } else {
         let script_path = std::env::temp_dir().join("photocraft_apply_update.sh");
         let script_content = format!(
@@ -441,24 +447,30 @@ while kill -0 {pid} 2>/dev/null; do
 done
 cp -r "{src}/"* "{dest}/"
 nohup "{exe}" >/dev/null 2>&1 &
-rm "$0"
+rm -rf "{src}" "$0"
 "#,
             pid = pid,
-            src = temp_dir.display(),
-            dest = install_dir.display(),
-            exe = current_exe.display()
+            src = src.display(),
+            dest = dest.display(),
+            exe = exe.display()
         );
-        std::fs::write(&script_path, script_content)
-            .map_err(|e| format!("Failed to write shell script: {e}"))?;
-        Ok(script_path)
+        (script_path, script_content)
     }
 }
 
 /// Executes the generated update script and exits current application
 pub fn apply_update_and_restart(script_path: &Path) -> Result<(), String> {
     if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", "", &script_path.to_string_lossy()]);
+        let mut cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-WindowStyle",
+            "Hidden",
+            "-File",
+            &script_path.to_string_lossy(),
+        ]);
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;

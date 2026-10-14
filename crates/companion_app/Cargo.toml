@@ -18,6 +18,9 @@ anyhow = { workspace = true }
 image = { workspace = true }
 resvg = { workspace = true }
 tray-icon = { workspace = true }
+vtracer = { workspace = true }
+arboard = { workspace = true }
+async-trait = { workspace = true }
 
 [[bin]]
 name = "photocraft-companion"

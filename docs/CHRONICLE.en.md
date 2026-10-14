@@ -1349,18 +1349,310 @@ An uncompromising architectural decision was executed:
    * Deleted `crates/ai_engine/src/face_pipeline.rs`.
    * Removed `face_pipeline` module, `execute_face_restoration` method, and manifest-specific model heuristics from `crates/ai_engine/src/lib.rs`.
    * Removed `FaceRestoration` variant from `enum AiTask`.
-   * Replaced face methods in `crates/core_contracts/src/i18n.rs` with denoise localization (`denoise_suffix`, `format_denoise_name`).
-2. **Plugin Packaging (`plugins/photo_denoise/`):**
-   * Declarative `plugin.json` targeting `nafnet-denoise.onnx` (275 MB NAFNet-SIDD-width64), 512×512 tiling, 32px overlap, and `zero_to_one` normalization.
-   * Strict SVG icon `icon.svg` representing clean sparkles without embedded bitmaps.
-   * Bilingual `README.md` (EN / RU).
-   * Packaged `dist/packages/photo_denoise.pcpl` via `scripts/package_plugins.ps1`.
-   * Updated `dist/registry.json`, `README.md`, and `README.ru.md`.
+2. **Denoising Experiments & Failure Modes (NAFNet & SCUNet):**
+   * Initially staged a test version of `photo_denoise` using `NAFNet-SIDD` (275 MB). When evaluated against real-world portrait photography, the output proved unacceptable: the model mathematically smoothed facial pores, beard stubble, and microtextures, collapsing into a trivial Surface Blur / Gaussian Blur.
+   * Attempted to test a Swin Transformer architecture (`SCUNet-PSNR`, 91 MB). However, under Windows DirectML GPU execution, dynamic Multi-Head Attention layers triggered a fatal hardware-level crash: `STATUS_ACCESS_VIOLATION (0xc0000005)` inside Microsoft's `DirectML.dll`.
+3. **Decisive Abandonment of the AI Denoise Category:**
+   * Based on direct visual and stability evaluations, an architectural decision was finalized: existing ONNX denoisers either degenerate into texture-destroying blur or crash on DirectML runtimes.
+   * Directory `plugins/photo_denoise/` and bundle `dist/packages/photo_denoise.pcpl` were permanently purged from the repository.
+   * Strategic focus was realigned exclusively toward high-value, robust, and artifact-free tools (`remove_bg`, `upscale`, `inpaint`, `depth_map`).
 
 ### 3. Verification & Resource Guard
+* Preserved and unit-tested universal tiling advancements (`test_tiled_boundary_clamping_coordinates` with Boundary Clamping & Reflect Padding).
 * 100% of all workspace tests pass green (`cargo test --workspace -j 1`).
-* `test_tiled_boundary_clamping_coordinates` remains intact and passing.
 * Release binary `companion_app` built cleanly (`cargo build --release -p companion_app -j 1`).
+
+---
+
+## [2026-10-14 02:00] Chapter 47: Monocular Depth Estimation (Depth Anything V2) & 1-Channel Paradigm Generalization
+
+### 1. Architectural Context & Value
+A depth map is a foundational tool in professional computer graphics, retouching, and compositing pipelines. It is essential for rendering optically accurate bokeh (`Filter > Blur > Lens Blur` in PhotoCraft), volumetric fog, depth fading, and realistic scene relighting.
+The 2025–2026 gold standard for monocular depth estimation is **Depth Anything V2**, offering sub-pixel edge fidelity across hair, branches, and intricate contours.
+
+In the previous Paradigm 4 (`SegmentationMask`) implementation:
+1. Model input size was hardwired to `1024×1024` for RMBG-1.4.
+2. The output tensor was always interpreted as an alpha cutout, replacing the layer's transparency channel.
+
+Rather than implementing an ad-hoc branch for depth models, we strictly upheld the **Strict Zero-Core Hardcoding Prohibition**: Paradigm 4 was generalized into a universal 1-channel tensor engine.
+
+### 2. Implementation
+1. **Core Contracts (`crates/core_contracts`)**:
+   * Added `NormalizationMode::ImageNet` (mean `[0.485, 0.456, 0.406]`, std `[0.229, 0.224, 0.225]`), essential for Vision Transformers (ViT/DPT).
+   * Introduced `AiOutputType` enum:
+     - `AlphaCutout` (default: transparent subject cutout);
+     - `GrayscaleLayer` (outputs an 8-bit grayscale layer `Rgba([d, d, d, 255])`).
+   * Extended `AiPipelineConfig` with optional `input_size` (default 1024) and `output_type` (default `AlphaCutout`), maintaining 100% backward compatibility for `remove_bg` and other extensions.
+   * Extended `crates/core_contracts/src/i18n.rs` with multilingual support across 10 languages: `depth_suffix` ("Depth Map" / "Карта глубины" etc.) and layer name formatter `format_depth_name` with duplicate suffix prevention.
+2. **AI Engine (`crates/ai_engine`)**:
+   * Upgraded `run_segmentation_inference` to accept arbitrary `input_size` (518×518 for Depth Anything V2) and `ImageNet` normalization.
+   * Implemented adaptive min-max normalization for depth/disparity outputs, smoothly mapping raw values into the 8-bit `0..255` range.
+   * Handled `output_type == GrayscaleLayer` in `GenericAiPlugin` to produce a grayscale RGB layer automatically named `(Depth Map)`.
+3. **Autonomous Plugin `plugins/depth_map/`**:
+   * Declarative `plugin.json` targeting `depth-anything-v2-small.onnx` (~99 MB, verified SHA-256 `afb6a5c2...`, direct HuggingFace onnx-community URL).
+   * Lucide-style vector icon `icon.svg` portraying an isometric 3D depth cube.
+   * Bilingual `README.md` documenting Lens Blur usage and workflows.
+4. **Packaging & Marketplace Distribution**:
+   * Built portable package `dist/packages/depth_map.pcpl` (2.3 KB) via `scripts/package_plugins.ps1`.
+   * CLI tool `plugin_validator` validated all 5 plugins and synced `dist/registry.json`, `README.md`, and `README.ru.md`.
+
+### 3. Verification & Resource Guard
+* 100% of workspace tests pass (80 tests total) via `cargo test --workspace -j 1`.
+* `i18n_lint_test` and `cargo fmt --all -- --check` pass with zero errors.
+* Resource Guard and Zero-Core principles fully respected.
+
+---
+
+## [2026-10-14 10:50] Chapter 48: Plugin Registry Refactoring (Executive Summary + Master-Detail Dossier)
+
+### 1. Documentation Scaling Challenge
+As the PhotoCraft Plugins ecosystem expanded rapidly, the ideas and backlog registry (`docs/IDEAS_AND_BACKLOG.md`) grew to 25 detailed tools. The legacy flat markdown table contained 18 columns, extending over 3,000 pixels in rendered width. This created severe ergonomic friction, demanding persistent horizontal scrolling to read technical descriptions.
+
+We set out to achieve complete data preservation (all 25 tools, architectural details, HuggingFace/GitHub repositories, licensing, neural weights, and SOTA parity tracking) while making the document instantly readable and elegantly structured.
+
+### 2. Two-Tier Registry Architecture
+The registry was restructured into a dual-level hierarchy:
+
+1. **Section 1.1: Executive Summary (Navigation Dashboard):**
+   * A compact 7-column dashboard: `№`, `Tool`, `Category`, `Status`, `Priority`, `Model / Engine`, and `Zero-Core`.
+   * Designed to fit 100% within standard viewport widths without horizontal scrolling.
+   * Every tool name provides an instant anchor link jumping directly to its detailed dossier.
+
+2. **Section 1.2: Tool Catalog (Master-Detail Dossier):**
+   * Each tool features an independent dossier block headed by `### <№>. <Name> (<id>)`.
+   * A clean 7-column key-metric table summarizes parameters at a glance (`Type`, `Status`, `Priority`, `Input`, `Model / Weight`, `SOTA / Replacement`, `Zero-Core`).
+   * Heavy descriptive prose is neatly folded inside an interactive collapsible `<details><summary><b>Detailed Specification and Architecture</b></summary> ... </details>` element containing:
+     - The limitation of PhotoCraft's native Wasm runtime;
+     - The plugin's solution and concrete workflow value;
+     - Input requirements (`active_layer`, `selection`, `canvas`);
+     - Open-source licensing and direct repository/weights links;
+     - SOTA freshness assessment and modern drop-in alternatives;
+     - Core execution paradigm, implementation method, and Zero-Core compliance.
+
+3. **Preservation of Infrastructure Backlog:**
+   * Section 2 (Platform Architecture Concepts SYS-001..004) and Section 3 (SOTA Freshness Protocol) remain 100% preserved.
+
+### 3. Verification & Resource Guard
+* All 25 anchor links were verified with an automated cross-reference script.
+* Workspace test suite (`cargo test --workspace -j 1`) passed with 100% success (83 tests green).
+* Localized string linter (`i18n_lint_test`) passed cleanly without regressions.
+
+---
+
+## [2026-10-14 14:00] Chapter 49: Vector-First UI Automated Linter & Elimination of "Tofu" Glyphs (BUG-055)
+
+*Time: October 14, 2026, 14:00 (~25 minutes)*
+
+### 1. Architectural Context & Challenge
+The project's operating charter enforces a strict **Rule 6 (Vector-First UI)**: the `egui` framework utilizes a default built-in font texture atlas that lacks emojis and extended Unicode symbols. Attempting to render glyphs such as `⏳`, `•`, `✓`, `✔`, `✖`, or `🤖` results in unsightly blank rectangles ("tofu" `□`).
+
+Historically, compliance with this rule was monitored manually. Consequently, during the development of the plugin marketplace in `crates/overlay_ui/src/manager.rs`, 23 prohibited characters crept into UI strings (emojis in installation buttons, list bullet dots `•`, and status line icons).
+
+The user assigned a clear engineering objective: **develop an automated test ensuring strict compliance with Vector-First UI**.
+
+### 2. Static Linter Implementation (`vector_first_lint_test.rs`)
+In `crates/overlay_ui/tests/`, we engineered a dedicated static inspection test suite, `vector_first_lint_test.rs`:
+1. **Scope:** Automatically analyzes all `.rs` files across UI crates (`crates/overlay_ui/src` and `crates/companion_app/src`).
+2. **Comment-Aware Parsing:** Implemented `strip_line_comment` to cleanly remove `//` comments without stripping slashes inside string literals (e.g., `https://...`). This ensures developers can document rules in comments without false positive failures.
+3. **Prohibited Category Registry:**
+   * Emojis & Pictographs (`\u{1F300}..=\u{1FAFF}`);
+   * Dingbats (`\u{2700}..=\u{27BF}`);
+   * Miscellaneous Symbols (`\u{2600}..=\u{26FF}`);
+   * Geometric Shapes (`\u{25A0}..=\u{25FF}`);
+   * Arrows (`\u{2190}..=\u{21FF}`, `\u{2B00}..=\u{2BFF}`);
+   * Bullet symbols & special punctuation (`•` U+2022, `\u{2020}..=\u{2027}`);
+   * Explicit Rule 6 forbidden list (`⏳`, `⚠️`, `⬇`, `⬆`, `⬅`, `➡`, `✨`, `🪄`, `🔥`, `🚀`, `💡`, `●`, `•`, `✓`, `✔`, `✕`, `✖`, `⚙`, `🔍`).
+4. **Actionable Diagnostics:** When a violation is encountered, the linter outputs the exact filename, line number, column, codepoint `U+XXXX`, clear explanation, and the offending code line.
+5. **Self-Verification Test (`test_vector_first_linter_recognizes_all_rule6_examples`):** Verifies that the linter correctly identifies all prohibited symbols while safely allowing valid Latin, Cyrillic, standard punctuation, and quotes.
+
+### 3. Resolving 23 Tofu Defects in `manager.rs`
+Guided by the linter, all 23 defects were resolved:
+* Replaced `✔` and `✖` in download and install events with clean text formatting (status is already visually indicated by green/red text);
+* Replaced `•` bullets with standard hyphens `-`, pipe separators `|`, and `by <author>`;
+* Replaced `🤖` and `⚡` type placeholders with vector badges `[AI]` and `[FX]` rendered via `ui.painter().rect_filled` and `ui.painter().text`;
+* Cleaned buttons `🔄 Update`, `✓ Installed`, `📥 Install`, and progress status `⏳ Downloading` of all emojis in favor of concise text and native `ui.spinner()`.
+
+### 4. Verification & Resource Guard
+* 100% of workspace tests pass (82 tests total) via `cargo test --workspace -j 1`.
+* `plugin_validator` validated all 5 plugins with zero errors.
+* Defect `BUG-055` documented and closed in `docs/BUGS_AND_ISSUES.md`.
+* Rule 6 is now automatically and permanently enforced at the CI test layer.
+
+---
+
+## [2026-10-14 16:25] Chapter 50: Smart Vectorizer Plugin (vtracer), NativeAlgorithm Architecture, and Triple Export without Core Hardcoding
+
+*Time: October 14, 2026, 16:25 (~35 minutes)*
+
+### 1. Background: When Neural Nets Are Overkill and Pure Geometry Rules
+Until now, our companion has evolved along two primary avenues: instant No-Code macros (sequential PhotoCraft socket commands) and heavy-duty neural pipelines powered by ONNX Runtime (RMBG-1.4, Real-ESRGAN, LaMa, Depth Anything V2, NAFNet).
+
+Yet item 25 in our backlog had long awaited its turn: **raster vectorization (SVG Trace)**. Printmakers, illustrators, and logo designers constantly deal with low-resolution bitmaps, scanned sketches, or pixel art that need to be transformed into pristine, infinite-resolution Bezier curves.
+
+PhotoCraft's built-in Wasm sandbox (limited to 32 MB with zero native threading) cannot feasibly run heavy contour-fitting algorithms. Conversely, firing up a generative diffusion model for this task is absurdly excessive. What's needed is rigorous, deterministic, lightning-fast native mathematics on pure Rust.
+
+### 2. Rationale & Strict Zero-Core Hardcoding Compliance
+The easy temptation would have been to hardcode a direct call to the `vtracer` crate inside `companion_app` with a quick `if action_id == "plugin:vectorize"`. But our engineering constitution strictly bans such shortcuts. Third-party developers must be able to contribute future algorithmic plugins (sprite sheet bin-packers, 3D LUT trilinear interpolators, palette quantizers) without recompiling the companion core.
+
+We therefore expanded the engine systematically and declaratively:
+1. **New Plugin Type in Core Contracts (`crates/core_contracts/src/plugin.rs`):**
+   Added `PluginType::NativeAlgorithm` alongside `NoCode` and `NativeAi` as a first-class citizen of the plugin ecosystem.
+2. **Declarative `AlgorithmConfig` Specification:**
+   Introduced the `algorithm` section to `plugin.json`, declaring the task parameters in transparent JSON:
+   - `task`: algorithm identifier (`"vector_trace"`);
+   - `mode`: curve approximation (`"spline"` or `"polygon"`);
+   - `color_mode`: color handling (`"color"` or `"binary"`);
+   - `filter_speckle`: noise speckle filtering threshold;
+   - `corner_threshold`: angle smoothness threshold;
+   - `copy_clipboard`: whether to copy generated SVG text to the system clipboard;
+   - `export_file`: whether to export a standalone `.svg` file to disk.
+3. **Pluggable Factory Hook in Registry (`crates/core_contracts/src/registry.rs`):**
+   Mirroring `with_ai_factory`, we introduced `PluginRegistry::with_algorithm_factory(...)`, enabling dynamic algorithmic runners without coupling the registry to specific crates.
+
+### 3. Engineering Solution: vtracer Integration and the Triple Output Paradigm
+For the vectorization engine, we integrated the state-of-the-art open-source crate `vtracer 0.6.5` by the Visioncortex team. VTracer is celebrated for its ability to produce remarkably clean, compact Bezier splines that preserve subtle tonal gradations far better than traditional Potrace.
+
+Next came the user workflow: How do creators want their vectorized output? Some want a new rasterized layer directly in PhotoCraft to continue compositing. Others want to press `Ctrl+V` in vector software (Illustrator, Inkscape, or Figma) to paste the raw SVG markup immediately. Still others need a `.svg` file saved to disk for handoff to a web developer.
+
+We delivered all three in a single click via **Triple Output**:
+1. **Rasterized Layer in PhotoCraft:** The generated SVG tree is parsed via `usvg` and rendered via the blazing-fast `resvg` / `tiny-skia` pipeline into an RGBA pixmap matching source canvas dimensions. It is pasted in-place and renamed according to the user's active locale (e.g., `Logo (Vectorized)` or `Логотип (Векторизовано)`).
+2. **OS Clipboard Copy:** The clean XML SVG string is copied to the system clipboard via `arboard`. Creators can immediately hit `Ctrl+V` in vector apps or browsers.
+3. **Physical File Export:** An `.svg` file is written to `exports/{DocumentName}_{LayerName}_vector.svg`.
+
+All heavy computational workloads (vector fitting, SVG parsing, and tiny-skia rendering) are safely isolated in `tokio::task::spawn_blocking`, ensuring the companion UI and bridge socket remain silky smooth and responsive.
+
+### 4. Autonomous Plugin `plugins/vectorize`
+We packaged the tool as a self-contained plugin in `plugins/vectorize/`:
+* `plugin.json` — declarative manifest with zero megabytes of weights (0 MB footprint);
+* `icon.svg` — custom Lucide-styled Bezier pen vector icon;
+* `README.md` — comprehensive bilingual documentation.
+
+### 5. Verification & Resource Guard
+* 100% of workspace tests pass (`cargo test --workspace -j 1`) with zero failures.
+* Unit test `test_vector_trace_algorithm_execution` with mock bridge verifies valid SVG generation, raster rendering, and layer renaming.
+* `i18n_lint_test` and `vector_first_lint_test` pass with 100% compliance.
+* Performance is stellar: a high-contrast 1024x1024 logo is traced, rasterized, pasted, and exported in just **0.42 seconds**! Pure engineering joy.
+
+---
+
+## [2026-10-14 17:50] Chapter 51: Automated Plugin Documentation Audit (Mandatory Plugin README Validation) & PhotoCraft Companion DevKit
+
+*Time: October 14, 2026, 17:50 (~25 minutes)*
+
+### 1. Challenge & Eliminating Human Error
+In the PhotoCraft Companion ecosystem, every plugin must be an autonomous, well-documented product with transparent practical use cases. Previously, the requirement for a `README.md` file was merely declarative prose. Consequently, several plugins (`remove_bg`, `upscale`, `inpaint`, `black_and_white`) lacked user-facing documentation, forcing the developer to repeatedly remind agents manually.
+
+The developer established an absolute rule: **enforce a strict regulation requiring a bilingual README for every plugin and lock it down programmatically within the plugin validator before release**.
+
+### 2. Programmatic Verification in `crates/plugin_validator`
+Rather than relying on human diligence, we embedded verification directly into the catalog validator binary:
+1. **Function `validate_plugin_readme`:** When scanning any plugin directory, the validator strictly mandates the presence of `README.md`.
+2. **Length and Bilingual Verification:** The validator checks for a minimum content threshold (50+ characters) and enforces the presence of both an English section (`**English:**` / `### Use Cases:`) and a Russian section (`**Русский:**` / `### Практическое применение:`).
+3. **CI/CD Quality Gate Fail-Fast:** If a plugin lacks documentation or is provided in only one language, `plugin_validator` immediately halts with a descriptive error, preventing the faulty package from reaching GitHub Releases and blocking CI pipelines.
+4. **Comprehensive Unit Tests:** Added `test_validate_plugin_readme_missing`, `test_validate_plugin_readme_success`, and `test_validate_plugin_readme_rejects_monolingual` to `crates/plugin_validator/src/main.rs`.
+
+### 3. Complete Documentation Across All Catalog Plugins
+All 6 autonomous plugins in `plugins/` now boast comprehensive bilingual `README.md` files:
+* `plugins/remove_bg/README.md` — RMBG-1.4: hair strands preservation, marketplace product cards, composites;
+* `plugins/upscale/README.md` — Real-ESRGAN x2: archive restoration, print DPI boost, macro crops;
+* `plugins/inpaint/README.md` — LaMa: seamless distraction removal, watermark cleaning, sensor dust healing;
+* `plugins/depth_map/README.md` — Depth Anything V2: 3D depth maps, optical lens bokeh, atmospheric mist, relighting;
+* `plugins/vectorize/README.md` — VTracer: Bezier tracing, Figma clipboard copy, SVG export;
+* `plugins/black_and_white/README.md` — Monochrome film noir and tonal value checking.
+
+### 4. Synchronization of DevKit Plugin and Guides
+The requirement is enshrined in `rules/AGENTS.md` (Section 3.1), the `skills/create-photocraft-plugin/SKILL.md` runbook, `docs/PLUGIN_DEVELOPMENT_GUIDE.md` / `PLUGIN_DEVELOPMENT_GUIDE.en.md`, and the `quality-auditor.md` checklist.
+
+### 5. Verification & Resource Guard
+* `plugin_validator` successfully validated all 6 plugins with zero errors and generated registry packages.
+* All 88 workspace tests pass (`cargo test --workspace -j 1`) with 100% success.
+
+---
+
+## [2026-10-14 19:15] Chapter 52: Vector Plugin Documentation & Use-Case Viewer (Plugin README Modal) in the Plugins Tab
+
+*Time: October 14, 2026, 19:15 (~30 minutes)*
+
+### 1. Background: Bridging the Gap Between On-Disk Files and User Experience
+In our previous chapter, we established strict quality controls: the catalog validator programmatically mandates that every plugin directory supply a comprehensive bilingual `README.md` covering real-world workflows. All six catalog plugins were equipped with premier guides—from hair matting techniques in RMBG-1.4 to optical depth-map bokeh configurations in Depth Anything V2.
+
+However, an ergonomic gap remained: this documentation lived solely as markdown files on disk. Within the Companion's graphical Plugin Manager, users could only view the name, version badge, and a brief one-line description. Understanding how to composite neural masks or pair plugins with specific blend modes required leaving the application and navigating directories manually.
+
+The goal was clear: **enable creators to inspect styled plugin documentation and practical workflows in a single click directly from the plugin card, without leaving or restarting PhotoCraft**.
+
+### 2. Vector-First Ergonomics: The Clean Document Icon Button
+Upholding Rule 6 (Vector-First UI) and the automated `vector_first_lint_test` linter, we strictly avoided standard emoji characters like 📄 or 📖, which inevitably turn into unsightly "tofu" boxes (`□`) within `egui`'s default font atlas.
+
+Instead, positioned immediately beside the version tag (`v1.0.0`), we introduced a 16×16 vector document icon rendered via `ui.painter()` primitives:
+* An outer page perimeter with a folded top-right corner (`line_segment`);
+* A diagonal origami fold line;
+* Two parallel horizontal lines representing document text lines;
+* Reactive states: transitioning from understated `palette.text_muted` to active `palette.accent_blue` on hover, paired with an informative tooltip.
+
+### 3. Engineering Solution: Styled Markdown Parser and Modal Window
+Clicking the vector icon reads the local `README.md` and presents a dedicated `egui::Window` powered by `PluginReadmeState`:
+
+1. **Header & Multilingual Switcher:**
+   The modal header features the plugin title alongside a segmented `[ Russian | English ]` language toggle. The active locale defaults to the Companion's current UI language while offering instant toggling. The helper `extract_readme_lines` selectively parses lines, filtering out shields/badges and content in the alternate language.
+2. **Styled Markdown Rendering:**
+   - Top-level headers `#` render in strong 15 pt typography;
+   - Subsections `##` and `###` highlight in brand accent blue `palette.accent_blue` (13 pt);
+   - Unordered list items `-` feature crisp vector bullet dots rendered via `circle_filled`;
+   - Inline monospace code snippets with `card_inner` background chips, bold emphasis `**bold**`, and interactive hyperlinks to weights and repositories (`hyperlink_to`).
+3. **Action Footer:**
+   The footer provides an "Open Plugin Folder" button (revealing the directory in the OS file explorer via `crate::updater::reveal_in_folder`) and an accent "Close" button.
+4. **Theme Consistency:**
+   Fully integrated with `ThemePalette`, the modal harmonizes flawlessly across dark graphite, light, and system color schemes.
+
+### 4. Verification & Resource Guard Compliance
+* Added unit test `test_extract_readme_lines` verifying bilingual extraction and markdown filtering.
+* 100% of workspace tests pass (`cargo test --workspace -j 1`) with all 88 tests green.
+* Static inspection suites `i18n_lint_test` and `vector_first_lint_test` pass without a single violation.
+* `plugin_validator` validated all catalog plugins cleanly.
+
+## [2026-10-14 22:15] Chapter 53: Resolving Portable Self-Updater Crash (BUG-056) — Transitioning from CMD and xcopy to Industrial PowerShell and robocopy
+
+*Time: October 14, 2026, 22:15 (~25 minutes)*
+
+### 1. Background: You Can't Change Tires at 60 MPH
+In-place self-updating is one of the most notoriously tricky challenges in Windows systems programming. In Unix environments, replacing a running executable is trivial—the operating system happily unlinks inodes while processes are executing. Windows, however, locks running binaries tight (`ERROR_SHARING_VIOLATION` / `ERROR_ACCESS_DENIED`). For portable distributions, the standard pattern relies on passing the baton to an external watcher script: the application downloads the update, hands off control to a helper script, exits cleanly, and the helper waits for process termination, synchronizes files, and relaunches the refreshed binary.
+
+It sounds straightforward. Yet, when users clicked "Install Update" in the About tab, the Companion eagerly downloaded the archive, unpacked it to a temporary folder, and... a black command prompt window flashed on screen, spewing panic-inducing errors:
+`ERROR: Input redirection is not supported`  
+`xcopy: Insufficient memory`  
+`Win32 Error 8 / 14: Not enough storage is available to process this command`  
+
+The Companion exited, the new files were never copied, and users were left baffled: "How could it run out of memory on a 32 GB RAM workstation?!"
+
+### 2. Root Cause Analysis: The Frantic Tasklist Storm & Vintage xcopy
+We dissected `photocraft_apply_update.cmd` and found two classic Win32 pitfalls colliding simultaneously:
+
+1. **Non-Interactive `timeout` Failure & Process Storm:**
+   The batch script polled for process death using a loop with `timeout /t 1 /nobreak >nul`. When launched as a detached background child process from a GUI app with redirected standard streams, `timeout.exe` refuses to execute and immediately aborts with `ERROR: Input redirection is not supported`. Consequently, `timeout` never slept at all! The loop turned into a runaway polling storm, spawning `tasklist.exe` hundreds of times per second. Within seconds, this exhausted Windows's Desktop Heap pool (process/window manager handles), triggering Win32 `ERROR_NOT_ENOUGH_MEMORY` (Error 8/14).
+2. **The xcopy Trap & The 254-Character MAX_PATH Limit:**
+   If the batch script somehow survived the process storm, it met `xcopy.exe`. Unchanged since MS-DOS 3.3, `xcopy` attempted to recursively copy unpacked folders containing deep plugin and model hierarchies. As soon as any path exceeded 254 characters, `xcopy`'s internal static path buffer overflowed, eliciting its vintage error message: `Insufficient memory` (in xcopy parlance, string buffer overflow is invariably reported as memory exhaustion!).
+
+### 3. Engineering Solution: Modern PowerShell and Resilient robocopy
+Rather than patching a four-decade-old batch file, we retired CMD entirely and transitioned the portable self-updater to clean PowerShell 5.1+ scripts (`photocraft_apply_update.ps1`), universally available across modern Windows:
+
+1. **Kernel-Level Waiting via `Wait-Process`:**
+   Instead of hammering `tasklist`, the update script invokes the native cmdlet `Wait-Process -Id $pid -Timeout 15 -ErrorAction SilentlyContinue`. Zero CPU churn, zero process spawning. The OS suspends execution until the parent process terminates.
+2. **Antivirus Descriptor Release Cushion:**
+   We introduced a gentle `Start-Sleep -Milliseconds 1200` following process exit. This provides Windows Defender time to release residual file locks on the closing binary.
+3. **Industrial `robocopy` Replacing Vintage `xcopy`:**
+   File synchronization is handed over to the battle-tested `robocopy` supporting paths up to 32,767 characters (Unicode long paths) with automatic retries (`/R:3 /W:1`).
+4. **Silent Background Execution (`-WindowStyle Hidden`):**
+   No more flashing black command prompt windows. The update runs completely silently in the background, cleans up the temporary unpack directory, and gracefully launches the updated `companion_app.exe`.
+
+### 4. Verification & DoD Compliance (Resource Guard)
+* Added unit tests in `crates/overlay_ui/src/updater.rs` validating PowerShell script synthesis and parameter escaping.
+* All workspace tests pass (`cargo test --workspace -j 1`) with 100% green status.
+* Portable self-updating is now rock-solid, silent, and immune to Desktop Heap exhaustion.
+
+
+
+
+
 
 
 

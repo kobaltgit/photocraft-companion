@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Smooth Bezier Spline Curve -->
+  <path d="M 4 20 C 4 11, 13 13, 20 4" stroke-width="2" />
+  <!-- Tangent Handle Lines -->
+  <line x1="4" y1="20" x2="4" y2="11" stroke-dasharray="1.5 1.5" stroke-width="1.2" />
+  <line x1="20" y1="4" x2="13" y2="4" stroke-dasharray="1.5 1.5" stroke-width="1.2" />
+  <!-- Direction Handle Control Points -->
+  <circle cx="4" cy="11" r="1.5" fill="currentColor" />
+  <circle cx="13" cy="4" r="1.5" fill="currentColor" />
+  <!-- Anchor Nodes (Vector path points) -->
+  <rect x="2.5" y="18.5" width="3" height="3" rx="0.5" fill="currentColor" />
+  <rect x="18.5" y="2.5" width="3" height="3" rx="0.5" fill="currentColor" />
+  <!-- Pen Tool Nib / Tracer Element -->
+  <path d="M 11.5 13.5 L 14.5 10.5 L 17.5 13.5 L 14.5 16.5 Z" stroke-width="1.3" />
+  <line x1="10" y1="15" x2="11.5" y2="13.5" stroke-width="1.5" />
+</svg>

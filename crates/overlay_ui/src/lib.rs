@@ -41,6 +41,7 @@ impl OverlayBar {
                 let icon = m.icon.clone().or_else(|| match m.plugin_type {
                     core_contracts::PluginType::NativeAi => Some("wand".to_string()),
                     core_contracts::PluginType::NoCode => Some("bw".to_string()),
+                    core_contracts::PluginType::NativeAlgorithm => Some("vector".to_string()),
                     _ => None,
                 });
                 let icon_path = match (&m.plugin_dir, &m.icon) {

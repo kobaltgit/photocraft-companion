@@ -1,0 +1,28 @@
+{
+  "id": "ai.photocraft.plugins.depth_map",
+  "name": "AI Depth Map (Depth Anything V2)",
+  "version": "1.0.0",
+  "description": "State-of-the-art monocular 3D depth estimation for Lens Blur, bokeh and atmospheric lighting via Depth Anything V2.",
+  "author": "kobaltGIT",
+  "plugin_type": "native_ai",
+  "action_id": "plugin:depth_map",
+  "icon": "icon.svg",
+  "input": "active_layer",
+  "output_mode": "new_layer",
+  "post_commands": [],
+  "ai": {
+    "task": "segmentation_mask",
+    "input_size": 518,
+    "normalize": "image_net",
+    "output_type": "grayscale_layer"
+  },
+  "models": [
+    {
+      "name": "depth-anything-v2-small.onnx",
+      "required": true,
+      "size_mb": 99,
+      "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+      "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+    }
+  ]
+}

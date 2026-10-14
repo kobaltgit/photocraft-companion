@@ -1,0 +1,103 @@
+name: "🐛 Bug Report"
+description: File a bug report or crash to help us improve PhotoCraft Companion
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+        Please fill out this form to help us diagnose and fix the problem faster.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which part of the system is failing?
+      options:
+        - "Companion App (Tray / Lifecycle / Window)"
+        - "Overlay UI (Toolbar / Plugin Manager)"
+        - "PhotoCraft Bridge (Socket 18492 / IPC / Connection)"
+        - "AI Engine (Inference / ONNX / DirectML / CPU Fallback)"
+        - "Specific Plugin (e.g. remove_bg, lama_inpaint, etc.)"
+        - "Packaging / Installer"
+        - "Other"
+    validations:
+      required: true
+  - type: input
+    id: plugin-id
+    attributes:
+      label: Plugin ID (if applicable)
+      description: If the issue relates to a specific plugin, specify its ID or folder name.
+      placeholder: "e.g., remove_bg, lama_inpaint"
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Companion Version
+      description: Version of PhotoCraft Companion (check tray menu or title bar).
+      placeholder: "e.g., v1.0.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - "Windows 11"
+        - "Windows 10"
+        - "Linux"
+        - "macOS"
+    validations:
+      required: true
+  - type: input
+    id: gpu-hardware
+    attributes:
+      label: Hardware / GPU
+      description: GPU model and CPU (critical for DirectML and AI inference diagnostics).
+      placeholder: "e.g., NVIDIA RTX 3060 / Intel Core i7-12700K"
+    validations:
+      required: false
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Step-by-step instructions to reproduce the issue.
+      placeholder: |
+        1. Open PhotoCraft with an active document.
+        2. Launch PhotoCraft Companion.
+        3. Click on plugin '...'
+        4. See error.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console Logs / Error Output
+      description: Paste relevant terminal logs, panic stacktraces, or error messages here.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I verified that PhotoCraft is running and IPC communication is enabled.
+          required: true
+        - label: I checked existing issues to make sure this bug hasn't already been reported.
+          required: true

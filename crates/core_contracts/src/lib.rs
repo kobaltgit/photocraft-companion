@@ -40,9 +40,10 @@ pub use i18n::Language;
 
 pub mod plugin;
 pub use plugin::{
-    AiPipelineConfig, AiTask, BridgeOperations, ExecutionState, ModelRequirement,
-    NormalizationMode, Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginManifest,
-    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus,
+    AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BridgeOperations, ExecutionState,
+    ModelRequirement, NormalizationMode, Plugin, PluginCommandStep, PluginContext,
+    PluginInputSource, PluginManifest, PluginOutputMode, PluginResult, PluginType,
+    SharedExecutionStatus,
 };
 
 pub mod config;
@@ -52,7 +53,7 @@ pub mod package;
 pub use package::{create_pcpl, install_pcpl};
 
 pub mod registry;
-pub use registry::{AiPluginFactory, NoCodePlugin, PluginRegistry};
+pub use registry::{AiPluginFactory, AlgorithmPluginFactory, NoCodePlugin, PluginRegistry};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DocumentInfo {

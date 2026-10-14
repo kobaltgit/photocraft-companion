@@ -194,7 +194,7 @@ impl AiEngine {
         self.run_adaptive_inpaint(model_path, img, mask, tile_size, tile_pad, norm_mode)
     }
 
-    /// Paradigm 4: Segmentation Mask (RMBG Background Removal)
+    /// Paradigm 4: Segmentation Mask / Depth Map (RMBG, Depth Anything V2)
     pub fn execute_segmentation(
         &self,
         model_path: &Path,
@@ -205,7 +205,13 @@ impl AiEngine {
             .normalize
             .as_ref()
             .unwrap_or(&NormalizationMode::Centered);
-        self.run_segmentation_inference(model_path, img, norm_mode)
+        let input_size = config.input_size.unwrap_or(1024);
+        let is_grayscale_layer = config
+            .output_type
+            .as_ref()
+            .map(|t| *t == core_contracts::AiOutputType::GrayscaleLayer)
+            .unwrap_or(false);
+        self.run_segmentation_inference(model_path, img, norm_mode, input_size, is_grayscale_layer)
     }
 
     /// Universal tiled inference for RGB processing (ImageToImage & SuperResolution)
@@ -448,6 +454,12 @@ impl AiEngine {
                         input_data[channel_stride + idx] = p[1] as f32;
                         input_data[2 * channel_stride + idx] = p[2] as f32;
                     }
+                    NormalizationMode::ImageNet => {
+                        input_data[idx] = (p[0] as f32 / 255.0 - 0.485) / 0.229;
+                        input_data[channel_stride + idx] = (p[1] as f32 / 255.0 - 0.456) / 0.224;
+                        input_data[2 * channel_stride + idx] =
+                            (p[2] as f32 / 255.0 - 0.406) / 0.225;
+                    }
                 }
             }
         }
@@ -632,6 +644,8 @@ impl AiEngine {
                         tile_size: Some(512),
                         tile_pad: Some(16),
                         normalize: Some(NormalizationMode::ZeroToOne),
+                        input_size: None,
+                        output_type: None,
                     },
                 ) {
                     Ok(sr_img) => DynamicImage::ImageRgba8(sr_img)
@@ -856,26 +870,28 @@ impl AiEngine {
         Ok(out_patch)
     }
 
-    /// Paradigm 4 Engine: Segmentation Mask (RMBG-1.4)
+    /// Paradigm 4 Engine: Segmentation Mask & Monocular Depth Map (RMBG-1.4, Depth Anything V2)
     fn run_segmentation_inference(
         &self,
         model_path: &Path,
         img: &RgbaImage,
         norm_mode: &NormalizationMode,
+        input_size: u32,
+        is_grayscale_layer: bool,
     ) -> Result<GrayImage> {
         let (orig_w, orig_h) = (img.width(), img.height());
 
-        // RMBG-1.4 expects [1, 3, 1024, 1024]
         let dynamic_img = DynamicImage::ImageRgba8(img.clone());
         let resized = dynamic_img
-            .resize_exact(1024, 1024, FilterType::Triangle)
+            .resize_exact(input_size, input_size, FilterType::Triangle)
             .to_rgb8();
 
-        let channel_stride = 1024 * 1024;
+        let s = input_size as usize;
+        let channel_stride = s * s;
         let mut input_data = vec![0.0f32; 3 * channel_stride];
-        for y in 0..1024 {
-            for x in 0..1024 {
-                let idx = y * 1024 + x;
+        for y in 0..s {
+            for x in 0..s {
+                let idx = y * s + x;
                 let pixel = resized.get_pixel(x as u32, y as u32);
                 match norm_mode {
                     NormalizationMode::Centered => {
@@ -884,7 +900,19 @@ impl AiEngine {
                         input_data[2 * channel_stride + idx] =
                             (pixel[2] as f32 / 255.0 - 0.5) / 1.0;
                     }
-                    _ => {
+                    NormalizationMode::ImageNet => {
+                        input_data[idx] = (pixel[0] as f32 / 255.0 - 0.485) / 0.229;
+                        input_data[channel_stride + idx] =
+                            (pixel[1] as f32 / 255.0 - 0.456) / 0.224;
+                        input_data[2 * channel_stride + idx] =
+                            (pixel[2] as f32 / 255.0 - 0.406) / 0.225;
+                    }
+                    NormalizationMode::Raw255 => {
+                        input_data[idx] = pixel[0] as f32;
+                        input_data[channel_stride + idx] = pixel[1] as f32;
+                        input_data[2 * channel_stride + idx] = pixel[2] as f32;
+                    }
+                    NormalizationMode::ZeroToOne => {
                         input_data[idx] = pixel[0] as f32 / 255.0;
                         input_data[channel_stride + idx] = pixel[1] as f32 / 255.0;
                         input_data[2 * channel_stride + idx] = pixel[2] as f32 / 255.0;
@@ -894,17 +922,43 @@ impl AiEngine {
         }
 
         let mask_slice =
-            self.run_single_inference_vector(model_path, input_data, [1usize, 3, 1024, 1024])?;
+            self.run_single_inference_vector(model_path, input_data, [1usize, 3, s, s])?;
 
-        let mask_raw: Vec<u8> = mask_slice
-            .iter()
-            .map(|&val| (val.clamp(0.0, 1.0) * 255.0).round() as u8)
-            .collect();
+        let mask_raw: Vec<u8> = if is_grayscale_layer {
+            // For depth maps, model outputs unconstrained disparity/depth values (e.g. 0..30+).
+            // Perform robust min-max normalization to map full depth range into 0..255.
+            let mut min_val = f32::INFINITY;
+            let mut max_val = f32::NEG_INFINITY;
+            for &val in &mask_slice {
+                if val.is_finite() {
+                    if val < min_val {
+                        min_val = val;
+                    }
+                    if val > max_val {
+                        max_val = val;
+                    }
+                }
+            }
+            let range = (max_val - min_val).max(1e-6);
+            mask_slice
+                .iter()
+                .map(|&val| {
+                    let norm = (val - min_val) / range;
+                    (norm.clamp(0.0, 1.0) * 255.0).round() as u8
+                })
+                .collect()
+        } else {
+            // Standard segmentation mask (0.0..1.0 probability)
+            mask_slice
+                .iter()
+                .map(|&val| (val.clamp(0.0, 1.0) * 255.0).round() as u8)
+                .collect()
+        };
 
-        let mask_1024 = GrayImage::from_raw(1024, 1024, mask_raw)
+        let mask_sq = GrayImage::from_raw(input_size, input_size, mask_raw)
             .ok_or_else(|| CompanionError::AiEngine("Failed to create mask GrayImage".into()))?;
 
-        let resized_mask = DynamicImage::ImageLuma8(mask_1024)
+        let resized_mask = DynamicImage::ImageLuma8(mask_sq)
             .resize_exact(orig_w, orig_h, FilterType::CatmullRom)
             .to_luma8();
 
@@ -946,6 +1000,8 @@ impl Plugin for GenericAiPlugin {
             tile_size: None,
             tile_pad: None,
             normalize: None,
+            input_size: None,
+            output_type: None,
         });
 
         // 1. Locate model
@@ -1015,7 +1071,15 @@ impl Plugin for GenericAiPlugin {
 
         let lang = core_contracts::Language::Auto.resolve(None);
         let target_name = match ai_cfg.task {
-            AiTask::SegmentationMask => lang.format_cutout_name(&source_name),
+            AiTask::SegmentationMask => {
+                if ai_cfg.output_type.as_ref()
+                    == Some(&core_contracts::AiOutputType::GrayscaleLayer)
+                {
+                    lang.format_depth_name(&source_name)
+                } else {
+                    lang.format_cutout_name(&source_name)
+                }
+            }
             AiTask::SuperResolution => lang.format_upscale_name(&source_name),
             AiTask::Inpainting => lang.format_inpaint_name(&source_name),
             AiTask::ImageToImage => {
@@ -1052,16 +1116,30 @@ impl Plugin for GenericAiPlugin {
                         &input_img,
                         &ai_cfg_clone,
                     )?;
-                    let mut cutout = input_img.clone();
-                    for y in 0..cutout.height() {
-                        for x in 0..cutout.width() {
-                            let m_val = mask.get_pixel(x, y)[0] as f32 / 255.0;
-                            let p = input_img.get_pixel(x, y);
-                            let new_alpha = (p[3] as f32 * m_val).round() as u8;
-                            cutout.put_pixel(x, y, Rgba([p[0], p[1], p[2], new_alpha]));
+                    if ai_cfg_clone.output_type.as_ref()
+                        == Some(&core_contracts::AiOutputType::GrayscaleLayer)
+                    {
+                        let (w, h) = (mask.width(), mask.height());
+                        let mut gray_layer = RgbaImage::new(w, h);
+                        for y in 0..h {
+                            for x in 0..w {
+                                let d = mask.get_pixel(x, y)[0];
+                                gray_layer.put_pixel(x, y, Rgba([d, d, d, 255]));
+                            }
                         }
+                        Ok(gray_layer)
+                    } else {
+                        let mut cutout = input_img.clone();
+                        for y in 0..cutout.height() {
+                            for x in 0..cutout.width() {
+                                let m_val = mask.get_pixel(x, y)[0] as f32 / 255.0;
+                                let p = input_img.get_pixel(x, y);
+                                let new_alpha = (p[3] as f32 * m_val).round() as u8;
+                                cutout.put_pixel(x, y, Rgba([p[0], p[1], p[2], new_alpha]));
+                            }
+                        }
+                        Ok(cutout)
                     }
-                    Ok(cutout)
                 }
                 AiTask::Inpainting => {
                     let mask = if let Some(m) = inpaint_mask {
@@ -1151,6 +1229,8 @@ mod tests {
                 tile_size: Some(512),
                 tile_pad: Some(16),
                 normalize: Some(NormalizationMode::ZeroToOne),
+                input_size: None,
+                output_type: None,
             }),
             ..Default::default()
         };
@@ -1309,5 +1389,50 @@ mod tests {
         }
 
         assert!(tiles_extracted > 0);
+    }
+
+    #[test]
+    fn test_depth_map_plugin_manifest_binding() {
+        let engine = Arc::new(AiEngine::new("test_models"));
+        let manifest = PluginManifest {
+            id: "ai.photocraft.plugins.depth_map".to_string(),
+            name: "AI Depth Map (Depth Anything V2)".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Monocular depth estimation".to_string(),
+            author: "kobaltGIT".to_string(),
+            plugin_type: PluginType::NativeAi,
+            models: vec![ModelRequirement {
+                name: "depth-anything-v2-small.onnx".to_string(),
+                required: true,
+                size_mb: Some(99),
+                url: None,
+                sha256: None,
+            }],
+            ai: Some(AiPipelineConfig {
+                task: AiTask::SegmentationMask,
+                scale: None,
+                tile_size: None,
+                tile_pad: None,
+                normalize: Some(NormalizationMode::ImageNet),
+                input_size: Some(518),
+                output_type: Some(core_contracts::AiOutputType::GrayscaleLayer),
+            }),
+            ..Default::default()
+        };
+
+        let plugin = GenericAiPlugin::new(manifest.clone(), engine);
+        assert_eq!(plugin.id(), "ai.photocraft.plugins.depth_map");
+        assert_eq!(plugin.manifest().name, "AI Depth Map (Depth Anything V2)");
+        assert_eq!(
+            plugin.manifest().models[0].name,
+            "depth-anything-v2-small.onnx"
+        );
+        let ai_cfg = plugin.manifest().ai.as_ref().unwrap();
+        assert_eq!(ai_cfg.input_size, Some(518));
+        assert_eq!(ai_cfg.normalize, Some(NormalizationMode::ImageNet));
+        assert_eq!(
+            ai_cfg.output_type,
+            Some(core_contracts::AiOutputType::GrayscaleLayer)
+        );
     }
 }

@@ -29,6 +29,14 @@ pub enum ModelDownloadEvent {
     Error { model_name: String, error: String },
 }
 
+#[derive(Debug, Clone)]
+pub struct PluginReadmeState {
+    pub plugin_name: String,
+    pub plugin_dir: PathBuf,
+    pub raw_content: String,
+    pub active_lang: Language,
+}
+
 pub struct PluginManagerApp {
     pub active_tab: ActiveTab,
     pub manifests: Vec<PluginManifest>,
@@ -55,6 +63,7 @@ pub struct PluginManagerApp {
     pub pending_restart_script: Option<PathBuf>,
     pub store_state: crate::store::StoreState,
     pub store_icon_cache: crate::icons::SvgIconCache,
+    pub readme_modal: Option<PluginReadmeState>,
 }
 
 impl PluginManagerApp {
@@ -130,6 +139,7 @@ impl PluginManagerApp {
             pending_restart_script: None,
             store_state: crate::store::StoreState::new(&data_dir),
             store_icon_cache: crate::icons::SvgIconCache::new(),
+            readme_modal: None,
         }
     }
 
@@ -180,12 +190,12 @@ impl PluginManagerApp {
                         "Model downloaded successfully!",
                         "Модель успешно загружена!",
                     );
-                    self.set_status(format!("✔ {}: {}", model_name, msg_success), false);
+                    self.set_status(format!("{}: {}", model_name, msg_success), false);
                 }
                 ModelDownloadEvent::Error { model_name, error } => {
                     self.active_download = None;
                     let msg_err = self.t("Download error", "Ошибка загрузки");
-                    self.set_status(format!("✖ {}: {}: {}", model_name, msg_err, error), true);
+                    self.set_status(format!("{}: {}: {}", model_name, msg_err, error), true);
                 }
             }
         }
@@ -239,14 +249,14 @@ impl PluginManagerApp {
                         "Plugin installed successfully!",
                         "Плагин успешно установлен!",
                     );
-                    self.set_status(format!("✔ {}: {}", plugin_id, msg_inst), false);
+                    self.set_status(format!("{}: {}", plugin_id, msg_inst), false);
                 }
                 crate::store::StoreEvent::PluginInstallFailed { plugin_id, error } => {
                     self.store_state
                         .installing_plugins
                         .retain(|id| id != &plugin_id);
                     let msg_err = self.t("Installation failed", "Ошибка установки");
-                    self.set_status(format!("✖ {}: {}: {}", plugin_id, msg_err, error), true);
+                    self.set_status(format!("{}: {}: {}", plugin_id, msg_err, error), true);
                 }
                 crate::store::StoreEvent::IconDownloaded { .. } => {
                     // Cache will be queried on next frame
@@ -649,7 +659,18 @@ impl PluginManagerApp {
         let msg_model_missing = self.t("Model missing", "Требуется модель");
         let msg_download = self.t("Download model", "Скачать модель");
         let msg_download_started = self.t("Model download started...", "Загрузка модели начата...");
+        let msg_view_doc = self.t(
+            "View Documentation & Use Cases",
+            "Документация и сценарии использования",
+        );
+        let msg_no_doc = self.t(
+            "No documentation found for this plugin.",
+            "Документация для этого плагина не найдена.",
+        );
+        let plugins_dir = self.plugins_dir.clone();
+        let cur_lang = self.current_language;
         let mut download_notice = None;
+        let mut open_readme = None;
 
         for manifest in &mut self.manifests {
             let all_models_ok = manifest.all_models_installed();
@@ -664,12 +685,14 @@ impl PluginManagerApp {
                         let type_str = match manifest.plugin_type {
                             PluginType::NoCode => "NO-CODE",
                             PluginType::NativeAi => "AI GPU",
+                            PluginType::NativeAlgorithm => "ALGO",
                             PluginType::Script => "SCRIPT",
                             PluginType::ExternalCli => "CLI",
                         };
 
                         let type_color = match manifest.plugin_type {
                             PluginType::NativeAi => palette.accent_blue,
+                            PluginType::NativeAlgorithm => Color32::from_rgb(0x17, 0xa2, 0xb8),
                             PluginType::NoCode => Color32::from_rgb(0x28, 0xa7, 0x45),
                             _ => palette.text_muted,
                         };
@@ -687,6 +710,68 @@ impl PluginManagerApp {
                                 .color(palette.text_muted),
                         );
 
+                        // Documentation & Use Cases vector icon button
+                        let (doc_rect, doc_resp) =
+                            ui.allocate_exact_size(Vec2::new(16.0, 16.0), egui::Sense::click());
+                        let doc_resp = doc_resp.on_hover_text(msg_view_doc);
+                        let doc_color = if doc_resp.hovered() {
+                            palette.accent_blue
+                        } else {
+                            palette.text_muted
+                        };
+
+                        // Vector document sheet with folded corner and text lines
+                        let icon_rect = doc_rect.shrink(1.5);
+                        let fold_size = 3.5;
+                        let p1 = egui::pos2(icon_rect.min.x, icon_rect.min.y);
+                        let p2 = egui::pos2(icon_rect.max.x - fold_size, icon_rect.min.y);
+                        let p3 = egui::pos2(icon_rect.max.x, icon_rect.min.y + fold_size);
+                        let p4 = egui::pos2(icon_rect.max.x, icon_rect.max.y);
+                        let p5 = egui::pos2(icon_rect.min.x, icon_rect.max.y);
+
+                        let stroke = Stroke::new(1.0, doc_color);
+                        ui.painter().line_segment([p1, p2], stroke);
+                        ui.painter().line_segment([p2, p3], stroke);
+                        ui.painter().line_segment([p3, p4], stroke);
+                        ui.painter().line_segment([p4, p5], stroke);
+                        ui.painter().line_segment([p5, p1], stroke);
+
+                        let p_fold =
+                            egui::pos2(icon_rect.max.x - fold_size, icon_rect.min.y + fold_size);
+                        ui.painter().line_segment([p2, p_fold], stroke);
+                        ui.painter().line_segment([p_fold, p3], stroke);
+
+                        let lx1 = icon_rect.min.x + 2.5;
+                        let lx2 = icon_rect.max.x - 2.5;
+                        let ly1 = icon_rect.min.y + 6.0;
+                        let ly2 = icon_rect.min.y + 9.0;
+                        ui.painter()
+                            .line_segment([egui::pos2(lx1, ly1), egui::pos2(lx2, ly1)], stroke);
+                        ui.painter().line_segment(
+                            [egui::pos2(lx1, ly2), egui::pos2(lx2 - 2.0, ly2)],
+                            stroke,
+                        );
+
+                        if doc_resp.clicked() {
+                            let plugin_dir = manifest
+                                .plugin_dir
+                                .clone()
+                                .unwrap_or_else(|| plugins_dir.join(&manifest.id));
+                            let readme_path = plugin_dir.join("README.md");
+                            let raw_content = match std::fs::read_to_string(&readme_path) {
+                                Ok(content) => content,
+                                Err(_) => {
+                                    let alt_path = PathBuf::from("plugins")
+                                        .join(&manifest.id)
+                                        .join("README.md");
+                                    std::fs::read_to_string(&alt_path).unwrap_or_else(|_| {
+                                        format!("# {}\n\n{}", manifest.name, msg_no_doc)
+                                    })
+                                }
+                            };
+                            open_readme = Some((manifest.name.clone(), plugin_dir, raw_content));
+                        }
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.checkbox(&mut manifest.enabled, "");
                         });
@@ -702,7 +787,7 @@ impl PluginManagerApp {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new(format!("• {}", manifest.author))
+                            RichText::new(format!("by {}", manifest.author))
                                 .size(10.0)
                                 .color(palette.text_muted),
                         );
@@ -939,6 +1024,15 @@ impl PluginManagerApp {
             ui.add_space(4.0);
         }
 
+        if let Some((name, plugin_dir, raw_content)) = open_readme {
+            self.readme_modal = Some(PluginReadmeState {
+                plugin_name: name,
+                plugin_dir,
+                raw_content,
+                active_lang: cur_lang,
+            });
+        }
+
         if let Some(msg) = download_notice {
             self.set_status(msg, false);
         }
@@ -1002,7 +1096,7 @@ impl PluginManagerApp {
                 crate::updater::COMPANION_GITHUB_URL,
             );
 
-            ui.label(RichText::new("•").size(11.0).color(palette.text_muted));
+            ui.label(RichText::new("|").size(11.0).color(palette.text_muted));
 
             ui.hyperlink_to(
                 RichText::new(self.t(
@@ -1307,8 +1401,8 @@ impl PluginManagerApp {
         ui.add_space(12.0);
         ui.label(
             RichText::new(self.t(
-                "• Engine: Pure Rust + tokio JSON-RPC Bridge (Port 18492)\n• AI Hardware: DirectML (NVIDIA RTX / AMD / Intel) with CPU fallback\n• GUI: Immediate-mode egui/eframe with PhotoCraft graphite palette\n• License: MIT OR Apache-2.0",
-                "• Движок: Чистый Rust + tokio JSON-RPC сокет (порт 18492)\n• Аппаратный ИИ: DirectML (NVIDIA RTX / AMD / Intel) с откатом на CPU\n• Интерфейс: Immediate-mode egui/eframe в фирменной графитовой палитре\n• Лицензия: MIT OR Apache-2.0",
+                "- Engine: Pure Rust + tokio JSON-RPC Bridge (Port 18492)\n- AI Hardware: DirectML (NVIDIA RTX / AMD / Intel) with CPU fallback\n- GUI: Immediate-mode egui/eframe with PhotoCraft graphite palette\n- License: MIT OR Apache-2.0",
+                "- Движок: Чистый Rust + tokio JSON-RPC сокет (порт 18492)\n- Аппаратный ИИ: DirectML (NVIDIA RTX / AMD / Intel) с откатом на CPU\n- Интерфейс: Immediate-mode egui/eframe в фирменной графитовой палитре\n- Лицензия: MIT OR Apache-2.0",
             ))
             .size(11.0)
             .color(palette.text_muted),
@@ -1533,13 +1627,22 @@ impl PluginManagerApp {
                         if let Some(tex) = texture {
                             ui.image((tex.id(), Vec2::new(24.0, 24.0)));
                         } else {
-                            // Fallback badge if icon not downloaded yet
-                            let fallback_icon = if entry.plugin_type == "native_ai" {
-                                "🤖"
+                            // Vector fallback badge if icon not downloaded yet
+                            let badge_text = if entry.plugin_type == "native_ai" {
+                                "AI"
                             } else {
-                                "⚡"
+                                "FX"
                             };
-                            ui.label(RichText::new(fallback_icon).size(16.0));
+                            let (badge_rect, _) =
+                                ui.allocate_exact_size(Vec2::new(24.0, 24.0), egui::Sense::hover());
+                            ui.painter().rect_filled(badge_rect, 4.0, palette.card_fill);
+                            ui.painter().text(
+                                badge_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                badge_text,
+                                egui::FontId::proportional(10.0),
+                                palette.accent_blue,
+                            );
                         }
 
                         ui.add_space(4.0);
@@ -1593,7 +1696,7 @@ impl PluginManagerApp {
 
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    RichText::new(format!("• {}", entry.author))
+                                    RichText::new(format!("by {}", entry.author))
                                         .size(10.0)
                                         .color(palette.text_muted),
                                 );
@@ -1602,7 +1705,7 @@ impl PluginManagerApp {
                                     if let Some(mb) = m.size_mb {
                                         ui.label(
                                             RichText::new(format!(
-                                                "• {}: ~{} MB",
+                                                "{}: ~{} MB",
                                                 self.t("Model size", "Размер модели"),
                                                 mb
                                             ))
@@ -1625,7 +1728,7 @@ impl PluginManagerApp {
                                 );
                             } else if has_update {
                                 let update_label = format!(
-                                    "🔄 {} (v{})",
+                                    "{} (v{})",
                                     self.t("Update", "Обновить"),
                                     entry.version
                                 );
@@ -1645,12 +1748,9 @@ impl PluginManagerApp {
                                 }
                             } else if is_installed {
                                 let installed_btn = egui::Button::new(
-                                    RichText::new(format!(
-                                        "✓ {}",
-                                        self.t("Installed", "Установлен")
-                                    ))
-                                    .size(10.0)
-                                    .color(palette.text_muted),
+                                    RichText::new(self.t("Installed", "Установлен"))
+                                        .size(10.0)
+                                        .color(palette.text_muted),
                                 )
                                 .fill(palette.button_secondary)
                                 .corner_radius(4.0)
@@ -1659,13 +1759,10 @@ impl PluginManagerApp {
                                 ui.add_enabled(false, installed_btn);
                             } else {
                                 let inst_btn = egui::Button::new(
-                                    RichText::new(format!(
-                                        "📥 {}",
-                                        self.t("Install", "Установить")
-                                    ))
-                                    .size(10.0)
-                                    .strong()
-                                    .color(Color32::WHITE),
+                                    RichText::new(self.t("Install", "Установить"))
+                                        .size(10.0)
+                                        .strong()
+                                        .color(Color32::WHITE),
                                 )
                                 .fill(palette.accent_blue)
                                 .corner_radius(4.0)
@@ -1681,6 +1778,428 @@ impl PluginManagerApp {
                 });
 
             ui.add_space(4.0);
+        }
+    }
+
+    /// Extracts lines corresponding to the requested language from a bilingual README
+    pub fn extract_readme_lines(raw: &str, lang: Language) -> Vec<&str> {
+        let ru_marker = "**\u{0420}\u{0443}\u{0441}\u{0441}\u{043A}\u{0438}\u{0439}:**";
+        let en_marker = "**English:**";
+
+        let has_ru = raw.contains(ru_marker);
+        let has_en = raw.contains(en_marker);
+
+        if !has_ru && !has_en {
+            return raw.lines().collect();
+        }
+
+        let mut result = Vec::new();
+        let lines: Vec<&str> = raw.lines().collect();
+
+        // 1. Collect top heading lines before any language sections
+        for line in &lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with(en_marker) || trimmed.starts_with(ru_marker) {
+                break;
+            }
+            if trimmed.starts_with("# ") {
+                result.push(*line);
+            }
+        }
+
+        // 2. Collect lines for the active language
+        let target_marker = match lang {
+            Language::Ru => ru_marker,
+            _ => en_marker,
+        };
+
+        let mut in_block = false;
+        for line in &lines {
+            let trimmed = line.trim();
+            if trimmed.starts_with(target_marker) {
+                in_block = true;
+                continue;
+            }
+            if in_block {
+                if trimmed.starts_with(en_marker) || trimmed.starts_with(ru_marker) {
+                    break;
+                }
+                if trimmed == "---" {
+                    break;
+                }
+                result.push(*line);
+            }
+        }
+
+        if result.is_empty() {
+            raw.lines().collect()
+        } else {
+            result
+        }
+    }
+
+    /// Renders markdown body elements
+    pub fn render_readme_content(
+        ui: &mut Ui,
+        raw_content: &str,
+        lang: Language,
+        palette: &ThemePalette,
+    ) {
+        let lines = Self::extract_readme_lines(raw_content, lang);
+
+        for line in lines {
+            let trimmed = line.trim();
+
+            // Skip shields.io / badges
+            if trimmed.starts_with("![")
+                || (trimmed.starts_with("[![") && trimmed.contains("](http"))
+            {
+                continue;
+            }
+
+            if trimmed.is_empty() {
+                ui.add_space(4.0);
+                continue;
+            }
+
+            if trimmed == "---" {
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(4.0);
+                continue;
+            }
+
+            // H1 title
+            if let Some(h1) = trimmed.strip_prefix("# ") {
+                ui.label(
+                    RichText::new(h1.trim())
+                        .size(15.0)
+                        .strong()
+                        .color(palette.text_primary),
+                );
+                ui.add_space(4.0);
+                continue;
+            }
+
+            // H2 / H3 subheader
+            if let Some(h3) = trimmed
+                .strip_prefix("### ")
+                .or_else(|| trimmed.strip_prefix("## "))
+            {
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(h3.trim())
+                        .size(13.0)
+                        .strong()
+                        .color(palette.accent_blue),
+                );
+                ui.add_space(3.0);
+                continue;
+            }
+
+            // Bullet list item with vector circle marker
+            if let Some(bullet_text) = trimmed.strip_prefix("- ") {
+                ui.horizontal(|ui| {
+                    ui.add_space(6.0);
+                    let (dot_rect, _) =
+                        ui.allocate_exact_size(Vec2::new(8.0, 14.0), egui::Sense::hover());
+                    ui.painter()
+                        .circle_filled(dot_rect.center(), 2.0, palette.accent_blue);
+                    Self::render_formatted_inline_text(ui, bullet_text.trim(), palette);
+                });
+                ui.add_space(2.0);
+                continue;
+            }
+
+            // Regular paragraph line
+            Self::render_formatted_inline_text(ui, trimmed, palette);
+            ui.add_space(2.0);
+        }
+    }
+
+    /// Renders inline formatting (hyperlinks, `code`, **bold**, plain text)
+    pub fn render_formatted_inline_text(ui: &mut Ui, text: &str, palette: &ThemePalette) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let mut remaining = text;
+
+            while !remaining.is_empty() {
+                if let Some(bracket_start) = remaining.find('[') {
+                    if let Some(bracket_end) = remaining[bracket_start..].find("](") {
+                        let full_bracket_end = bracket_start + bracket_end;
+                        if let Some(paren_end) = remaining[full_bracket_end + 2..].find(')') {
+                            let full_paren_end = full_bracket_end + 2 + paren_end;
+
+                            if bracket_start > 0 {
+                                Self::render_plain_inline(ui, &remaining[..bracket_start], palette);
+                            }
+
+                            let link_label = &remaining[bracket_start + 1..full_bracket_end];
+                            let link_url = &remaining[full_bracket_end + 2..full_paren_end];
+                            ui.hyperlink_to(link_label, link_url);
+
+                            remaining = &remaining[full_paren_end + 1..];
+                            continue;
+                        }
+                    }
+                }
+
+                Self::render_plain_inline(ui, remaining, palette);
+                break;
+            }
+        });
+    }
+
+    /// Helper for plain, code and bold segments
+    pub fn render_plain_inline(ui: &mut Ui, mut text: &str, palette: &ThemePalette) {
+        while !text.is_empty() {
+            let next_backtick = text.find('`');
+            let next_bold = text.find("**");
+
+            match (next_backtick, next_bold) {
+                (Some(bt), Some(bd)) if bt < bd => {
+                    if bt > 0 {
+                        ui.label(
+                            RichText::new(&text[..bt])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                    }
+                    let rest = &text[bt + 1..];
+                    if let Some(closing_bt) = rest.find('`') {
+                        let code = &rest[..closing_bt];
+                        ui.label(
+                            RichText::new(code)
+                                .size(11.0)
+                                .monospace()
+                                .color(palette.accent_blue)
+                                .background_color(palette.card_inner),
+                        );
+                        text = &rest[closing_bt + 1..];
+                    } else {
+                        ui.label(
+                            RichText::new(&text[bt..])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                        break;
+                    }
+                }
+                (Some(bt), None) => {
+                    if bt > 0 {
+                        ui.label(
+                            RichText::new(&text[..bt])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                    }
+                    let rest = &text[bt + 1..];
+                    if let Some(closing_bt) = rest.find('`') {
+                        let code = &rest[..closing_bt];
+                        ui.label(
+                            RichText::new(code)
+                                .size(11.0)
+                                .monospace()
+                                .color(palette.accent_blue)
+                                .background_color(palette.card_inner),
+                        );
+                        text = &rest[closing_bt + 1..];
+                    } else {
+                        ui.label(
+                            RichText::new(&text[bt..])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                        break;
+                    }
+                }
+                (_, Some(bd)) => {
+                    if bd > 0 {
+                        ui.label(
+                            RichText::new(&text[..bd])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                    }
+                    let rest = &text[bd + 2..];
+                    if let Some(closing_bd) = rest.find("**") {
+                        let bold = &rest[..closing_bd];
+                        ui.label(
+                            RichText::new(bold)
+                                .size(11.0)
+                                .strong()
+                                .color(palette.text_primary),
+                        );
+                        text = &rest[closing_bd + 2..];
+                    } else {
+                        ui.label(
+                            RichText::new(&text[bd..])
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        );
+                        break;
+                    }
+                }
+                (None, None) => {
+                    ui.label(RichText::new(text).size(11.0).color(palette.text_primary));
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Renders modal window for viewing plugin documentation
+    pub fn render_readme_modal(&mut self, ctx: &egui::Context, palette: &ThemePalette) {
+        if self.readme_modal.is_none() {
+            return;
+        }
+
+        let title_text = self.t("Plugin Documentation", "Документация плагина");
+        let ru_btn_text = self.t("Russian", "Русский");
+        let en_btn_text = self.t("English", "Английский");
+        let open_folder_text = self.t("Open Plugin Folder", "Открыть папку плагина");
+        let close_btn_text = self.t("Close", "Закрыть");
+
+        let mut close_modal = false;
+        let mut open_folder = None;
+
+        if let Some(ref mut state) = self.readme_modal {
+            let mut is_open = true;
+            egui::Window::new(title_text)
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size(Vec2::new(580.0, 440.0))
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .frame(
+                    egui::Frame::new()
+                        .fill(palette.panel_fill)
+                        .stroke(Stroke::new(1.0, palette.border_stroke))
+                        .corner_radius(8.0)
+                        .inner_margin(12.0),
+                )
+                .show(ctx, |ui| {
+                    // Header: Plugin Name + Language Switcher
+                    ui.horizontal(|ui| {
+                        ui.heading(
+                            RichText::new(&state.plugin_name)
+                                .size(15.0)
+                                .strong()
+                                .color(palette.text_primary),
+                        );
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let is_ru = state.active_lang == Language::Ru;
+                            let ru_btn = egui::Button::new(
+                                RichText::new(ru_btn_text)
+                                    .size(11.0)
+                                    .strong()
+                                    .color(if is_ru {
+                                        Color32::WHITE
+                                    } else {
+                                        palette.text_primary
+                                    }),
+                            )
+                            .fill(if is_ru {
+                                palette.accent_blue
+                            } else {
+                                palette.button_secondary
+                            })
+                            .corner_radius(4.0)
+                            .min_size(Vec2::new(65.0, 22.0));
+
+                            if ui.add(ru_btn).clicked() {
+                                state.active_lang = Language::Ru;
+                            }
+
+                            ui.add_space(4.0);
+
+                            let is_en = state.active_lang != Language::Ru;
+                            let en_btn = egui::Button::new(
+                                RichText::new(en_btn_text)
+                                    .size(11.0)
+                                    .strong()
+                                    .color(if is_en {
+                                        Color32::WHITE
+                                    } else {
+                                        palette.text_primary
+                                    }),
+                            )
+                            .fill(if is_en {
+                                palette.accent_blue
+                            } else {
+                                palette.button_secondary
+                            })
+                            .corner_radius(4.0)
+                            .min_size(Vec2::new(65.0, 22.0));
+
+                            if ui.add(en_btn).clicked() {
+                                state.active_lang = Language::En;
+                            }
+                        });
+                    });
+
+                    ui.add_space(6.0);
+                    ui.separator();
+                    ui.add_space(6.0);
+
+                    // Body: Scrollable area with markdown scanner
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(330.0)
+                        .show(ui, |ui| {
+                            Self::render_readme_content(
+                                ui,
+                                &state.raw_content,
+                                state.active_lang,
+                                palette,
+                            );
+                        });
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
+
+                    // Footer: Open Plugin Folder and Close button
+                    ui.horizontal(|ui| {
+                        let folder_btn = egui::Button::new(
+                            RichText::new(open_folder_text)
+                                .size(11.0)
+                                .color(palette.text_primary),
+                        )
+                        .fill(palette.button_secondary)
+                        .corner_radius(4.0)
+                        .min_size(Vec2::new(140.0, 24.0));
+
+                        if ui.add(folder_btn).clicked() {
+                            open_folder = Some(state.plugin_dir.clone());
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let close_btn = egui::Button::new(
+                                RichText::new(close_btn_text)
+                                    .size(11.0)
+                                    .strong()
+                                    .color(Color32::WHITE),
+                            )
+                            .fill(palette.accent_blue)
+                            .corner_radius(4.0)
+                            .min_size(Vec2::new(76.0, 24.0));
+
+                            if ui.add(close_btn).clicked() {
+                                close_modal = true;
+                            }
+                        });
+                    });
+                });
+
+            if !is_open || close_modal {
+                self.readme_modal = None;
+            }
+        }
+
+        if let Some(folder) = open_folder {
+            crate::updater::reveal_in_folder(&folder);
         }
     }
 
@@ -1726,7 +2245,7 @@ impl PluginManagerApp {
 
                         let downloading_prefix = self.t("Downloading", "Загрузка");
                         let status_line = format!(
-                            "⏳ {} {}: {:.0}% ({:.1} / {:.1} MB) • {:.1} MB/s",
+                            "{} {}: {:.0}% ({:.1} / {:.1} MB) | {:.1} MB/s",
                             downloading_prefix,
                             d.model_name,
                             frac * 100.0,
@@ -1927,6 +2446,9 @@ impl PluginManagerApp {
                 }
             }
         }
+
+        // Plugin Documentation & Use Cases modal
+        self.render_readme_modal(ui.ctx(), palette);
     }
 }
 
@@ -2153,6 +2675,7 @@ mod tests {
             action_id: None,
             entrypoint: None,
             ai: None,
+            algorithm: None,
             plugin_dir: None,
         };
 
@@ -2176,5 +2699,24 @@ mod tests {
         assert_eq!(app.manifests[0].id, "test.plugin");
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_extract_readme_lines() {
+        let sample_md = "# Sample Plugin\n\n[![Badge](url)](link)\n\n**English:**\nEnglish description of the plugin.\n\n### Use Cases:\n- Case 1: Testing something.\n\n---\n\n**Русский:**\nРусское описание плагина.\n\n### Практическое применение:\n- Сценарий 1: Тестирование плагина.\n";
+
+        let en_lines = PluginManagerApp::extract_readme_lines(sample_md, Language::En);
+        assert!(en_lines.iter().any(|l| l.contains("# Sample Plugin")));
+        assert!(en_lines.iter().any(|l| l.contains("English description")));
+        assert!(en_lines
+            .iter()
+            .any(|l| l.contains("Case 1: Testing something.")));
+        assert!(!en_lines.iter().any(|l| l.contains("Русское описание")));
+
+        let ru_lines = PluginManagerApp::extract_readme_lines(sample_md, Language::Ru);
+        assert!(ru_lines.iter().any(|l| l.contains("# Sample Plugin")));
+        assert!(ru_lines.iter().any(|l| l.contains("Русское описание")));
+        assert!(ru_lines.iter().any(|l| l.contains("Сценарий 1")));
+        assert!(!ru_lines.iter().any(|l| l.contains("English description")));
     }
 }

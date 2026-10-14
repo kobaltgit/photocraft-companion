@@ -3,6 +3,9 @@
 mod win32_theme;
 use win32_theme::apply_win32_menu_theme;
 
+mod algorithm_engine;
+use algorithm_engine::GenericAlgorithmPlugin;
+
 use ai_engine::{AiEngine, GenericAiPlugin};
 use core_contracts::{
     ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
@@ -130,9 +133,14 @@ fn main() -> anyhow::Result<()> {
         )))
     });
 
-    let mut registry = PluginRegistry::new(&plugins_dir).with_ai_factory(ai_factory);
+    let algo_factory: core_contracts::AlgorithmPluginFactory =
+        Arc::new(move |manifest| Ok(Arc::new(GenericAlgorithmPlugin::new(manifest.clone()))));
 
-    // Scan for all plugins (No-Code, Native AI, Script, CLI) automatically from `plugins/`
+    let mut registry = PluginRegistry::new(&plugins_dir)
+        .with_ai_factory(ai_factory)
+        .with_algorithm_factory(algo_factory);
+
+    // Scan for all plugins (No-Code, Native AI, Native Algorithm, Script, CLI) automatically from `plugins/`
     let _loaded = registry.scan_and_load()?;
     println!(
         "  Total registered plugin manifests: {}",
@@ -142,6 +150,7 @@ fn main() -> anyhow::Result<()> {
         let p_type = match m.plugin_type {
             PluginType::NoCode => "No-Code Macro",
             PluginType::NativeAi => "Native AI / GPU",
+            PluginType::NativeAlgorithm => "Native Algorithm",
             PluginType::Script => "Script Automation",
             PluginType::ExternalCli => "External CLI Tool",
         };
