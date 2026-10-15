@@ -45,8 +45,15 @@ if [ "${OS_NAME}" = "Darwin" ]; then
 
     # DMG installer if hdiutil is available
     if command -v hdiutil >/dev/null 2>&1; then
+        DMG_STAGING="${DIST_DIR}/dmg_staging"
+        rm -rf "${DMG_STAGING}"
+        mkdir -p "${DMG_STAGING}"
+        cp -r "${APP_BUNDLE}" "${DMG_STAGING}/"
+        ln -s /Applications "${DMG_STAGING}/Applications"
+
         DMG_PATH="${DIST_DIR}/PhotoCraft-Companion-v${VERSION}-macos.dmg"
-        hdiutil create -volname "PhotoCraft Companion" -srcfolder "${APP_BUNDLE}" -ov -format UDZO "${DMG_PATH}"
+        hdiutil create -volname "PhotoCraft Companion" -srcfolder "${DMG_STAGING}" -ov -format UDZO "${DMG_PATH}"
+        rm -rf "${DMG_STAGING}"
         echo ">>> macOS DMG installer created: ${DMG_PATH}"
     fi
 

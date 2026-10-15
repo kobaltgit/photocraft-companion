@@ -518,3 +518,24 @@
     - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без единого предупреждения.
     - `cargo clippy --workspace -j 1 -- -D warnings` завершен с 0 предупреждений.
     - Собрана свежая релизная версия `target/release/photocraft-companion.exe`.
+
+- [x] **Фаза 55: Изоляция пользовательских данных, поддержка macOS .app бандлов и интерактивный запуск PhotoCraft (BUG-060, Релиз v1.0.5)**
+  - [x] **Изоляция пользовательских данных от Read-Only файловых систем (Zero-UAC & DMG Guard)**:
+    - Реализация функций `core_contracts::user_data_dir()` и `core_contracts::is_dir_writable()`: определение безопасных системных путей (`~/Library/Application Support/PhotoCraft Companion` на macOS, `%LOCALAPPDATA%\PhotoCraft Companion` на Windows, `~/.config/photocraft-companion` на Linux).
+    - В `crates/core_contracts/src/config.rs`: безопасное сохранение `CompanionConfig::save` и разрешение пути `resolve_config_path` с автоматическим перенаправлением в `user_data_dir()`, если рабочий каталог недоступен для записи.
+    - В `crates/companion_app/src/main.rs`: `find_photocraft_data_dir()` и `find_plugins_dir()` с проверкой прав записи и однократным автозаполнением пользовательской директории плагинов из бандла при запуске из DMG или Program Files.
+    - В `crates/photocraft_bridge/src/lib.rs`: генерация и чтение `control.token` с проверкой доступности директории PhotoCraft на запись и безопасным размещением в `user_data_token_path()`.
+  - [x] **Поддержка пакетов-бандлов macOS `.app` и мультиплатформенные пути**:
+    - Распознавание `.app` как директорий в `find_photocraft_executable` и `launch_photocraft`: автоматическое извлечение бинарника из `Contents/MacOS/photocraft` или `Contents/MacOS/PhotoCraft`.
+    - Добавление стандартных путей инсталляции macOS (`/Applications`, `~/Applications`, `/opt/homebrew/bin`, `/usr/local/bin`) и Linux (`/usr/bin`, `/usr/local/bin`, `/opt/photocraft`, `~/.local/bin`).
+  - [x] **Интерактивный онбординг и ликвидация ложного «кнопка ничего не делает»**:
+    - В `companion_app/src/main.rs`: при отсутствии PhotoCraft в стандартных путях по нажатию `[ > Launch PhotoCraft ]` открывается нативный диалог `rfd::FileDialog` («Locate PhotoCraft Application / Executable») с фильтрами `.exe`, `.app`, `.AppImage`.
+    - Выбранный путь мгновенно сохраняется в `companion_config.json`, после чего запускается редактор и стартует цикл опроса токена (до 5 секунд с шагом 500мс) без необходимости повторного указания пути.
+    - В `manager.rs`: фильтры `.app` и `.AppImage` в кнопке «Обзор...» вкладки General, и централизованный поиск токена по всем ОС через `detect_default_token()`.
+  - [x] **Drag-and-Drop инсталлятор DMG на macOS**:
+    - В `scripts/package_release.sh` добавлен симлинк `ln -s /Applications` в корень DMG-образа для стандартного перетаскивания в папку «Программы».
+  - [x] **Тестирование и верификация (Resource Guard & DoD)**:
+    - Модульные тесты `test_resolve_config_path`, `test_user_data_dir_writable` в `core_contracts`.
+    - 100% успешный прогон всех 98 тестов воркспейса (`cargo test --workspace -j 1`).
+    - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без единого замечания.
+    - Валидация каталога плагинов (`plugin_validator`) успешна: 6 плагинов валидны, registry.json и .pcpl созданы.

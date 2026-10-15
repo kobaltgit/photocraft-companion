@@ -512,9 +512,18 @@ impl PluginManagerApp {
                     {
                         let mut dialog =
                             rfd::FileDialog::new().set_title("Select PhotoCraft Executable");
-                        #[cfg(windows)]
+                        #[cfg(target_os = "windows")]
                         {
                             dialog = dialog.add_filter("Executable", &["exe"]);
+                        }
+                        #[cfg(target_os = "macos")]
+                        {
+                            dialog = dialog.add_filter("PhotoCraft App / Executable", &["app", ""]);
+                        }
+                        #[cfg(target_os = "linux")]
+                        {
+                            dialog = dialog
+                                .add_filter("Executable / AppImage", &["AppImage", "bin", ""]);
                         }
                         if let Some(path) = dialog.pick_file() {
                             self.photocraft_path = path.to_string_lossy().to_string();
@@ -577,102 +586,7 @@ impl PluginManagerApp {
                         )
                         .clicked()
                     {
-                        let mut found = None;
-
-                        // 1. Check environment variables
-                        if let Ok(tok) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN") {
-                            let trimmed = tok.trim();
-                            if !trimmed.is_empty() {
-                                found = Some(trimmed.to_string());
-                            }
-                        }
-                        if found.is_none() {
-                            if let Ok(path) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN_FILE") {
-                                if let Ok(s) = std::fs::read_to_string(&path) {
-                                    let trimmed = s.trim();
-                                    if !trimmed.is_empty() {
-                                        found = Some(trimmed.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. Check PhotoCraft path parent directory
-                        if found.is_none() && !self.photocraft_path.trim().is_empty() {
-                            let p = std::path::Path::new(self.photocraft_path.trim());
-                            if let Some(parent) = p.parent() {
-                                let c = parent.join("PhotoCraftData").join("control.token");
-                                if let Ok(s) = std::fs::read_to_string(&c) {
-                                    let trimmed = s.trim();
-                                    if !trimmed.is_empty() {
-                                        found = Some(trimmed.to_string());
-                                    }
-                                }
-                            }
-                        }
-
-                        // 3. Check direct token file in prefs_path parent
-                        if found.is_none() {
-                            let token_path = self
-                                .prefs_path
-                                .parent()
-                                .unwrap_or(&self.prefs_path)
-                                .join("control.token");
-                            if let Ok(s) = std::fs::read_to_string(&token_path) {
-                                let trimmed = s.trim();
-                                if !trimmed.is_empty() {
-                                    found = Some(trimmed.to_string());
-                                }
-                            }
-                        }
-
-                        // 4. Fallback check standard candidate locations
-                        if found.is_none() {
-                            let mut candidates = Vec::new();
-                            if let Ok(cwd) = std::env::current_dir() {
-                                candidates.push(cwd.join("PhotoCraftData").join("control.token"));
-                                candidates.push(
-                                    cwd.join("..").join("PhotoCraftData").join("control.token"),
-                                );
-                                candidates.push(
-                                    cwd.join("..")
-                                        .join("..")
-                                        .join("PhotoCraftData")
-                                        .join("control.token"),
-                                );
-                            }
-                            if let Ok(appdata) = std::env::var("APPDATA") {
-                                candidates.push(
-                                    std::path::PathBuf::from(appdata)
-                                        .join("PhotoCraft")
-                                        .join("control.token"),
-                                );
-                            }
-                            if let Ok(home) =
-                                std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME"))
-                            {
-                                candidates.push(
-                                    std::path::PathBuf::from(&home)
-                                        .join(".config")
-                                        .join("photocraft")
-                                        .join("control.token"),
-                                );
-                                candidates.push(
-                                    std::path::PathBuf::from(&home)
-                                        .join("PhotoCraftData")
-                                        .join("control.token"),
-                                );
-                            }
-                            for c in candidates {
-                                if let Ok(s) = std::fs::read_to_string(&c) {
-                                    let trimmed = s.trim();
-                                    if !trimmed.is_empty() {
-                                        found = Some(trimmed.to_string());
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        let found = detect_default_token(&self.photocraft_path, &self.prefs_path);
 
                         if let Some(t) = found {
                             self.token = t;
@@ -2579,6 +2493,104 @@ impl eframe::App for PluginManagerApp {
         let mut is_open = true;
         self.render_settings_window(ui, &palette, &mut is_open);
     }
+}
+
+fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> Option<String> {
+    // 1. Environment variables
+    if let Ok(tok) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN") {
+        let trimmed = tok.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    if let Ok(path) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN_FILE") {
+        if let Ok(s) = std::fs::read_to_string(&path) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    let mut candidates = Vec::new();
+
+    // 2. User data directories (guaranteed writable across macOS / Windows / Linux)
+    let user_data = core_contracts::user_data_dir();
+    candidates.push(user_data.join("PhotoCraftData").join("control.token"));
+    candidates.push(user_data.join("control.token"));
+
+    // 3. macOS / Linux standard user config
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(
+            std::path::PathBuf::from(&home)
+                .join("PhotoCraftData")
+                .join("control.token"),
+        );
+        candidates.push(
+            std::path::PathBuf::from(&home)
+                .join("Library/Application Support/PhotoCraft/control.token"),
+        );
+        candidates.push(std::path::PathBuf::from(&home).join(".config/photocraft/control.token"));
+    }
+
+    // 4. Windows AppData / LocalAppData
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        candidates.push(
+            std::path::PathBuf::from(appdata)
+                .join("PhotoCraft")
+                .join("control.token"),
+        );
+    }
+    if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+        candidates.push(
+            std::path::PathBuf::from(local_appdata)
+                .join("PhotoCraft")
+                .join("control.token"),
+        );
+    }
+    if let Ok(profile) = std::env::var("USERPROFILE") {
+        candidates.push(
+            std::path::PathBuf::from(profile)
+                .join("PhotoCraftData")
+                .join("control.token"),
+        );
+    }
+
+    // 5. Configured photocraft_path
+    if !photocraft_path.trim().is_empty() {
+        let p = std::path::Path::new(photocraft_path.trim());
+        let candidate_dir = if p.is_dir() {
+            p.to_path_buf()
+        } else {
+            p.parent().unwrap_or(p).to_path_buf()
+        };
+        candidates.push(candidate_dir.join("PhotoCraftData").join("control.token"));
+        candidates.push(candidate_dir.join("control.token"));
+    }
+
+    // 6. Prefs path parent
+    if let Some(parent) = prefs_path.parent() {
+        candidates.push(parent.join("control.token"));
+        candidates.push(parent.join("PhotoCraftData").join("control.token"));
+    }
+
+    // 7. Cwd and parent
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("PhotoCraftData").join("control.token"));
+        candidates.push(cwd.join("..").join("PhotoCraftData").join("control.token"));
+        candidates.push(cwd.join("control.token"));
+    }
+
+    for path in candidates {
+        if let Ok(s) = std::fs::read_to_string(&path) {
+            let trimmed = s.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]

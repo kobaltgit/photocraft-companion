@@ -23,65 +23,104 @@ use tray_icon::{
     TrayIconBuilder,
 };
 
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &dest_path)?;
+        } else {
+            std::fs::copy(entry.path(), dest_path)?;
+        }
+    }
+    Ok(())
+}
+
 fn find_plugins_dir() -> PathBuf {
-    // 1. Check relative to current executable location (target/release/../../plugins or adjacent plugins/)
+    let user_plugins = core_contracts::user_data_dir().join("plugins");
+
+    // 1. Discover bundled/adjacent plugins directory
+    let mut bundled_plugins = None;
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
             let adjacent = exe_dir.join("plugins");
             if adjacent.is_dir() {
-                return adjacent;
-            }
-            if let Some(target_dir) = exe_dir.parent() {
+                bundled_plugins = Some(adjacent);
+            } else if let Some(target_dir) = exe_dir.parent() {
                 if let Some(root) = target_dir.parent() {
                     let candidate = root.join("plugins");
                     if candidate.is_dir() {
-                        return candidate;
+                        bundled_plugins = Some(candidate);
                     }
                 }
             }
         }
     }
-    // 2. Check current working directory and its parents
-    if let Ok(cwd) = std::env::current_dir() {
-        let mut cur = cwd.as_path();
-        for _ in 0..5 {
-            let candidate = cur.join("plugins");
-            if candidate.is_dir() {
-                return candidate;
-            }
-            if let Some(parent) = cur.parent() {
-                cur = parent;
-            } else {
-                break;
+    if bundled_plugins.is_none() {
+        if let Ok(cwd) = std::env::current_dir() {
+            let mut cur = cwd.as_path();
+            for _ in 0..5 {
+                let candidate = cur.join("plugins");
+                if candidate.is_dir() {
+                    bundled_plugins = Some(candidate);
+                    break;
+                }
+                if let Some(parent) = cur.parent() {
+                    cur = parent;
+                } else {
+                    break;
+                }
             }
         }
     }
-    PathBuf::from("plugins")
+
+    if let Some(bundled) = bundled_plugins {
+        // If bundled directory is writable, use it directly (portable mode)
+        if core_contracts::is_dir_writable(&bundled) {
+            return bundled;
+        }
+
+        // If bundled directory is read-only (e.g. macOS DMG or Windows Program Files),
+        // ensure writable user_plugins directory and copy bundled plugins if empty
+        let _ = std::fs::create_dir_all(&user_plugins);
+        let is_empty = std::fs::read_dir(&user_plugins)
+            .map(|mut it| it.next().is_none())
+            .unwrap_or(true);
+        if is_empty {
+            tracing::info!(
+                "Bundled plugins directory is read-only. Seeding user plugins directory: {}",
+                user_plugins.display()
+            );
+            let _ = copy_dir_all(&bundled, &user_plugins);
+        }
+        return user_plugins;
+    }
+
+    let _ = std::fs::create_dir_all(&user_plugins);
+    user_plugins
 }
 
 fn find_photocraft_data_dir() -> PathBuf {
     // 1. Check directory of currently running PhotoCraft process
     if let Some(proc_dir) = PhotoCraftClient::find_running_photocraft_dir() {
         let candidate = proc_dir.join("PhotoCraftData");
-        if candidate.is_dir() {
+        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
             return candidate;
         }
     }
 
-    // 2. Check local relative directory or parents
-    if PathBuf::from("PhotoCraftData").is_dir() {
-        return PathBuf::from("PhotoCraftData");
-    }
+    // 2. Check local relative directory or parents (portable mode)
+    let mut candidates = Vec::new();
+    candidates.push(PathBuf::from("PhotoCraftData"));
     if let Ok(exe) = std::env::current_exe() {
         if let Some(exe_dir) = exe.parent() {
-            let candidate = exe_dir.join("PhotoCraftData");
-            if candidate.is_dir() {
-                return candidate;
-            }
+            candidates.push(exe_dir.join("PhotoCraftData"));
             if let Some(parent) = exe_dir.parent() {
-                let candidate = parent.join("PhotoCraftData");
-                if candidate.is_dir() {
-                    return candidate;
+                candidates.push(parent.join("PhotoCraftData"));
+                if let Some(grandparent) = parent.parent() {
+                    candidates.push(grandparent.join("PhotoCraftData"));
                 }
             }
         }
@@ -89,10 +128,7 @@ fn find_photocraft_data_dir() -> PathBuf {
     if let Ok(cwd) = std::env::current_dir() {
         let mut cur = cwd.as_path();
         for _ in 0..5 {
-            let candidate = cur.join("PhotoCraftData");
-            if candidate.is_dir() {
-                return candidate;
-            }
+            candidates.push(cur.join("PhotoCraftData"));
             if let Some(parent) = cur.parent() {
                 cur = parent;
             } else {
@@ -101,15 +137,24 @@ fn find_photocraft_data_dir() -> PathBuf {
         }
     }
 
-    // 3. Check AppData or user home
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let candidate = PathBuf::from(appdata).join("PhotoCraft");
-        if candidate.is_dir() {
+    for candidate in candidates {
+        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
             return candidate;
         }
     }
 
-    PathBuf::from("PhotoCraftData")
+    // 3. Check AppData or user home standard directory
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let candidate = PathBuf::from(appdata).join("PhotoCraft");
+        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
+            return candidate;
+        }
+    }
+
+    // 4. Guaranteed writable user data directory (macOS ~/Library/Application Support, Linux ~/.config, Windows %LOCALAPPDATA%)
+    let user_data = core_contracts::user_data_dir().join("PhotoCraftData");
+    let _ = std::fs::create_dir_all(&user_data);
+    user_data
 }
 
 fn main() -> anyhow::Result<()> {
@@ -486,7 +531,36 @@ fn main() -> anyhow::Result<()> {
     let on_launch_requested: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
         let cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
         let configured_path = cfg.photocraft_path.as_deref();
-        if let Some(exe_path) = PhotoCraftClient::find_photocraft_executable(configured_path) {
+        let resolved_exe = PhotoCraftClient::find_photocraft_executable(configured_path)
+            .or_else(|| {
+                info!("PhotoCraft executable not automatically found. Prompting user to select application...");
+                let mut dialog = rfd::FileDialog::new()
+                    .set_title("Locate PhotoCraft Application / Executable");
+                #[cfg(target_os = "windows")]
+                {
+                    dialog = dialog.add_filter("Executable", &["exe"]);
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    dialog = dialog.add_filter("PhotoCraft App / Executable", &["app", ""]);
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    dialog = dialog.add_filter("Executable / AppImage", &["AppImage", "bin", ""]);
+                }
+                if let Some(picked) = dialog.pick_file() {
+                    let mut updated_cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
+                    updated_cfg.photocraft_path = Some(picked.clone());
+                    if let Err(e) = updated_cfg.save(&config_path_for_launch) {
+                        tracing::warn!("Failed to save photocraft_path: {e}");
+                    }
+                    PhotoCraftClient::find_photocraft_executable(Some(&picked))
+                } else {
+                    None
+                }
+            });
+
+        if let Some(exe_path) = resolved_exe {
             info!(
                 "Attempting to launch PhotoCraft from: {}",
                 exe_path.display()
@@ -496,10 +570,13 @@ fn main() -> anyhow::Result<()> {
                     info!("PhotoCraft process spawned successfully!");
                     let c = client_for_launch.clone();
                     rt_handle_launch.spawn(async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                        if let Some(tok) = PhotoCraftClient::default_token() {
-                            c.set_token(Some(tok)).await;
-                            info!("Updated PhotoCraftClient token after auto-launch.");
+                        for _ in 0..10 {
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                            if let Some(tok) = PhotoCraftClient::default_token() {
+                                c.set_token(Some(tok)).await;
+                                info!("Updated PhotoCraftClient token after auto-launch.");
+                                break;
+                            }
                         }
                     });
                 }
@@ -508,7 +585,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         } else {
-            tracing::warn!("PhotoCraft executable not found. Please configure path in Settings.");
+            tracing::warn!("PhotoCraft executable not selected or not found.");
         }
     });
 

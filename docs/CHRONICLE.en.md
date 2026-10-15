@@ -1773,3 +1773,81 @@ A thorough investigation uncovered two distinct underlying bugs:
 * `cargo clippy --workspace -j 1 -- -D warnings` passed with 0 warnings.
 * Fresh release binary built: `target/release/photocraft-companion.exe`.
 * Defect logged and marked RESOLVED in `docs/BUGS_AND_ISSUES.md` under `BUG-059`.
+
+---
+
+## [2026-10-15 08:30] Chapter 57: Architectural Consolidation of Compositing Tools into Unified "AI Scene Compositor"
+
+*Time: October 15, 2026, 08:30 (~15 minutes)*
+
+### 1. Product Challenge: "Why Multiply Separate Entities?"
+During an ideas backlog audit and architectural review of the proposed plugins for relighting (`scene_relight`), color harmonization (`harmonize`), and shadow generation (`shadow_gen`), the project author raised a fundamental UX insight:
+> *"Should this plugin simply include all ideas for placing an object into a scene? Harmonization and shadow casting together? Why multiply separate plugins when the ultimate goal is realistic object insertion?"*
+
+### 2. Engineering Analysis & Trade-Offs
+In strict accordance with the Zero-Yesman principle, we critically evaluated both ends of the spectrum:
+- **Risks of a Rigid Monolith:** In professional photo manipulation and VFX workflows, user scenarios do not always overlap 100%. For e-commerce product listings, a physical contact shadow is paramount, but altering the authentic merchandise colors is strictly prohibited. For bust portraits or airborne objects, ground shadows spoil the composition. Moreover, running three heavy AI networks simultaneously without granular control would spike GPU load and strip the artist of non-destructive layer control.
+- **Drawbacks of Disjointed Buttons:** Placing three distinct buttons in the floating overlay clutters the compact toolstrip and forces the user through tedious multi-step repetition (click Shadow $\to$ wait $\to$ click Harmonize $\to$ wait $\to$ click Relight).
+
+### 3. Adopted Solution: Master Tool with One-Click Presets
+We settled on the optimal hybrid pattern: a **unified master plugin "AI Scene Compositor" (`scene_compositor`)** with built-in 1-click scenario presets:
+1. **Clean Overlay Toolstrip:** A single elegant button in the Companion toolstrip: *«AI Scene Compositor»*.
+2. **One-Click Scenario Presets:**
+   - ⚡ **«Insert into Scene (All-in-One)»** — default 1-click mode: automatic color harmonization + ground shadow computation + normal-based rim lighting;
+   - 👤 **«Portrait / Character»** — scene color match and Fresnel rim light, skipping ground shadows;
+   - 📦 **«Product / E-commerce»** — realistic perspective drop shadow and ambient occlusion contact spot with 100% preservation of original product colors;
+   - 💡 **«Ambient Light / Rim Light»** — cinematic edge lighting driven by 3D surface normals.
+3. **Non-Destructive Layer Hierarchy:** Generated results are organized in PhotoCraft as a neat layer group:
+   - `Rim & Scene Light` (`Screen` / `Linear Dodge` mode);
+   - `Subject (Harmonized)` (adjusted subject layer);
+   - `Contact & Cast Shadow` (`Multiply` mode beneath the subject).
+
+### 4. Backlog Synchronization
+* Entries **#22 (`shadow_gen`)** and **#24 (`harmonize`)** updated to `CONSOLIDATED` status, incorporated into master plugin **#26 `scene_compositor`**.
+* `docs/IDEAS_AND_BACKLOG.md` synchronized with updated pipeline specifications, models (`Harmonizer` + `DEShadow` + `DSINE`), and the multi-layer input contract `SYS-004`.
+
+---
+
+## [2026-10-15 21:30] Chapter 58: Release v1.0.5: Read-Only Filesystem Isolation on macOS/Windows, .app Bundle Support, and Interactive PhotoCraft Launch (BUG-060)
+
+*Time: October 15, 2026, 21:30 (~30 minutes)*
+
+### 1. The Reality of First Contact: What Users Reported
+Following the rollout of the auto-launch and onboarding update, we received immediate, honest feedback from real users (GitHub Issue #2 by `ArtWorx63`, Discord reports by `Foogley` and `Ruslan Khrysiev`):
+1. **macOS DMG (`os error 30: Read-only file system`):** Users downloaded the `.dmg`, mounted it, and immediately clicked to run Companion. The DMG volume is mounted read-only by the macOS kernel. At the very first attempt to write configs or tokens, the app crashed with OS error 30.
+2. **Windows UAC / Program Files (`os error 5: Access is denied`):** When installed via the Inno Setup installer into `C:\Program Files\PhotoCraft Companion`, writing configurations and tokens next to the `.exe` failed without Administrator elevation.
+3. **macOS `.app` Bundles:** On macOS, PhotoCraft is distributed as an application package `PhotoCraft.app`. In Rust, `path.is_file()` returns `false` because an `.app` bundle is a directory!
+4. **Silent Failure of the "> Launch PhotoCraft" Button:** If PhotoCraft was not located in default candidate directories, clicking the launch button merely logged a warning to the console, giving users the distinct impression that the button was broken.
+
+We did not dismiss this or blame user unfamiliarity with macOS. We acknowledged our oversight and engineered rock-solid cross-platform user data isolation.
+
+### 2. Comprehensive Engineering Implementation
+
+1. **User Data Isolation from Read-Only Environments (Zero-UAC & DMG Guard):**
+   - In `core_contracts`, implemented `user_data_dir()`, determining safe writable user directories across all platforms:
+     * macOS: `~/Library/Application Support/PhotoCraft Companion` (fallback `~/PhotoCraftData`);
+     * Windows: `%LOCALAPPDATA%\PhotoCraft Companion` (or `%APPDATA%\PhotoCraft Companion`);
+     * Linux: `$XDG_DATA_HOME/photocraft-companion` (or `~/.local/share/photocraft-companion`).
+   - Implemented `is_dir_writable()` via atomic test file creation and removal.
+   - Updated `CompanionConfig::save()` and `resolve_config_path()`: if the working directory is not writable, config is safely directed to `user_data_dir()`.
+   - In `companion_app/src/main.rs`: `find_photocraft_data_dir()` and `find_plugins_dir()` check write permissions. If the bundled plugins directory is read-only (DMG or Program Files), plugins are automatically seeded once into `user_data_dir().join("plugins")`.
+   - In `photocraft_bridge`: token generation falls back to `user_data_token_path()`, preventing write failures in `/Applications` or `Program Files`.
+
+2. **macOS App Bundle Support & Standard Search Paths:**
+   - In `find_photocraft_executable` and `launch_photocraft`, added bundle resolution: selecting an `.app` directory resolves the executable at `Contents/MacOS/photocraft` or `Contents/MacOS/PhotoCraft`.
+   - Added standard discovery paths for macOS (`/Applications`, `~/Applications`, `/opt/homebrew/bin`, `/usr/local/bin`) and Linux (`/usr/bin`, `/opt/photocraft`, `~/.local/bin`).
+
+3. **Interactive Launch Dialog & Eliminating Silent Failures:**
+   - If PhotoCraft is not auto-detected, clicking `[ > Launch PhotoCraft ]` now prompts the user with a native `rfd::FileDialog` ("Locate PhotoCraft Application / Executable") supporting `.app`, `.exe`, and `.AppImage`.
+   - The selected path is saved to `companion_config.json`, the editor is launched, and a token polling loop runs for up to 5 seconds (500ms intervals). Users never need to re-locate PhotoCraft again.
+   - In Plugin Manager, the "Auto-Detect" token button is wired to `detect_default_token()`.
+
+4. **Standard Drag-and-Drop DMG Installer for macOS:**
+   - In `scripts/package_release.sh`, added a DMG staging directory with an `Applications` symlink (`ln -s /Applications`), providing the familiar Mac drag-to-Applications installation experience.
+
+### 3. Results & Verification (Resource Guard & DoD)
+* Workspace test suite executed with `-j 1` (`cargo test --workspace -j 1`): all **98 tests passed**.
+* Strict `i18n_lint_test` and `vector_first_lint_test` passed with zero errors.
+* Plugin validator verified all 6 plugins, updated registry, and generated `.pcpl` archives.
+* Updated `CHECKLIST.md` (Phase 55) and registered `BUG-060` in `BUGS_AND_ISSUES.md`.
+* Version synchronized across all build configurations for release **v1.0.5**.

@@ -21,6 +21,7 @@ tray-icon = { workspace = true }
 vtracer = { workspace = true }
 arboard = { workspace = true }
 async-trait = { workspace = true }
+rfd = { workspace = true }
 
 [[bin]]
 name = "photocraft-companion"

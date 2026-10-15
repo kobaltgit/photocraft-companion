@@ -270,6 +270,110 @@ pub fn generate_token() -> String {
     hex
 }
 
+/// Returns the user-writable path for control.token appropriate for the current operating system
+pub fn user_data_token_path() -> std::path::PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let app_support = std::path::PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("PhotoCraft")
+                .join("control.token");
+            return app_support;
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+            return std::path::PathBuf::from(xdg)
+                .join("photocraft")
+                .join("control.token");
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            return std::path::PathBuf::from(&home).join(".local/share/photocraft/control.token");
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            return std::path::PathBuf::from(local)
+                .join("PhotoCraft")
+                .join("control.token");
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return std::path::PathBuf::from(appdata)
+                .join("PhotoCraft")
+                .join("control.token");
+        }
+    }
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        return std::path::PathBuf::from(home)
+            .join("PhotoCraftData")
+            .join("control.token");
+    }
+    std::path::PathBuf::from("PhotoCraftData").join("control.token")
+}
+
+/// Checks if directory is safe and writable for placing control.token (not a read-only or system volume)
+pub fn is_token_dir_writable(path: &std::path::Path) -> bool {
+    let parent = match path.parent() {
+        Some(p) => p,
+        None => return false,
+    };
+    let parent_str = parent.to_string_lossy();
+    #[cfg(target_os = "macos")]
+    {
+        if parent_str.starts_with("/Applications")
+            || parent_str.starts_with("/Volumes")
+            || parent_str.starts_with("/usr")
+            || parent_str.starts_with("/System")
+        {
+            return false;
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if parent_str.starts_with("/usr")
+            || parent_str.starts_with("/opt")
+            || parent_str.starts_with("/var")
+            || parent_str.starts_with("/etc")
+        {
+            return false;
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let upper = parent_str.to_uppercase();
+        if upper.contains("PROGRAM FILES") || upper.contains("WINDOWS\\SYSTEM") {
+            return false;
+        }
+    }
+
+    if parent.exists() {
+        let test_file = parent.join(format!(".token_test_{}", std::process::id()));
+        if std::fs::write(&test_file, b"ok").is_ok() {
+            let _ = std::fs::remove_file(&test_file);
+            true
+        } else {
+            false
+        }
+    } else {
+        match std::fs::create_dir_all(parent) {
+            Ok(_) => {
+                let test_file = parent.join(format!(".token_test_{}", std::process::id()));
+                if std::fs::write(&test_file, b"ok").is_ok() {
+                    let _ = std::fs::remove_file(&test_file);
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    }
+}
+
 impl PhotoCraftClient {
     /// Locate PhotoCraft executable: configured path -> running process -> relative candidates -> standard install paths -> PATH
     pub fn find_photocraft_executable(
@@ -281,24 +385,63 @@ impl PhotoCraftClient {
             "photocraft"
         };
 
+        // Helper to inspect a candidate path (handling macOS .app bundles or plain directories)
+        let resolve_candidate = |p: &std::path::Path| -> Option<std::path::PathBuf> {
+            if p.is_file() {
+                return Some(p.to_path_buf());
+            }
+            if p.is_dir() {
+                // If it's a macOS .app bundle
+                let mac_candidates = [
+                    p.join("Contents").join("MacOS").join("photocraft"),
+                    p.join("Contents").join("MacOS").join("PhotoCraft"),
+                ];
+                for mc in mac_candidates {
+                    if mc.is_file() {
+                        return Some(mc);
+                    }
+                }
+                // Check if any file inside Contents/MacOS exists
+                let mac_dir = p.join("Contents").join("MacOS");
+                if mac_dir.is_dir() {
+                    if let Ok(entries) = std::fs::read_dir(&mac_dir) {
+                        for entry in entries.flatten() {
+                            let ep = entry.path();
+                            if ep.is_file() {
+                                return Some(ep);
+                            }
+                        }
+                    }
+                }
+
+                // Check standard binary names in directory
+                let sub_candidates = [
+                    p.join(exe_name),
+                    p.join("PhotoCraft.exe"),
+                    p.join("photocraft.exe"),
+                    p.join("PhotoCraft"),
+                    p.join("photocraft"),
+                ];
+                for sc in sub_candidates {
+                    if sc.is_file() {
+                        return Some(sc);
+                    }
+                }
+            }
+            None
+        };
+
         // 1. Explicitly configured path
         if let Some(path) = configured_path {
-            if path.is_file() {
-                return Some(path.to_path_buf());
-            }
-            if path.is_dir() {
-                let candidate = path.join(exe_name);
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
+            if let Some(resolved) = resolve_candidate(path) {
+                return Some(resolved);
             }
         }
 
         // 2. Running photocraft process directory
         if let Some(proc_dir) = Self::find_running_photocraft_dir() {
-            let candidate = proc_dir.join(exe_name);
-            if candidate.is_file() {
-                return Some(candidate);
+            if let Some(resolved) = resolve_candidate(&proc_dir) {
+                return Some(resolved);
             }
         }
 
@@ -349,33 +492,58 @@ impl PhotoCraftClient {
             }
         }
 
-        // Unix standard paths
-        #[cfg(not(target_os = "windows"))]
+        // 4b. macOS standard install paths
+        #[cfg(target_os = "macos")]
         {
-            candidate_paths.push(std::path::PathBuf::from("/usr/local/bin").join(exe_name));
-            candidate_paths.push(std::path::PathBuf::from("/usr/bin").join(exe_name));
-            candidate_paths.push(std::path::PathBuf::from("/opt/photocraft").join(exe_name));
+            candidate_paths.push(std::path::PathBuf::from(
+                "/Applications/PhotoCraft.app/Contents/MacOS/photocraft",
+            ));
+            candidate_paths.push(std::path::PathBuf::from(
+                "/Applications/PhotoCraft.app/Contents/MacOS/PhotoCraft",
+            ));
             if let Ok(home) = std::env::var("HOME") {
                 candidate_paths.push(
-                    std::path::PathBuf::from(home)
-                        .join(".local/bin")
-                        .join(exe_name),
+                    std::path::PathBuf::from(&home)
+                        .join("Applications/PhotoCraft.app/Contents/MacOS/photocraft"),
                 );
+                candidate_paths.push(
+                    std::path::PathBuf::from(&home)
+                        .join("Applications/PhotoCraft.app/Contents/MacOS/PhotoCraft"),
+                );
+            }
+            candidate_paths.push(std::path::PathBuf::from("/opt/homebrew/bin/photocraft"));
+            candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/photocraft"));
+        }
+
+        // 4c. Linux standard install paths
+        #[cfg(target_os = "linux")]
+        {
+            candidate_paths.push(std::path::PathBuf::from("/usr/bin/photocraft"));
+            candidate_paths.push(std::path::PathBuf::from("/usr/bin/PhotoCraft"));
+            candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/photocraft"));
+            candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/PhotoCraft"));
+            candidate_paths.push(std::path::PathBuf::from("/opt/photocraft/photocraft"));
+            candidate_paths.push(std::path::PathBuf::from("/opt/PhotoCraft/PhotoCraft"));
+            if let Ok(home) = std::env::var("HOME") {
+                candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/photocraft"));
+                candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/PhotoCraft"));
             }
         }
 
         for path in candidate_paths {
-            if path.is_file() {
-                return Some(path);
+            if let Some(resolved) = resolve_candidate(&path) {
+                return Some(resolved);
             }
         }
 
         // 5. System PATH
         if let Some(path_var) = std::env::var_os("PATH") {
             for dir in std::env::split_paths(&path_var) {
-                let candidate = dir.join(exe_name);
-                if candidate.is_file() {
-                    return Some(candidate);
+                for name in [exe_name, "PhotoCraft", "photocraft"] {
+                    let candidate = dir.join(name);
+                    if candidate.is_file() {
+                        return Some(candidate);
+                    }
                 }
             }
         }
@@ -389,22 +557,34 @@ impl PhotoCraftClient {
         port: u16,
         token_file: Option<&std::path::Path>,
     ) -> Result<std::process::Child> {
-        if !exe_path.is_file() {
+        let actual_exe = if exe_path.is_dir() {
+            // macOS .app bundle resolution
+            Self::find_photocraft_executable(Some(exe_path))
+                .unwrap_or_else(|| exe_path.to_path_buf())
+        } else {
+            exe_path.to_path_buf()
+        };
+
+        if !actual_exe.is_file() {
             return Err(CompanionError::Bridge(format!(
                 "PhotoCraft executable not found at: {}",
-                exe_path.display()
+                actual_exe.display()
             )));
         }
 
         // Determine token file path:
-        // If token_file is None, use PhotoCraftData/control.token next to exe_path (or fallback to cwd)
         let token_path = match token_file {
             Some(p) => p.to_path_buf(),
             None => {
-                let base_dir = exe_path
+                let base_dir = actual_exe
                     .parent()
                     .unwrap_or_else(|| std::path::Path::new("."));
-                base_dir.join("PhotoCraftData").join("control.token")
+                let candidate = base_dir.join("PhotoCraftData").join("control.token");
+                if is_token_dir_writable(&candidate) {
+                    candidate
+                } else {
+                    user_data_token_path()
+                }
             }
         };
 
@@ -427,7 +607,7 @@ impl PhotoCraftClient {
             })?;
         }
 
-        let mut cmd = std::process::Command::new(exe_path);
+        let mut cmd = std::process::Command::new(&actual_exe);
         let port_str = port.to_string();
         let token_path_str = token_path
             .to_str()
@@ -449,7 +629,7 @@ impl PhotoCraftClient {
         let child = cmd.spawn().map_err(|e| {
             CompanionError::Bridge(format!(
                 "Failed to launch PhotoCraft process ({}): {e}",
-                exe_path.display()
+                actual_exe.display()
             ))
         })?;
 
@@ -498,8 +678,24 @@ impl PhotoCraftClient {
             }
         }
 
-        // 3. Candidate search directories: relative and AppData / user config
+        // 3. Candidate search directories: user data, relative, and AppData / user config
         let mut candidate_paths = Vec::new();
+        candidate_paths.push(user_data_token_path());
+
+        if let Ok(home) = std::env::var("HOME") {
+            candidate_paths.push(
+                std::path::PathBuf::from(&home)
+                    .join("PhotoCraftData")
+                    .join("control.token"),
+            );
+            candidate_paths.push(
+                std::path::PathBuf::from(&home)
+                    .join("Library/Application Support/PhotoCraft/control.token"),
+            );
+            candidate_paths
+                .push(std::path::PathBuf::from(&home).join(".config/photocraft/control.token"));
+        }
+
         if let Ok(cwd) = std::env::current_dir() {
             candidate_paths.push(cwd.join("PhotoCraftData").join("control.token"));
             candidate_paths.push(cwd.join("..").join("PhotoCraftData").join("control.token"));
@@ -520,15 +716,16 @@ impl PhotoCraftClient {
                     .join("control.token"),
             );
         }
-        if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
             candidate_paths.push(
-                std::path::PathBuf::from(&home)
-                    .join(".config")
-                    .join("photocraft")
+                std::path::PathBuf::from(local_appdata)
+                    .join("PhotoCraft")
                     .join("control.token"),
             );
+        }
+        if let Ok(profile) = std::env::var("USERPROFILE") {
             candidate_paths.push(
-                std::path::PathBuf::from(&home)
+                std::path::PathBuf::from(&profile)
                     .join("PhotoCraftData")
                     .join("control.token"),
             );

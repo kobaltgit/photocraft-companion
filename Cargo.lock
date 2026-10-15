@@ -674,6 +674,7 @@ dependencies = [
  "overlay_ui",
  "photocraft_bridge",
  "resvg",
+ "rfd",
  "serde_json",
  "tokio",
  "tracing",

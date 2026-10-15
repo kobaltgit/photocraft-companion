@@ -100,19 +100,48 @@ impl CompanionConfig {
 
     pub fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let p = path.as_ref();
-        if let Some(parent) = p.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        fs::write(p, &json)?;
-        info!("Saved companion configuration to {}", p.display());
+        let target_path = if let Some(parent) = p.parent() {
+            if !is_dir_writable(parent) {
+                let user_dir = user_data_dir();
+                let _ = fs::create_dir_all(&user_dir);
+                user_dir.join("companion_config.json")
+            } else {
+                let _ = fs::create_dir_all(parent);
+                p.to_path_buf()
+            }
+        } else {
+            p.to_path_buf()
+        };
 
-        // Also mirror save to companion executable directory so portable mode never loses settings
+        let json = serde_json::to_string_pretty(self)?;
+        match fs::write(&target_path, &json) {
+            Ok(_) => {
+                info!("Saved companion configuration to {}", target_path.display());
+            }
+            Err(e) => {
+                // If writing to original path failed with permission error or read-only error, fallback to user_data_dir!
+                let fallback = user_data_dir().join("companion_config.json");
+                if fallback != target_path {
+                    let _ = fs::create_dir_all(user_data_dir());
+                    fs::write(&fallback, &json)?;
+                    info!(
+                        "Fallback: saved companion configuration to user data: {}",
+                        fallback.display()
+                    );
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+
+        // Also mirror save to companion executable directory IF it is writable (never fail if read-only)
         if let Ok(exe) = std::env::current_exe() {
             if let Some(exe_dir) = exe.parent() {
-                let exe_cfg = exe_dir.join("companion_config.json");
-                if exe_cfg != p {
-                    let _ = fs::write(&exe_cfg, &json);
+                if is_dir_writable(exe_dir) {
+                    let exe_cfg = exe_dir.join("companion_config.json");
+                    if exe_cfg != target_path {
+                        let _ = fs::write(&exe_cfg, &json);
+                    }
                 }
             }
         }
@@ -120,14 +149,22 @@ impl CompanionConfig {
     }
 
     pub fn resolve_config_path(data_dir: &Path) -> PathBuf {
+        // 1. If existing config exists in data_dir, use it
         let candidate = data_dir.join("companion_config.json");
         if candidate.exists() {
             return candidate;
         }
 
+        // 2. Check user_data_dir()
+        let user_cfg = user_data_dir().join("companion_config.json");
+        if user_cfg.exists() {
+            return user_cfg;
+        }
+
+        // 3. Check local directory
         let local = PathBuf::from("companion_config.json");
         if local.exists() {
-            if data_dir.is_dir() && candidate != local {
+            if data_dir.is_dir() && candidate != local && is_dir_writable(data_dir) {
                 if let Some(parent) = candidate.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
@@ -143,12 +180,104 @@ impl CompanionConfig {
             return local;
         }
 
-        if data_dir.is_dir() {
+        if data_dir.is_dir() && is_dir_writable(data_dir) {
             return candidate;
         }
 
-        local
+        // Default to user_data_dir
+        user_cfg
     }
+}
+
+/// Returns true if a directory can be written to by creating and deleting a temporary test file.
+pub fn is_dir_writable(dir: &Path) -> bool {
+    if !dir.exists() {
+        if let Some(parent) = dir.parent() {
+            return is_dir_writable(parent);
+        }
+        return false;
+    }
+    let test_file = dir.join(format!(".write_test_{}", std::process::id()));
+    if fs::write(&test_file, b"ok").is_ok() {
+        let _ = fs::remove_file(&test_file);
+        true
+    } else {
+        false
+    }
+}
+
+/// Returns the user-writable data directory appropriate for the current operating system:
+/// - macOS: ~/Library/Application Support/PhotoCraft Companion (fallback ~/PhotoCraftData)
+/// - Linux: $XDG_DATA_HOME/photocraft-companion or ~/.local/share/photocraft-companion
+/// - Windows: %LOCALAPPDATA%\PhotoCraft Companion (or %APPDATA%\PhotoCraft Companion)
+pub fn user_data_dir() -> PathBuf {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let app_support = PathBuf::from(&home)
+                .join("Library")
+                .join("Application Support")
+                .join("PhotoCraft Companion");
+            if (app_support.exists() || fs::create_dir_all(&app_support).is_ok())
+                && is_dir_writable(&app_support)
+            {
+                return app_support;
+            }
+            let fallback = PathBuf::from(&home).join("PhotoCraftData");
+            let _ = fs::create_dir_all(&fallback);
+            return fallback;
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+            let p = PathBuf::from(xdg).join("photocraft-companion");
+            if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
+                return p;
+            }
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            let p = PathBuf::from(&home)
+                .join(".local")
+                .join("share")
+                .join("photocraft-companion");
+            if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
+                return p;
+            }
+            let fallback = PathBuf::from(&home).join("PhotoCraftData");
+            let _ = fs::create_dir_all(&fallback);
+            return fallback;
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            let p = PathBuf::from(local).join("PhotoCraft Companion");
+            let _ = fs::create_dir_all(&p);
+            return p;
+        }
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let p = PathBuf::from(appdata).join("PhotoCraft Companion");
+            let _ = fs::create_dir_all(&p);
+            return p;
+        }
+        if let Ok(profile) = std::env::var("USERPROFILE") {
+            let p = PathBuf::from(profile).join("PhotoCraftData");
+            let _ = fs::create_dir_all(&p);
+            return p;
+        }
+    }
+
+    // Generic fallback
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        let p = PathBuf::from(home).join("PhotoCraftData");
+        let _ = fs::create_dir_all(&p);
+        return p;
+    }
+
+    PathBuf::from("PhotoCraftData")
 }
 
 #[cfg(test)]
@@ -229,6 +358,12 @@ mod tests {
 
         let non_dir = Path::new("non_existent_dir_99999");
         let fallback = CompanionConfig::resolve_config_path(non_dir);
-        assert_eq!(fallback, PathBuf::from("companion_config.json"));
+        assert_eq!(fallback, user_data_dir().join("companion_config.json"));
+    }
+
+    #[test]
+    fn test_user_data_dir_writable() {
+        let dir = user_data_dir();
+        assert!(is_dir_writable(&dir));
     }
 }

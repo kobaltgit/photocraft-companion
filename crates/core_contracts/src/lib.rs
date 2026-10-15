@@ -47,7 +47,7 @@ pub use plugin::{
 };
 
 pub mod config;
-pub use config::CompanionConfig;
+pub use config::{is_dir_writable, user_data_dir, CompanionConfig};
 
 pub mod package;
 pub use package::{create_pcpl, install_pcpl};
