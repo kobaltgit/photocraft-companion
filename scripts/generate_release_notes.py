@@ -40,20 +40,16 @@ def generate_release_notes(version):
 ## 🌟 What's New in v{version} / Что нового в версии {version}
 
 ### 🇬🇧 English
-* **🍏 macOS Bundle Ad-Hoc Signing & Gatekeeper Support (BUG-057)**: App bundle on macOS is now explicitly ad-hoc signed (`codesign --force --deep --sign -`) and configured with executable permissions. Added explicit instructions for running on macOS Sequoia/Sonoma via `xattr -cr "/Applications/PhotoCraft Companion.app"`.
-* **🗺️ Depth Anything v2 (`depth_map`)**: State-of-the-art monocular depth estimation plugin with selectable Depth Anything V2 Small and Metric models, producing crisp depth maps and relief normals directly in active layers.
-* **📐 Vector Tracing (`vectorize`)**: High-performance algorithmic raster-to-vector tracing plugin converting silhouettes and line art into polygonal vector contours.
-* **📄 Interactive Plugin Documentation & Use Cases Modal**: Seamless vector document icon button in each plugin card displaying bilingual practical workflows, layer tips, and model links without restarting PhotoCraft.
-* **🛠️ Robust Portable Self-Updater (BUG-056)**: Eliminated terminal crashes and "insufficient memory" errors on Windows by transitioning from fragile batch/xcopy to silent PowerShell (`Wait-Process` + `robocopy` with 32K path support and Defender lock cushions).
-* **🤖 Automated Release Notes Publishing**: Integrated bilingual release notes compiler and automated GitHub Releases asset packaging.
+* **🚀 One-Click PhotoCraft Launch & Automated Onboarding (BUG-058)**: Launch PhotoCraft directly from Companion's waiting modal or manager settings with automatic 64-character crypto token generation (`control.token`), multi-source executable discovery, and silent process startup (`CREATE_NO_WINDOW`).
+* **🛡️ Tokio UI Thread Safety & Zero-Crash Settings (BUG-059)**: Eliminated application crash upon clicking "Save" in Plugins Manager by establishing ambient Tokio runtime guard and thread-safe async dispatching via runtime handle.
+* **💾 Fail-Safe Configuration Mirroring & Path Persistence (BUG-059)**: Automatic configuration migration from legacy locations, portable executable-adjacent settings mirroring, and robust `photocraft_path` recovery on every start.
+* **📚 First-Launch Onboarding Guide**: Added comprehensive visual and algorithmic steps in documentation for first-time Companion users.
 
 ### 🇷🇺 Русский
-* **🍏 Ad-Hoc подпись бандла и запуск на macOS (BUG-057)**: Бандл `PhotoCraft Companion.app` теперь автоматически подписывается ad-hoc сигнатурой (`codesign --force --deep --sign -`) при сборке с выставлением прав исполнения. В документацию добавлена подробная инструкция по снятию карантина Gatekeeper (`xattr -cr "/Applications/PhotoCraft Companion.app"`).
-* **🗺️ Depth Anything v2 (`depth_map`)**: Плагин генерации карт глубины на базе моделей Depth Anything V2 (Small и Metric) для рельефа, карт нормалей и 3D-композитинга прямо в активном документе.
-* **📐 Векторизация растра (`vectorize`)**: Высокоскоростной алгоритмический плагин трассировки контуров и силуэтов в полигональные векторные пути PhotoCraft.
-* **📄 Интерактивное окно документации и сценариев (Use Cases)**: Векторная кнопка в карточке каждого плагина для мгновенного просмотра практических приёмов, рекомендованных слоев и ссылок на веса прямо в редакторе.
-* **🛠️ Надежное портабельное самообновление (BUG-056)**: Устранены ошибки «недостаточно памяти» и вылеты терминала на Windows благодаря переходу на тихий PowerShell (`Wait-Process` + `robocopy` с поддержкой длинных путей до 32K символов и задержкой для Windows Defender).
-* **🤖 Автопубликация описания релиза**: Полная автоматизация генерации двуязычных заметок и дистрибутивов в GitHub Actions без ручного ввода.
+* **🚀 Запуск PhotoCraft в один клик и автоматический онбординг (BUG-058)**: Запуск PhotoCraft прямо из окна ожидания Компаньона или вкладки настроек с автоматической криптографической генерацией 64-значного токена (`control.token`), мульти-источниковым поиском экзешника и скрытым стартом без черных окон терминала (`CREATE_NO_WINDOW`).
+* **🛡️ Изоляция рантайма Tokio и устранение падения при сохранении (BUG-059)**: Устранена паника ядра и краш программы при клике на «Сохранить» в менеджере плагинов благодаря постоянной гарде рантайма на главном потоке и безопасной диспетчеризации задач через дескриптор `rt_handle`.
+* **💾 Зеркалирование настроек и надежное сохранение пути (BUG-059)**: Автоматическая миграция старых конфигов, зеркалирование файла настроек рядом с бинарником в портативном режиме и гарантированное восстановление `photocraft_path` при каждом старте.
+* **📚 Пошаговая инструкция первого запуска в README**: Наглядное руководство пользователя по быстрому старту связки PhotoCraft + Companion.
 
 ---
 

@@ -476,23 +476,45 @@
     - Запуск процесса обновления с параметром `-WindowStyle Hidden` без всплывающих черных окон терминала.
     - Автоматическое удаление временной директории распакованного релиза после успешной синхронизации.
   - [x] **Фаза 52: Ad-Hoc подпись бандла и запуск на macOS (BUG-057, Релиз v1.0.4)**
-  - [x] **Ad-Hoc подпись бандла macOS в CI (`package_release.sh`)**:
-    - Внедрение вызова `codesign --force --deep --sign -` для бандла `PhotoCraft Companion.app` перед упаковкой в `.tar.gz` и `.dmg`.
-    - Явное выставление прав исполнения `chmod +x` для бинарника внутри бандла `Contents/MacOS/photocraft-companion`.
-    - Предотвращение сброса процессов системой (SIGKILL / invalid signature) на Apple Silicon (M1/M2/M3/M4).
-  - [x] **Документирование снятия карантина Gatekeeper**:
-    - Добавление примечания в `README.md` и `README.ru.md` со снятием атрибута карантина через `xattr -cr "/Applications/PhotoCraft Companion.app"`.
-    - Включение инструкций в автоматические заметки о релизе (`generate_release_notes.py`).
-  - [x] **Синхронизация версий (v1.0.4)**:
-    - Синхронное обновление версии `1.0.4` в `Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`.
-  - [x] **Тестирование и верификация (Resource Guard)**:
-    - 100% успешный прогон тестов воркспейса (`cargo test --workspace -j 1`).
-    - Валидация каталога плагинов (`plugin_validator`).
+    - [x] Внедрение вызова `codesign --force --deep --sign -` для бандла `PhotoCraft Companion.app` перед упаковкой в `.tar.gz` и `.dmg`.
+    - [x] Явное выставление прав исполнения `chmod +x` для бинарника внутри бандла `Contents/MacOS/photocraft-companion`.
+    - [x] Предотвращение сброса процессов системой (SIGKILL / invalid signature) на Apple Silicon (M1/M2/M3/M4).
+    - [x] Добавление примечания в `README.md` и `README.ru.md` со снятием атрибута карантина через `xattr -cr "/Applications/PhotoCraft Companion.app"`.
+    - [x] Синхронное обновление версии `1.0.4` в `Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`.
+    - [x] 100% успешный прогон тестов воркспейса (`cargo test --workspace -j 1`).
 
+- [x] **Фаза 53: Автозапуск PhotoCraft, генерация control.token и бесшовный онбординг (BUG-058)**
+  - [x] **Криптографическая генерация токена и запуск процесса**:
+    - Метод `generate_token() -> String` (32 случайных байта -> 64 hex-символа через `BCryptGenRandom` на Windows, `/dev/urandom` на Unix и seeded PRNG fallback).
+    - Метод `PhotoCraftClient::find_photocraft_executable(configured_path)` с поиском по настроенному пути, запущенному процессу, соседним каталогам, Program Files, AppData и системному `PATH`.
+    - Метод `PhotoCraftClient::launch_photocraft(exe_path, port, token_file)` с автоматическим созданием директории `PhotoCraftData`, генерацией файла `control.token`, аргументами `--control` / `--control-token-file` и флагом `CREATE_NO_WINDOW` (0x08000000).
+  - [x] **Интерфейс онбординга и запуск в один клик**:
+    - Добавление кнопки `[ > Launch PhotoCraft ]` / `[ > Запустить PhotoCraft ]` в `OfflineModalApp` (`offline_modal.rs`) с адаптацией высоты модального окна до 210 px.
+    - Вкладка «Общие» (`manager.rs`): строка выбора исполняемого файла PhotoCraft (`[ Browse... ]`), кнопка `[ > Launch ]` / `[ > Запуск ]` и плейсхолдер `(Auto-detected)` / `(Автоопределение)`.
+    - Улучшение кнопки «Найти токен» (Auto-Detect): проверка env-переменных, папки рядом с настроенным/найденным экзешником и стандартных путей.
+  - [x] **Интеграция конфигурации и обратных вызовов**:
+    - Поле `#[serde(default)] pub photocraft_path: Option<PathBuf>` в `core_contracts::CompanionConfig`.
+    - Обратный вызов `on_launch_requested` в `CompanionOverlayApp` и `launch_companion_overlay` в `companion_app/src/main.rs`.
+    - Автоматическое обновление токена в `PhotoCraftClient` после фонового спавна процесса.
+  - [x] **Тестирование и верификация (Resource Guard & DoD)**:
+    - Модульные тесты `test_find_photocraft_executable_configured_path`, `test_launch_photocraft_token_generation`, `test_generate_token_format` в `photocraft_bridge`.
+    - 100% успешный прогон всех 97 тестов воркспейса (`cargo test --workspace -j 1`).
+    - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без единого предупреждения.
+    - Валидация каталога плагинов (`plugin_validator`) успешна.
 
-
-
-
-
-
-
+- [x] **Фаза 54: Ликвидация паники Tokio при сохранении настроек и стабильное сохранение пути к PhotoCraft (BUG-059)**
+  - [x] **Устранение паники Tokio (Runtime Context Isolation)**:
+    - В `companion_app/src/main.rs` колбэки интерфейса `on_token_saved` и `on_launch_requested` переведены на использование явного дескриптора рантайма `rt_handle.spawn(...)` вместо `tokio::spawn(...)`.
+    - Добавлен вход в контекст `let _rt_guard = rt.enter();` на главном потоке ОС, полностью исключая панику `there is no reactor running, must be called from the context of a Tokio 1.x runtime` при сохранении настроек или запуске из UI.
+  - [x] **Стабилизация разрешения путей и сохранение `photocraft_path`**:
+    - В `crates/core_contracts/src/config.rs` метод `CompanionConfig::resolve_config_path` доработан с безопасной автоматической миграцией: если конфиг существовал в корне приложения, он бесшовно переносится в `data_dir` без потери пути.
+    - В `CompanionConfig::save` добавлено автоматическое зеркалирование конфигурации в каталог бинарника приложения, гарантирующее 100% сохранность настроек в портабельном режиме.
+    - В `CompanionConfig::load_or_default` внедрено восстановление `photocraft_path` из локального/портабельного зеркала при его отсутствии в основном файле.
+    - В `crates/overlay_ui/src/lib.rs` гарантирована единая привязка `manager.config_path` к пути родительского окна, исключающая рассинхронизацию компонентов.
+    - В `crates/overlay_ui/src/manager.rs` добавлена обработка ошибок `save_settings` со статусной строкой и логированием.
+    - В `crates/photocraft_bridge/src/lib.rs` метод `find_photocraft_executable` теперь поддерживает как прямой путь к файлу `.exe`, так и указание корневой директории PhotoCraft.
+  - [x] **Тестирование и верификация (Resource Guard & DoD)**:
+    - 100% успешный прогон всех 97 тестов воркспейса (`cargo test --workspace -j 1`).
+    - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без единого предупреждения.
+    - `cargo clippy --workspace -j 1 -- -D warnings` завершен с 0 предупреждений.
+    - Собрана свежая релизная версия `target/release/photocraft-companion.exe`.

@@ -206,7 +206,256 @@ fn find_running_photocraft_dir_win32() -> Option<std::path::PathBuf> {
     }
 }
 
+/// Helper to generate a 64-character hex token (32 random bytes)
+pub fn generate_token() -> String {
+    let mut bytes = [0u8; 32];
+    let mut filled = false;
+
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "bcrypt")]
+        extern "system" {
+            fn BCryptGenRandom(
+                h_algorithm: *mut std::ffi::c_void,
+                pb_buffer: *mut u8,
+                cb_buffer: u32,
+                dw_flags: u32,
+            ) -> i32;
+        }
+        const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x00000002;
+        unsafe {
+            if BCryptGenRandom(
+                std::ptr::null_mut(),
+                bytes.as_mut_ptr(),
+                bytes.len() as u32,
+                BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+            ) == 0
+            {
+                filled = true;
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    {
+        if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+            use std::io::Read;
+            if f.read_exact(&mut bytes).is_ok() {
+                filled = true;
+            }
+        }
+    }
+
+    if !filled {
+        // Fallback PRNG seeded with nanoseconds and process ID
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(123456789);
+        let pid = std::process::id() as u128;
+        let mut state = seed ^ (pid << 64);
+        for byte in bytes.iter_mut() {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            *byte = (state >> 56) as u8;
+        }
+    }
+
+    let mut hex = String::with_capacity(64);
+    for b in bytes {
+        use std::fmt::Write;
+        let _ = write!(&mut hex, "{:02x}", b);
+    }
+    hex
+}
+
 impl PhotoCraftClient {
+    /// Locate PhotoCraft executable: configured path -> running process -> relative candidates -> standard install paths -> PATH
+    pub fn find_photocraft_executable(
+        configured_path: Option<&std::path::Path>,
+    ) -> Option<std::path::PathBuf> {
+        let exe_name = if cfg!(windows) {
+            "photocraft.exe"
+        } else {
+            "photocraft"
+        };
+
+        // 1. Explicitly configured path
+        if let Some(path) = configured_path {
+            if path.is_file() {
+                return Some(path.to_path_buf());
+            }
+            if path.is_dir() {
+                let candidate = path.join(exe_name);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+
+        // 2. Running photocraft process directory
+        if let Some(proc_dir) = Self::find_running_photocraft_dir() {
+            let candidate = proc_dir.join(exe_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+
+        // 3. Neighbor directories
+        let mut candidate_paths = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            candidate_paths.push(cwd.join("..").join(exe_name));
+            candidate_paths.push(cwd.join("..").join("..").join(exe_name));
+            candidate_paths.push(cwd.join("..").join("PhotoCraft").join(exe_name));
+            candidate_paths.push(cwd.join("..").join("..").join("PhotoCraft").join(exe_name));
+            candidate_paths.push(cwd.join(exe_name));
+        }
+
+        if let Ok(current_exe) = std::env::current_exe() {
+            if let Some(dir) = current_exe.parent() {
+                candidate_paths.push(dir.join(exe_name));
+                candidate_paths.push(dir.join("..").join(exe_name));
+                candidate_paths.push(dir.join("..").join("..").join(exe_name));
+                candidate_paths.push(dir.join("..").join("PhotoCraft").join(exe_name));
+                candidate_paths.push(dir.join("..").join("..").join("PhotoCraft").join(exe_name));
+            }
+        }
+
+        // 4. Windows standard install paths
+        #[cfg(target_os = "windows")]
+        {
+            if let Ok(pf) = std::env::var("ProgramFiles") {
+                candidate_paths.push(
+                    std::path::PathBuf::from(pf)
+                        .join("PhotoCraft")
+                        .join(exe_name),
+                );
+            }
+            if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+                candidate_paths.push(
+                    std::path::PathBuf::from(pf86)
+                        .join("PhotoCraft")
+                        .join(exe_name),
+                );
+            }
+            if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
+                candidate_paths.push(
+                    std::path::PathBuf::from(local_appdata)
+                        .join("Programs")
+                        .join("PhotoCraft")
+                        .join(exe_name),
+                );
+            }
+        }
+
+        // Unix standard paths
+        #[cfg(not(target_os = "windows"))]
+        {
+            candidate_paths.push(std::path::PathBuf::from("/usr/local/bin").join(exe_name));
+            candidate_paths.push(std::path::PathBuf::from("/usr/bin").join(exe_name));
+            candidate_paths.push(std::path::PathBuf::from("/opt/photocraft").join(exe_name));
+            if let Ok(home) = std::env::var("HOME") {
+                candidate_paths.push(
+                    std::path::PathBuf::from(home)
+                        .join(".local/bin")
+                        .join(exe_name),
+                );
+            }
+        }
+
+        for path in candidate_paths {
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+
+        // 5. System PATH
+        if let Some(path_var) = std::env::var_os("PATH") {
+            for dir in std::env::split_paths(&path_var) {
+                let candidate = dir.join(exe_name);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Launch PhotoCraft instance with control port and token arguments
+    pub fn launch_photocraft(
+        exe_path: &std::path::Path,
+        port: u16,
+        token_file: Option<&std::path::Path>,
+    ) -> Result<std::process::Child> {
+        if !exe_path.is_file() {
+            return Err(CompanionError::Bridge(format!(
+                "PhotoCraft executable not found at: {}",
+                exe_path.display()
+            )));
+        }
+
+        // Determine token file path:
+        // If token_file is None, use PhotoCraftData/control.token next to exe_path (or fallback to cwd)
+        let token_path = match token_file {
+            Some(p) => p.to_path_buf(),
+            None => {
+                let base_dir = exe_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."));
+                base_dir.join("PhotoCraftData").join("control.token")
+            }
+        };
+
+        // If token file does not exist, generate 64-char hex token and write to file
+        if !token_path.exists() {
+            if let Some(parent) = token_path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    CompanionError::Bridge(format!(
+                        "Failed to create token directory {}: {e}",
+                        parent.display()
+                    ))
+                })?;
+            }
+            let token = generate_token();
+            std::fs::write(&token_path, token).map_err(|e| {
+                CompanionError::Bridge(format!(
+                    "Failed to write token file {}: {e}",
+                    token_path.display()
+                ))
+            })?;
+        }
+
+        let mut cmd = std::process::Command::new(exe_path);
+        let port_str = port.to_string();
+        let token_path_str = token_path
+            .to_str()
+            .ok_or_else(|| CompanionError::Bridge("Invalid UTF-8 in token file path".into()))?;
+
+        cmd.args([
+            "--control",
+            &port_str,
+            "--control-token-file",
+            token_path_str,
+        ]);
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW (BUG-053)
+        }
+
+        let child = cmd.spawn().map_err(|e| {
+            CompanionError::Bridge(format!(
+                "Failed to launch PhotoCraft process ({}): {e}",
+                exe_path.display()
+            ))
+        })?;
+
+        Ok(child)
+    }
+
     /// Try to locate the token automatically from environment, process, or standard candidate paths
     pub fn default_token() -> Option<String> {
         // 1. Environment variables
@@ -232,6 +481,19 @@ impl PhotoCraftClient {
                 let trimmed = content.trim();
                 if !trimmed.is_empty() {
                     return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        // 2b. Candidate next to find_photocraft_executable(None) -> PhotoCraftData/control.token
+        if let Some(exe_path) = Self::find_photocraft_executable(None) {
+            if let Some(parent) = exe_path.parent() {
+                let candidate = parent.join("PhotoCraftData").join("control.token");
+                if let Ok(content) = std::fs::read_to_string(&candidate) {
+                    let trimmed = content.trim();
+                    if !trimmed.is_empty() {
+                        return Some(trimmed.to_string());
+                    }
                 }
             }
         }
@@ -1083,5 +1345,77 @@ mod tests {
                 assert_eq!(read_back.height(), 4);
             }
         }
+    }
+
+    #[test]
+    fn test_find_photocraft_executable_configured_path() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "exe_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let dummy_exe = temp_dir.join("custom_photocraft.exe");
+        std::fs::write(&dummy_exe, b"dummy binary").unwrap();
+
+        let found = PhotoCraftClient::find_photocraft_executable(Some(&dummy_exe));
+        assert_eq!(found, Some(dummy_exe.clone()));
+
+        // Non-existent configured path should not return the non-existent path
+        let non_existent = temp_dir.join("does_not_exist.exe");
+        let found_non_existent = PhotoCraftClient::find_photocraft_executable(Some(&non_existent));
+        assert_ne!(found_non_existent, Some(non_existent));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_launch_photocraft_token_generation() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "launch_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mock_exe = if cfg!(windows) {
+            let p = temp_dir.join("mock.cmd");
+            std::fs::write(&p, "@echo off\r\nexit 0\r\n").unwrap();
+            p
+        } else {
+            let p = temp_dir.join("mock.sh");
+            std::fs::write(&p, "#!/bin/sh\nexit 0\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755));
+            }
+            p
+        };
+
+        let token_file = temp_dir.join("PhotoCraftData").join("control.token");
+        assert!(!token_file.exists());
+
+        let mut child = PhotoCraftClient::launch_photocraft(&mock_exe, 18492, Some(&token_file))
+            .expect("Launch should succeed");
+
+        assert!(token_file.exists());
+        let token_content = std::fs::read_to_string(&token_file).unwrap();
+        assert_eq!(token_content.len(), 64);
+        assert!(token_content.chars().all(|c| c.is_ascii_hexdigit()));
+
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_generate_token_format() {
+        let token = generate_token();
+        assert_eq!(token.len(), 64);
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

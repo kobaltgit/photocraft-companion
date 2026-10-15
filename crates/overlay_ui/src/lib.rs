@@ -141,6 +141,7 @@ pub struct CompanionOverlayApp {
     pub config_path: std::path::PathBuf,
     pub last_saved_vertical: bool,
     pub last_saved_pos: Option<[f32; 2]>,
+    pub on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl CompanionOverlayApp {
@@ -176,6 +177,12 @@ impl CompanionOverlayApp {
         let toolstrip = ToolstripApp::new(buttons, current_theme).with_orientation(cfg.is_vertical);
         let mut manager = PluginManagerApp::new(manifests, &prefs_path, is_connected.clone())
             .with_connection_state(conn_state_arc.clone());
+        manager.config_path = config_path.clone();
+        if manager.photocraft_path.is_empty() {
+            if let Some(ref p) = cfg.photocraft_path {
+                manager.photocraft_path = p.to_string_lossy().to_string();
+            }
+        }
         if let Some(cb) = on_token_saved {
             manager = manager.with_token_callback(cb);
         }
@@ -203,7 +210,13 @@ impl CompanionOverlayApp {
             config_path,
             last_saved_vertical: cfg.is_vertical,
             last_saved_pos: cfg.window_position,
+            on_launch_requested: None,
         }
+    }
+
+    pub fn with_launch_callback(mut self, cb: Arc<dyn Fn() + Send + Sync>) -> Self {
+        self.on_launch_requested = Some(cb);
+        self
     }
 
     pub fn save_layout_state(&self) {
@@ -254,7 +267,7 @@ impl CompanionOverlayApp {
             }
         } else {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                280.0, 160.0,
+                280.0, 210.0,
             )));
             if let Some(pos) = calculate_toolstrip_spawn_pos(280.0) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
@@ -381,7 +394,7 @@ impl eframe::App for CompanionOverlayApp {
                 } else {
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                            280.0, 160.0,
+                            280.0, 210.0,
                         )));
                 }
             }
@@ -703,6 +716,12 @@ impl eframe::App for CompanionOverlayApp {
                     self.offline_modal.open_manager_requested = false;
                     self.show_manager = true;
                 }
+                if self.offline_modal.launch_requested {
+                    self.offline_modal.launch_requested = false;
+                    if let Some(ref cb) = self.on_launch_requested {
+                        cb();
+                    }
+                }
             }
         }
 
@@ -739,6 +758,12 @@ impl eframe::App for CompanionOverlayApp {
                                 &palette,
                                 &mut self.show_manager,
                             );
+                            if self.manager.launch_requested {
+                                self.manager.launch_requested = false;
+                                if let Some(ref cb) = self.on_launch_requested {
+                                    cb();
+                                }
+                            }
                         });
                 },
             );
@@ -759,6 +784,7 @@ pub fn launch_companion_overlay(
     exec_status: Option<core_contracts::SharedExecutionStatus>,
     connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
     on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
+    on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -771,6 +797,9 @@ pub fn launch_companion_overlay(
         connection_state,
         on_token_saved,
     );
+    if let Some(cb) = on_launch_requested {
+        app = app.with_launch_callback(cb);
+    }
     if start_with_manager {
         app.show_manager = true;
     }
@@ -780,7 +809,7 @@ pub fn launch_companion_overlay(
     let initial_size = if connected {
         app.toolstrip.calculate_size()
     } else {
-        egui::Vec2::new(280.0, 160.0)
+        egui::Vec2::new(280.0, 210.0)
     };
 
     let mut viewport = egui::ViewportBuilder::default()

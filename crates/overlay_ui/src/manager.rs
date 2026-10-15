@@ -64,6 +64,8 @@ pub struct PluginManagerApp {
     pub store_state: crate::store::StoreState,
     pub store_icon_cache: crate::icons::SvgIconCache,
     pub readme_modal: Option<PluginReadmeState>,
+    pub photocraft_path: String,
+    pub launch_requested: bool,
 }
 
 impl PluginManagerApp {
@@ -76,6 +78,11 @@ impl PluginManagerApp {
         let data_dir = prefs_path.parent().unwrap_or(&prefs_path).to_path_buf();
         let config_path = CompanionConfig::resolve_config_path(&data_dir);
         let cfg = CompanionConfig::load_or_default(&config_path);
+
+        let photocraft_path = cfg
+            .photocraft_path
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
 
         let lang = if cfg.language == "ru" {
             Language::Ru
@@ -140,6 +147,8 @@ impl PluginManagerApp {
             store_state: crate::store::StoreState::new(&data_dir),
             store_icon_cache: crate::icons::SvgIconCache::new(),
             readme_modal: None,
+            photocraft_path,
+            launch_requested: false,
         }
     }
 
@@ -290,6 +299,11 @@ impl PluginManagerApp {
             .filter(|m| m.enabled)
             .map(|m| m.id.clone())
             .collect();
+        cfg.photocraft_path = if self.photocraft_path.trim().is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(self.photocraft_path.trim()))
+        };
 
         cfg.save(&self.config_path)?;
         info!("Saved settings to {}", self.config_path.display());
@@ -480,6 +494,46 @@ impl PluginManagerApp {
                     });
                 ui.end_row();
 
+                // PhotoCraft Path
+                ui.label(
+                    RichText::new(self.t("PhotoCraft Path:", "Путь к PhotoCraft:"))
+                        .size(12.0)
+                        .color(palette.text_primary),
+                );
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut self.photocraft_path);
+                    if ui
+                        .button(
+                            RichText::new(self.t("Browse...", "Обзор..."))
+                                .size(11.0)
+                                .color(Color32::WHITE),
+                        )
+                        .clicked()
+                    {
+                        let mut dialog =
+                            rfd::FileDialog::new().set_title("Select PhotoCraft Executable");
+                        #[cfg(windows)]
+                        {
+                            dialog = dialog.add_filter("Executable", &["exe"]);
+                        }
+                        if let Some(path) = dialog.pick_file() {
+                            self.photocraft_path = path.to_string_lossy().to_string();
+                        }
+                    }
+                    if ui
+                        .button(
+                            RichText::new(self.t("> Launch", "> Запуск"))
+                                .size(11.0)
+                                .strong()
+                                .color(Color32::WHITE),
+                        )
+                        .clicked()
+                    {
+                        self.launch_requested = true;
+                    }
+                });
+                ui.end_row();
+
                 // Host
                 ui.label(
                     RichText::new(self.t("Bridge Host:", "Хост подключения:"))
@@ -510,7 +564,11 @@ impl PluginManagerApp {
                         .color(palette.text_primary),
                 );
                 ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.token);
+                    let hint = self.t("(Auto-detected)", "(Автоопределение)");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.token)
+                            .hint_text(RichText::new(hint).color(palette.text_muted)),
+                    );
                     if ui
                         .button(
                             RichText::new(self.t("Auto-Detect", "Найти токен"))
@@ -519,21 +577,56 @@ impl PluginManagerApp {
                         )
                         .clicked()
                     {
-                        // Check direct token file in prefs_path parent
-                        let token_path = self
-                            .prefs_path
-                            .parent()
-                            .unwrap_or(&self.prefs_path)
-                            .join("control.token");
                         let mut found = None;
-                        if let Ok(s) = std::fs::read_to_string(&token_path) {
-                            let trimmed = s.trim();
+
+                        // 1. Check environment variables
+                        if let Ok(tok) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN") {
+                            let trimmed = tok.trim();
                             if !trimmed.is_empty() {
                                 found = Some(trimmed.to_string());
                             }
                         }
+                        if found.is_none() {
+                            if let Ok(path) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN_FILE") {
+                                if let Ok(s) = std::fs::read_to_string(&path) {
+                                    let trimmed = s.trim();
+                                    if !trimmed.is_empty() {
+                                        found = Some(trimmed.to_string());
+                                    }
+                                }
+                            }
+                        }
 
-                        // Fallback check standard locations if not found
+                        // 2. Check PhotoCraft path parent directory
+                        if found.is_none() && !self.photocraft_path.trim().is_empty() {
+                            let p = std::path::Path::new(self.photocraft_path.trim());
+                            if let Some(parent) = p.parent() {
+                                let c = parent.join("PhotoCraftData").join("control.token");
+                                if let Ok(s) = std::fs::read_to_string(&c) {
+                                    let trimmed = s.trim();
+                                    if !trimmed.is_empty() {
+                                        found = Some(trimmed.to_string());
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Check direct token file in prefs_path parent
+                        if found.is_none() {
+                            let token_path = self
+                                .prefs_path
+                                .parent()
+                                .unwrap_or(&self.prefs_path)
+                                .join("control.token");
+                            if let Ok(s) = std::fs::read_to_string(&token_path) {
+                                let trimmed = s.trim();
+                                if !trimmed.is_empty() {
+                                    found = Some(trimmed.to_string());
+                                }
+                            }
+                        }
+
+                        // 4. Fallback check standard candidate locations
                         if found.is_none() {
                             let mut candidates = Vec::new();
                             if let Ok(cwd) = std::env::current_dir() {
@@ -541,11 +634,32 @@ impl PluginManagerApp {
                                 candidates.push(
                                     cwd.join("..").join("PhotoCraftData").join("control.token"),
                                 );
+                                candidates.push(
+                                    cwd.join("..")
+                                        .join("..")
+                                        .join("PhotoCraftData")
+                                        .join("control.token"),
+                                );
                             }
                             if let Ok(appdata) = std::env::var("APPDATA") {
                                 candidates.push(
                                     std::path::PathBuf::from(appdata)
                                         .join("PhotoCraft")
+                                        .join("control.token"),
+                                );
+                            }
+                            if let Ok(home) =
+                                std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME"))
+                            {
+                                candidates.push(
+                                    std::path::PathBuf::from(&home)
+                                        .join(".config")
+                                        .join("photocraft")
+                                        .join("control.token"),
+                                );
+                                candidates.push(
+                                    std::path::PathBuf::from(&home)
+                                        .join("PhotoCraftData")
                                         .join("control.token"),
                                 );
                             }
@@ -2330,7 +2444,12 @@ impl PluginManagerApp {
                         .min_size(Vec2::new(76.0, 26.0));
 
                         if ui.add(save_btn).clicked() {
-                            let _ = self.save_settings();
+                            if let Err(e) = self.save_settings() {
+                                tracing::error!("Failed to save settings: {e}");
+                                let err_prefix =
+                                    self.t("Error saving settings", "Ошибка сохранения настроек");
+                                self.set_status(format!("{err_prefix}: {e}"), true);
+                            }
                         }
 
                         ui.add_space(8.0);
@@ -2536,6 +2655,7 @@ mod tests {
         app.config_path = temp_dir.join("companion_config.json");
         app.port = 19999;
         app.current_theme = ThemeMode::Light;
+        app.photocraft_path = "D:/apps/photocraft.exe".to_string();
 
         let res = app.save_settings();
         assert!(res.is_ok());
@@ -2544,6 +2664,10 @@ mod tests {
         let loaded = CompanionConfig::load_or_default(&app.config_path);
         assert_eq!(loaded.port, 19999);
         assert_eq!(loaded.theme, "light");
+        assert_eq!(
+            loaded.photocraft_path,
+            Some(PathBuf::from("D:/apps/photocraft.exe"))
+        );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

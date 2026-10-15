@@ -72,6 +72,20 @@ fn find_photocraft_data_dir() -> PathBuf {
     if PathBuf::from("PhotoCraftData").is_dir() {
         return PathBuf::from("PhotoCraftData");
     }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let candidate = exe_dir.join("PhotoCraftData");
+            if candidate.is_dir() {
+                return candidate;
+            }
+            if let Some(parent) = exe_dir.parent() {
+                let candidate = parent.join("PhotoCraftData");
+                if candidate.is_dir() {
+                    return candidate;
+                }
+            }
+        }
+    }
     if let Ok(cwd) = std::env::current_dir() {
         let mut cur = cwd.as_path();
         for _ in 0..5 {
@@ -120,6 +134,8 @@ fn main() -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    let _rt_guard = rt.enter();
+    let rt_handle = rt.handle().clone();
 
     // 1. Initialize Plugin Registry with dynamic AI Factory
     // Any Native AI plugin placed in plugins/ will be discovered and instantiated automatically!
@@ -454,12 +470,46 @@ fn main() -> anyhow::Result<()> {
     let buttons = OverlayBar::from_manifests(&manifests);
 
     let client_for_ui = client.clone();
+    let rt_handle_ui = rt_handle.clone();
     let on_token_saved: Arc<dyn Fn(Option<String>) + Send + Sync> = Arc::new(move |new_token| {
         let c = client_for_ui.clone();
-        tokio::spawn(async move {
+        rt_handle_ui.spawn(async move {
             c.set_token(new_token).await;
             info!("PhotoCraftClient token dynamically updated from UI settings.");
         });
+    });
+
+    let client_for_launch = client.clone();
+    let port = companion_cfg.port;
+    let config_path_for_launch = config_path.clone();
+    let rt_handle_launch = rt_handle.clone();
+    let on_launch_requested: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
+        let configured_path = cfg.photocraft_path.as_deref();
+        if let Some(exe_path) = PhotoCraftClient::find_photocraft_executable(configured_path) {
+            info!(
+                "Attempting to launch PhotoCraft from: {}",
+                exe_path.display()
+            );
+            match PhotoCraftClient::launch_photocraft(&exe_path, port, None) {
+                Ok(_child) => {
+                    info!("PhotoCraft process spawned successfully!");
+                    let c = client_for_launch.clone();
+                    rt_handle_launch.spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                        if let Some(tok) = PhotoCraftClient::default_token() {
+                            c.set_token(Some(tok)).await;
+                            info!("Updated PhotoCraftClient token after auto-launch.");
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::error!("Failed to launch PhotoCraft: {e}");
+                }
+            }
+        } else {
+            tracing::warn!("PhotoCraft executable not found. Please configure path in Settings.");
+        }
     });
 
     overlay_ui::launch_companion_overlay(
@@ -473,6 +523,7 @@ fn main() -> anyhow::Result<()> {
         Some(exec_status),
         Some(connection_state),
         Some(on_token_saved),
+        Some(on_launch_requested),
     )?;
 
     Ok(())

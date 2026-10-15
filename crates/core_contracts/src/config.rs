@@ -21,6 +21,8 @@ pub struct CompanionConfig {
     pub window_position: Option<[f32; 2]>,
     #[serde(default)]
     pub enabled_plugins: Vec<String>,
+    #[serde(default)]
+    pub photocraft_path: Option<PathBuf>,
 }
 
 fn default_host() -> String {
@@ -50,6 +52,7 @@ impl Default for CompanionConfig {
             is_vertical: false, // Per spec: default is horizontal
             window_position: None,
             enabled_plugins: Vec::new(),
+            photocraft_path: None,
         }
     }
 }
@@ -57,15 +60,42 @@ impl Default for CompanionConfig {
 impl CompanionConfig {
     pub fn load_or_default(path: impl AsRef<Path>) -> Self {
         let p = path.as_ref();
-        if p.exists() {
+        let mut cfg = if p.exists() {
             if let Ok(content) = fs::read_to_string(p) {
-                if let Ok(cfg) = serde_json::from_str::<Self>(&content) {
-                    info!("Loaded companion configuration from {}", p.display());
-                    return cfg;
+                serde_json::from_str::<Self>(&content).unwrap_or_default()
+            } else {
+                Self::default()
+            }
+        } else {
+            Self::default()
+        };
+
+        // If photocraft_path is missing in this config, restore from local or exe-adjacent config mirror
+        if cfg.photocraft_path.is_none() {
+            let mut mirrors = Vec::new();
+            mirrors.push(PathBuf::from("companion_config.json"));
+            if let Ok(exe) = std::env::current_exe() {
+                if let Some(exe_dir) = exe.parent() {
+                    mirrors.push(exe_dir.join("companion_config.json"));
+                    mirrors.push(exe_dir.join("PhotoCraftData").join("companion_config.json"));
+                }
+            }
+            for m in mirrors {
+                if m != p && m.exists() {
+                    if let Ok(content) = fs::read_to_string(&m) {
+                        if let Ok(other) = serde_json::from_str::<Self>(&content) {
+                            if other.photocraft_path.is_some() {
+                                cfg.photocraft_path = other.photocraft_path;
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
-        Self::default()
+
+        info!("Loaded companion configuration from {}", p.display());
+        cfg
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
@@ -74,17 +104,50 @@ impl CompanionConfig {
             let _ = fs::create_dir_all(parent);
         }
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(p, json)?;
+        fs::write(p, &json)?;
         info!("Saved companion configuration to {}", p.display());
+
+        // Also mirror save to companion executable directory so portable mode never loses settings
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(exe_dir) = exe.parent() {
+                let exe_cfg = exe_dir.join("companion_config.json");
+                if exe_cfg != p {
+                    let _ = fs::write(&exe_cfg, &json);
+                }
+            }
+        }
         Ok(())
     }
 
     pub fn resolve_config_path(data_dir: &Path) -> PathBuf {
         let candidate = data_dir.join("companion_config.json");
-        if candidate.exists() || data_dir.is_dir() {
+        if candidate.exists() {
             return candidate;
         }
-        PathBuf::from("companion_config.json")
+
+        let local = PathBuf::from("companion_config.json");
+        if local.exists() {
+            if data_dir.is_dir() && candidate != local {
+                if let Some(parent) = candidate.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if fs::copy(&local, &candidate).is_ok() {
+                    info!(
+                        "Migrated existing companion_config.json from {} to {}",
+                        local.display(),
+                        candidate.display()
+                    );
+                    return candidate;
+                }
+            }
+            return local;
+        }
+
+        if data_dir.is_dir() {
+            return candidate;
+        }
+
+        local
     }
 }
 
@@ -108,6 +171,7 @@ mod tests {
             theme: "light".to_string(),
             is_vertical: true,
             enabled_plugins: vec!["test.plugin".to_string()],
+            photocraft_path: Some(PathBuf::from("D:/apps/photocraft.exe")),
             ..CompanionConfig::default()
         };
 
@@ -119,6 +183,10 @@ mod tests {
         assert_eq!(loaded.theme, "light");
         assert!(loaded.is_vertical);
         assert_eq!(loaded.enabled_plugins, vec!["test.plugin"]);
+        assert_eq!(
+            loaded.photocraft_path,
+            Some(PathBuf::from("D:/apps/photocraft.exe"))
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
@@ -134,6 +202,7 @@ mod tests {
         assert!(cfg.token.is_none());
         assert!(cfg.window_position.is_none());
         assert!(cfg.enabled_plugins.is_empty());
+        assert!(cfg.photocraft_path.is_none());
     }
 
     #[test]

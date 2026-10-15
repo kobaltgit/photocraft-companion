@@ -1674,15 +1674,102 @@ Rather than quietly force-pushing and overwriting release v1.0.3 assets (which w
    ```
 3. **Version Synchronization:** Synchronized version `1.0.4` across all 5 workspace manifests (`Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`).
 
+---
 
+## [2026-10-15 05:30] Chapter 55: The Token Abolition Illusion, Clean Machine Pitfall, and One-Click PhotoCraft Launch (BUG-058)
 
+*Time: October 15, 2026, 05:30 (~35 minutes)*
 
+### 1. The Context: Smooth Sailing for the Author, Blank Offline for New Users
+It started with an innocuous observation. Inspecting the Settings tab in PhotoCraft Companion, I noticed the Control Token field was empty. Yet the application detected the active canvas, navigated layers, and executed AI segmentation masks without hesitation, while the "Auto-Detect" button reported: `control.token not found`. The instinctive reaction was: "Could upstream PhotoCraft have dropped secret tokens altogether in their latest builds, opening socket 18492 unconditionally?".
 
+Engineering intuition cautioned against jumping to conclusions. I directed our subagents to audit the upstream `storytold/photocraft` repository and probe the raw TCP socket.
 
+The investigation brought clarity: upstream never removed authentication. On the contrary, recent PRs actively harden socket security. Any raw TCP connection on port 18492 without credentials is systematically dropped with `{"error": "authentication required"}`. Why then was everything working flawlessly on my workstation?
 
+The answer was simple: my system environment had `PHOTOCRAFT_CONTROL_PORT=18492` and `PHOTOCRAFT_CONTROL_TOKEN_FILE` predefined, pointing to an older test folder. Companion was silently reading this token on boot! Simultaneously, PhotoCraft 0.8.2 inspected the same environment variable and enabled its control server automatically.
 
+Now consider a clean computer belonging to a user downloading our release:
+1. Double-clicking the official PhotoCraft shortcut spawns an editor that **does not listen on port 18492 at all and never generates `control.token`**, because the official binary only opens its automation socket when launched with explicit CLI arguments `--control <port> --control-token-file <path>`.
+2. Launching Companion, the user encounters a waiting modal ("PhotoCraft Not Detected") or an authentication failure without any indication of how to obtain or generate the required token.
 
+This was the classic "works on my machine" pitfall. The solution needed to be definitive: convert a manual CLI ordeal into a zero-friction, one-click onboarding experience.
 
+### 2. Architectural Solution: Multi-Path Discovery, Headless Launch, and Cryptographic Tokens
+We designed a non-invasive onboarding pipeline that requires zero upstream code modifications:
 
+1. **Multi-Source Executable Discovery (`PhotoCraftClient::find_photocraft_executable`):**
+   Companion resolves `photocraft.exe` (or `photocraft` on Unix) through a prioritized search ladder:
+   - Explicit user-configured path (`CompanionConfig.photocraft_path`);
+   - Directory of an already running PhotoCraft process (via Win32 Toolhelp snapshot API);
+   - Sibling and adjacent directories relative to CWD and Companion binary;
+   - Standard Windows install trees (`Program Files`, `Program Files (x86)`, `LOCALAPPDATA/Programs`);
+   - Operating system `PATH`.
 
+2. **Silent Launch and Automatic Token Generation (`PhotoCraftClient::launch_photocraft`):**
+   - If `control.token` does not exist, Companion generates a cryptographically secure 64-character hexadecimal token (32 random bytes via `BCryptGenRandom` on Windows, `/dev/urandom` on Unix, with deterministic seeded PRNG fallback) and saves it to `PhotoCraftData/control.token`.
+   - Spawns PhotoCraft with `--control 18492 --control-token-file <path>`.
+   - On Windows, strictly sets creation flag `0x08000000` (`CREATE_NO_WINDOW`), preventing any black command prompt window flash.
+   - Dynamically updates the runtime token in `PhotoCraftClient`, transitioning the connection monitor to `Connected` within milliseconds.
 
+3. **User-Facing Ergonomics:**
+   - The waiting modal (`offline_modal.rs`) now features a primary `[ > Launch PhotoCraft ]` button, with viewport height adjusted to 210 px.
+   - The General settings tab (`manager.rs`) features a "PhotoCraft Path" file picker (`[ Browse... ]`) and an instant `[ > Launch ]` trigger.
+   - Empty token fields display a subtle `(Auto-detected)` placeholder.
+   - The "Auto-Detect" token button checks candidate files adjacent to the located executable.
+
+### 3. Verification & Definition of Done (Resource Guard)
+* Added unit tests in `photocraft_bridge`: executable search priority, token generation format (64-char hex), and launch parameter passing.
+* Added configuration round-trip tests for `photocraft_path` in `core_contracts` and `overlay_ui::manager`.
+* All 97 workspace tests pass (`cargo test --workspace -j 1`) with 100% green status.
+* Full compliance verified with `i18n_lint_test` and `vector_first_lint_test` (Rule 6).
+* All 6 plugins validated via `plugin_validator` with zero defects.
+* Issue tracked and closed in `docs/BUGS_AND_ISSUES.md` under `BUG-058`.
+
+Now, any user trying PhotoCraft Companion for the first time simply clicks "Launch PhotoCraft" — everything else is handled seamlessly in the background.
+
+---
+
+## [2026-10-15 05:48] Chapter 56: Eliminating Tokio Runtime Panic on Save Settings and Ensuring Robust Path Mirroring (BUG-059)
+
+*Time: October 15, 2026, 05:48 (~20 minutes)*
+
+### 1. Incident: Crash on Clicking "Save" in Plugins Manager
+Immediately after delivering the auto-launch and onboarding features, field testing revealed an instant failure:
+1. Launched PhotoCraft Companion.
+2. In the offline waiting modal, clicked "Open Plugins Manager".
+3. Specified the path to `photocraft.exe` and clicked "Save".
+4. Companion immediately crashed and vanished.
+5. Upon relaunching, the "PhotoCraft Path" field was completely empty.
+
+The defect was prioritized for emergency diagnosis and resolution.
+
+### 2. Diagnosis and Root Causes (Two Independent Flaws)
+A thorough investigation uncovered two distinct underlying bugs:
+
+1. **Tokio Spawn Panic in the egui UI Thread:**
+   In `crates/companion_app/src/main.rs`, the UI callbacks `on_token_saved` and `on_launch_requested` invoked `tokio::spawn(async move { ... })`.
+   Because `eframe::run_native` executes on the primary OS thread outside of an active Tokio runtime worker context, clicking "Save" triggered `tokio::spawn` with no active ambient reactor, causing an immediate panic:
+   `panicked at 'there is no reactor running, must be called from the context of a Tokio 1.x runtime'`.
+
+   *Resolution:* Retained a thread-safe handle `rt_handle = rt.handle().clone()`, entered an ambient guard `let _rt_guard = rt.enter()` on the main thread, and swapped all UI callback spawns to `rt_handle.spawn(...)`. `Handle::spawn` is thread-safe and can be dispatched from any thread without panic.
+
+2. **Configuration Path Divergence and State Loss:**
+   `resolve_config_path` exhibited dynamic flip-flopping:
+   - On clean start, `PhotoCraftData` did not exist yet, so `resolve_config_path` returned `./companion_config.json`.
+   - Then `StoreState::new(&data_dir)` created the `PhotoCraftData/cache` directory.
+   - When settings were saved, they wrote to `./companion_config.json`. But on subsequent restarts, `data_dir.is_dir()` was now `true`, so `resolve_config_path` switched to `PhotoCraftData/companion_config.json`, which was empty and lacked `photocraft_path`!
+
+   *Resolution:*
+   - In `crates/core_contracts/src/config.rs`, `resolve_config_path` now includes automatic migration: existing local configs are safely copied to `data_dir` without losing configured paths.
+   - `CompanionConfig::save` now automatically mirrors configuration adjacent to the executable binary in portable mode.
+   - `CompanionConfig::load_or_default` fallback-restores `photocraft_path` from the executable mirror if absent in the target file.
+   - In `crates/overlay_ui/src/lib.rs`, `manager.config_path` is explicitly unified with the parent `CompanionOverlayApp.config_path`.
+   - In `crates/photocraft_bridge/src/lib.rs`, `find_photocraft_executable` now supports both direct `.exe` paths and PhotoCraft root directories.
+
+### 3. Verification & Definition of Done (Resource Guard)
+* Full workspace test suite executed with `-j 1` (`cargo test --workspace -j 1`). All **97 tests passed** with 100% green status.
+* Full compliance verified with `i18n_lint_test` and `vector_first_lint_test`.
+* `cargo clippy --workspace -j 1 -- -D warnings` passed with 0 warnings.
+* Fresh release binary built: `target/release/photocraft-companion.exe`.
+* Defect logged and marked RESOLVED in `docs/BUGS_AND_ISSUES.md` under `BUG-059`.

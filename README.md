@@ -20,7 +20,7 @@
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
-[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
+[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [First-Launch Guide](#-first-launch--onboarding-guide) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
 
 
 </div>
@@ -112,6 +112,32 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 > xattr -cr "/Applications/PhotoCraft Companion.app"
 > ```
 > Alternatively, go to **System Settings › Privacy & Security** and select **Open Anyway**.
+
+---
+
+## 🚦 First-Launch & Onboarding Guide
+
+PhotoCraft Companion communicates with PhotoCraft through a local control socket (port 18492) using a security token (`control.token`). Starting with **v1.0.5**, launching and pairing are completely automated in one click!
+
+### Method 1: One-Click Launch via Companion (Recommended)
+1. **Start PhotoCraft Companion**:
+   - If PhotoCraft is not running yet, Companion displays a sleek standby window: *"Waiting for PhotoCraft..."*.
+2. **Launch in 1 Click**:
+   - Click the **`[ > Launch PhotoCraft ]`** button directly in the waiting window (or in **Settings › General**).
+   - Companion automatically discovers `photocraft.exe` across standard locations (or you can point to it once via `[ Browse... ]`), generates a cryptographically secure 64-character `control.token`, launches PhotoCraft with `--control 18492 --control-token-file`, and establishes the connection.
+   - The configured executable path is safely persisted and mirrored in portable mode.
+3. **Start Creating**:
+   - Once PhotoCraft is running, the waiting window seamlessly transforms into the floating toolbar above your canvas.
+
+### Method 2: Manual PhotoCraft Launch
+If you prefer starting PhotoCraft from custom shortcuts or command line:
+1. Launch PhotoCraft with the control socket arguments:
+   ```powershell
+   photocraft.exe --control 18492 --control-token-file "PhotoCraftData/control.token"
+   ```
+2. Start `photocraft-companion.exe`. It automatically detects the running process, reads `control.token`, and turns the connection indicator to **● Connected**.
+
+---
 
 ### Building Packages Locally
 

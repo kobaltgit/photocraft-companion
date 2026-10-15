@@ -7,6 +7,7 @@ pub struct OfflineModalApp {
     pub current_theme: ThemeMode,
     pub connection_state: ConnectionState,
     pub open_manager_requested: bool,
+    pub launch_requested: bool,
     pub retry_seconds: f32,
 }
 
@@ -17,6 +18,7 @@ impl OfflineModalApp {
             current_theme,
             connection_state: ConnectionState::Offline,
             open_manager_requested: false,
+            launch_requested: false,
             retry_seconds: 1.5,
         }
     }
@@ -91,7 +93,7 @@ impl OfflineModalApp {
                     .color(palette.text_muted),
             );
 
-            ui.add_space(10.0);
+            ui.add_space(8.0);
 
             // Status indicator
             ui.label(
@@ -103,11 +105,11 @@ impl OfflineModalApp {
                 .color(indicator_color),
             );
 
-            ui.add_space(14.0);
+            ui.add_space(10.0);
 
-            // Open Plugin Manager button
-            let btn = egui::Button::new(
-                RichText::new(self.t("Open Plugins Manager", "Открыть Менеджер плагинов"))
+            // Primary: Launch PhotoCraft button
+            let launch_btn = egui::Button::new(
+                RichText::new(self.t("> Launch PhotoCraft", "> Запустить PhotoCraft"))
                     .size(11.0)
                     .strong()
                     .color(Color32::WHITE),
@@ -116,11 +118,27 @@ impl OfflineModalApp {
             .corner_radius(4.0)
             .min_size(Vec2::new(180.0, 26.0));
 
+            if ui.add(launch_btn).clicked() {
+                self.launch_requested = true;
+            }
+
+            ui.add_space(6.0);
+
+            // Secondary: Open Plugin Manager button
+            let btn = egui::Button::new(
+                RichText::new(self.t("Open Plugins Manager", "Открыть Менеджер плагинов"))
+                    .size(11.0)
+                    .color(palette.text_primary),
+            )
+            .fill(palette.button_secondary)
+            .corner_radius(4.0)
+            .min_size(Vec2::new(180.0, 24.0));
+
             if ui.add(btn).clicked() {
                 self.open_manager_requested = true;
             }
 
-            ui.add_space(12.0);
+            ui.add_space(10.0);
         });
     }
 }
@@ -135,6 +153,7 @@ mod tests {
         assert_eq!(app.current_language, Language::En);
         assert_eq!(app.current_theme, ThemeMode::Dark);
         assert!(!app.open_manager_requested);
+        assert!(!app.launch_requested);
         assert_eq!(app.retry_seconds, 1.5);
     }
 
