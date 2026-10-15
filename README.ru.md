@@ -11,12 +11,12 @@
 ---
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
-[![Release: v1.0.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.0)
+[![Release: v1.0.5](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.5)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
-[![Tests: 78 Passing](https://img.shields.io/badge/Tests-78_Passing-success.svg)](crates/)
+[![Tests: 97 Passing](https://img.shields.io/badge/Tests-97_Passing-success.svg)](crates/)
 
 **Экосистема плагинов, локальных нейросетей и оверлей-панелей для графического редактора PhotoCraft.**
 
@@ -103,11 +103,10 @@
 </p>
 
 | Платформа                         | Установщик (Setup / Installer)                | Портабельная версия (Portable)                             | Описание                                                                           |
-
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.0-windows-x64-portable.zip`     | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.0-macos-portable.tar.gz`        | DMG-образ с перетаскиванием в `/Applications` / Автономный архив `.tar.gz`         |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.0-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.0-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив     |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.5-windows-x64-portable.zip`     | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.5-macos-portable.tar.gz`        | DMG-образ с перетаскиванием в `/Applications` / Автономный архив `.tar.gz`         |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.5-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.5-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив     |
 
 > [!TIP]
 > Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** при каждом релизе.
