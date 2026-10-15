@@ -1808,7 +1808,7 @@ We settled on the optimal hybrid pattern: a **unified master plugin "AI Scene Co
 
 ---
 
-## [2026-10-15 21:30] Chapter 58: Release v1.0.5: Read-Only Filesystem Isolation on macOS/Windows, .app Bundle Support, and Interactive PhotoCraft Launch (BUG-060)
+## [2026-10-15 21:30] Chapter 58: Release v1.0.6: Read-Only Filesystem Isolation on macOS/Windows, .app Bundle Support, and Interactive PhotoCraft Launch (BUG-060)
 
 *Time: October 15, 2026, 21:30 (~30 minutes)*
 
@@ -1850,4 +1850,4 @@ We did not dismiss this or blame user unfamiliarity with macOS. We acknowledged 
 * Strict `i18n_lint_test` and `vector_first_lint_test` passed with zero errors.
 * Plugin validator verified all 6 plugins, updated registry, and generated `.pcpl` archives.
 * Updated `CHECKLIST.md` (Phase 55) and registered `BUG-060` in `BUGS_AND_ISSUES.md`.
-* Version synchronized across all build configurations for release **v1.0.5**.
+* Version synchronized across all build configurations for release **v1.0.6**.

@@ -519,7 +519,7 @@
     - `cargo clippy --workspace -j 1 -- -D warnings` завершен с 0 предупреждений.
     - Собрана свежая релизная версия `target/release/photocraft-companion.exe`.
 
-- [x] **Фаза 55: Изоляция пользовательских данных, поддержка macOS .app бандлов и интерактивный запуск PhotoCraft (BUG-060, Релиз v1.0.5)**
+- [x] **Фаза 55: Изоляция пользовательских данных, поддержка macOS .app бандлов и интерактивный запуск PhotoCraft (BUG-060, Релиз v1.0.6)**
   - [x] **Изоляция пользовательских данных от Read-Only файловых систем (Zero-UAC & DMG Guard)**:
     - Реализация функций `core_contracts::user_data_dir()` и `core_contracts::is_dir_writable()`: определение безопасных системных путей (`~/Library/Application Support/PhotoCraft Companion` на macOS, `%LOCALAPPDATA%\PhotoCraft Companion` на Windows, `~/.config/photocraft-companion` на Linux).
     - В `crates/core_contracts/src/config.rs`: безопасное сохранение `CompanionConfig::save` и разрешение пути `resolve_config_path` с автоматическим перенаправлением в `user_data_dir()`, если рабочий каталог недоступен для записи.

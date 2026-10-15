@@ -1,4 +1,4 @@
-# PhotoCraft Plugins & Companion
+﻿# PhotoCraft Plugins & Companion
 
 <p align="center">
   <img src="assets/github-social-preview.svg" alt="PhotoCraft Companion Social Preview" width="100%">
@@ -11,12 +11,12 @@
 ---
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
-[![Release: v1.0.5](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.5)
+[![Release: v1.0.6](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.6)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
-[![Tests: 97 Passing](https://img.shields.io/badge/Tests-97_Passing-success.svg)](crates/)
+[![Tests: 98 Passing](https://img.shields.io/badge/Tests-98_Passing-success.svg)](crates/)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
@@ -99,9 +99,9 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 
 | Platform                          | Installer (Setup)                             | Portable Archive                                           | Notes                                                              |
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.5-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.5-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.5-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.5-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.6-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.6-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.6-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.6-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
 
 > [!TIP]
 > All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
@@ -117,7 +117,7 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 
 ## 🚦 First-Launch & Onboarding Guide
 
-PhotoCraft Companion communicates with PhotoCraft through a local control socket (port 18492) using a security token (`control.token`). Starting with **v1.0.5**, launching and pairing are completely automated in one click!
+PhotoCraft Companion communicates with PhotoCraft through a local control socket (port 18492) using a security token (`control.token`). Starting with **v1.0.6**, launching and pairing are completely automated in one click!
 
 ### Method 1: One-Click Launch via Companion (Recommended)
 1. **Start PhotoCraft Companion**:
@@ -285,3 +285,5 @@ Detailed specifications and development history can be found in [`docs/`](docs/)
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
+
