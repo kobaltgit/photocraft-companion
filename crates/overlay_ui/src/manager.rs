@@ -890,14 +890,27 @@ impl PluginManagerApp {
                                         .corner_radius(2.0);
 
                                         if ui.add(dl_btn).clicked() {
-                                            let target_dir = manifest
-                                                .plugin_dir
-                                                .clone()
-                                                .unwrap_or_else(|| {
-                                                    PathBuf::from("plugins").join(&manifest.id)
-                                                })
-                                                .join("models");
-                                            let _ = std::fs::create_dir_all(&target_dir);
+                                            let target_dir = {
+                                                let candidate = manifest
+                                                    .plugin_dir
+                                                    .clone()
+                                                    .unwrap_or_else(|| {
+                                                        PathBuf::from("plugins").join(&manifest.id)
+                                                    })
+                                                    .join("models");
+                                                if std::fs::create_dir_all(&candidate).is_ok()
+                                                    && core_contracts::is_dir_writable(&candidate)
+                                                {
+                                                    candidate
+                                                } else {
+                                                    let fallback = core_contracts::user_data_dir()
+                                                        .join("plugins")
+                                                        .join(&manifest.id)
+                                                        .join("models");
+                                                    let _ = std::fs::create_dir_all(&fallback);
+                                                    fallback
+                                                }
+                                            };
                                             let target_file = target_dir.join(&req.name);
                                             let part_file =
                                                 target_dir.join(format!("{}.part", req.name));
@@ -929,14 +942,31 @@ impl PluginManagerApp {
                                                 // Clean up any stale partial download first
                                                 let _ = std::fs::remove_file(&part_file_worker);
 
-                                                let mut cmd =
-                                                    std::process::Command::new("curl.exe");
-                                                cmd.args([
-                                                    "-L",
-                                                    "-o",
-                                                    part_file_worker.to_str().unwrap_or(""),
-                                                    &url_clone,
-                                                ]);
+                                                let mut cmd = if cfg!(windows) {
+                                                    if std::path::Path::new(
+                                                        "C:\\Windows\\System32\\curl.exe",
+                                                    )
+                                                    .exists()
+                                                    {
+                                                        std::process::Command::new(
+                                                            "C:\\Windows\\System32\\curl.exe",
+                                                        )
+                                                    } else {
+                                                        std::process::Command::new("curl.exe")
+                                                    }
+                                                } else if std::path::Path::new("/usr/bin/curl")
+                                                    .exists()
+                                                {
+                                                    std::process::Command::new("/usr/bin/curl")
+                                                } else {
+                                                    std::process::Command::new("curl")
+                                                };
+                                                cmd.arg("--create-dirs")
+                                                    .arg("-L")
+                                                    .arg("-f")
+                                                    .arg("-o")
+                                                    .arg(&part_file_worker)
+                                                    .arg(&url_clone);
                                                 #[cfg(windows)]
                                                 {
                                                     use std::os::windows::process::CommandExt;
@@ -1116,12 +1146,21 @@ impl PluginManagerApp {
         ui.add_space(10.0);
 
         // Community links
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.hyperlink_to(
                 RichText::new(self.t("GitHub Repository", "Репозиторий GitHub"))
                     .size(11.0)
                     .color(palette.accent_blue),
                 crate::updater::COMPANION_GITHUB_URL,
+            );
+
+            ui.label(RichText::new("|").size(11.0).color(palette.text_muted));
+
+            ui.hyperlink_to(
+                RichText::new(self.t("Discord Community", "Сообщество Discord"))
+                    .size(11.0)
+                    .color(palette.accent_blue),
+                crate::updater::COMPANION_DISCORD_URL,
             );
 
             ui.label(RichText::new("|").size(11.0).color(palette.text_muted));

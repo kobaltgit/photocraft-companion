@@ -1,4 +1,4 @@
-﻿# PhotoCraft Plugins & Companion
+# PhotoCraft Plugins & Companion
 
 <p align="center">
   <img src="assets/github-social-preview.svg" alt="PhotoCraft Companion Social Preview" width="100%">
@@ -11,7 +11,8 @@
 ---
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
-[![Release: v1.0.6](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.6)
+[![Discord](https://img.shields.io/badge/Discord-Присоединиться-5865F2?logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
+[![Release: v1.0.7](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.7)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
@@ -104,9 +105,9 @@
 
 | Платформа                         | Установщик (Setup / Installer)                | Портабельная версия (Portable)                             | Описание                                                                           |
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :--------------------------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.6-windows-x64-portable.zip`     | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.6-macos-portable.tar.gz`        | DMG-образ с перетаскиванием в `/Applications` / Автономный архив `.tar.gz`         |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.6-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.6-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив     |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.7-windows-x64-portable.zip`     | Инсталлятор с автозапуском в трее и ярлыками / Portable-архив без записей в реестр |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.7-macos-portable.tar.gz`        | DMG-образ с перетаскиванием в `/Applications` / Автономный архив `.tar.gz`         |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.7-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.7-linux-x86_64-portable.tar.gz` | DEB-пакет с интеграцией меню приложений и `.desktop` / Автономный tar.gz архив     |
 
 > [!TIP]
 > Все готовые сборки автоматически публикуются на странице **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** при каждом релизе.
@@ -122,7 +123,7 @@
 
 ## 🚦 Инструкция: Первый запуск и быстрое подключение
 
-PhotoCraft Companion взаимодействует с PhotoCraft по локальному протоколу IPC (порт 18492) с использованием токена безопасности `control.token`. Начиная с версии **v1.0.6**, весь процесс запуска и спаривания автоматизирован в один клик!
+PhotoCraft Companion взаимодействует с PhotoCraft по локальному протоколу IPC (порт 18492) с использованием токена безопасности `control.token`. Начиная с версии **v1.0.7**, весь процесс запуска и спаривания автоматизирован в один клик!
 
 ### Сценарий 1: Запуск PhotoCraft прямо из Компаньона (Рекомендуемый)
 1. **Запустите PhotoCraft Companion**:

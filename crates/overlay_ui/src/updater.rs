@@ -8,6 +8,7 @@ use tracing::{error, info};
 pub const COMPANION_REPO: &str = "kobaltgit/photocraft-companion";
 pub const COMPANION_GITHUB_URL: &str = "https://github.com/kobaltgit/photocraft-companion";
 pub const COMPANION_ISSUES_URL: &str = "https://github.com/kobaltgit/photocraft-companion/issues";
+pub const COMPANION_DISCORD_URL: &str = "https://discord.gg/2gzn4Un4Bw";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseAsset {

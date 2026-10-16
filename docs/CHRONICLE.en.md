@@ -1813,7 +1813,7 @@ We settled on the optimal hybrid pattern: a **unified master plugin "AI Scene Co
 *Time: October 15, 2026, 21:30 (~30 minutes)*
 
 ### 1. The Reality of First Contact: What Users Reported
-Following the rollout of the auto-launch and onboarding update, we received immediate, honest feedback from real users (GitHub Issue #2 by `ArtWorx63`, Discord reports by `Foogley` and `Ruslan Khrysiev`):
+Following the rollout of the auto-launch and onboarding update, we received immediate, honest feedback from community users (via GitHub Issues and Discord community reports):
 1. **macOS DMG (`os error 30: Read-only file system`):** Users downloaded the `.dmg`, mounted it, and immediately clicked to run Companion. The DMG volume is mounted read-only by the macOS kernel. At the very first attempt to write configs or tokens, the app crashed with OS error 30.
 2. **Windows UAC / Program Files (`os error 5: Access is denied`):** When installed via the Inno Setup installer into `C:\Program Files\PhotoCraft Companion`, writing configurations and tokens next to the `.exe` failed without Administrator elevation.
 3. **macOS `.app` Bundles:** On macOS, PhotoCraft is distributed as an application package `PhotoCraft.app`. In Rust, `path.is_file()` returns `false` because an `.app` bundle is a directory!
@@ -1851,3 +1851,62 @@ We did not dismiss this or blame user unfamiliarity with macOS. We acknowledged 
 * Plugin validator verified all 6 plugins, updated registry, and generated `.pcpl` archives.
 * Updated `CHECKLIST.md` (Phase 55) and registered `BUG-060` in `BUGS_AND_ISSUES.md`.
 * Version synchronized across all build configurations for release **v1.0.6**.
+
+---
+
+## [2026-10-16 20:00] Chapter 59: Integrating Discord Community into the PhotoCraft Companion Ecosystem
+
+*Time: October 16, 2026, 20:00 (~15 minutes)*
+
+### 1. Community Request for Direct Interaction
+Following the cross-platform v1.0.6 release and growing user adoption, having a direct channel for real-time support, plugin author discussions, and user feedback became essential. The Discord server serves as the central hub connecting Companion maintainers, PhotoCraft graphic artists, and third-party plugin developers.
+
+To provide seamless access without requiring users to hunt for invite links on external forums, we integrated official Discord invites directly into the Companion UI and project repository hubs.
+
+### 2. Implementation in Code and UI
+1. **UI Core and URL Constants (`updater.rs`):**
+   - Registered `COMPANION_DISCORD_URL = "https://discord.gg/2gzn4Un4Bw"` in `crates/overlay_ui/src/updater.rs`. Maintained 100% Cyrillic-free code compliance in strict adherence to `i18n_lint_test`.
+2. **Responsive Community Link Layout in About Tab (`manager.rs`):**
+   - Updated the community link row in `render_about_tab` from rigid `ui.horizontal` to responsive `ui.horizontal_wrapped`, preventing overflow on compact window sizes.
+   - Added a localized Discord hyperlink `self.t("Discord Community", "Сообщество Discord")` accompanied by the `|` separator alongside the GitHub and Issue Tracker links.
+3. **Repository Badges (`README.md`, `README.ru.md`):**
+   - Added branded Discord badges (`#5865F2` with official Discord glyph) to both README headers: "Join Community" for English and "Присоединиться" for Russian.
+
+### 3. Verification & Definition of Done (Resource Guard)
+* Verified i18n compliance with `cargo test --package overlay_ui --test i18n_lint_test -j 1` (zero forbidden Cyrillic, fully balanced translation pairs).
+* Complete workspace test suite passed (`cargo test --workspace -j 1`).
+* Plugin catalog verified via `plugin_validator`.
+* Updated `CHECKLIST.md` with Phase 56.
+
+---
+
+## [2026-10-16 21:10] Chapter 60: Cross-Platform AI Model Downloading & Release v1.0.7
+
+*Time: October 16, 2026, 21:10 (~20 minutes)*
+
+### 1. User Defect Report & Root Cause Analysis
+Immediately following the release of v1.0.6, a critical issue was reported on macOS when attempting to download an AI model in the Plugin Manager:
+> *"rmbg-1.4.onnx: Download error: No such file or directory (os error 2)"*
+
+Plugin installation from the store worked as expected, but model weight downloads failed. Diagnostic inspection revealed a subtle Windows-centric hardcoding trap:
+- In `crates/overlay_ui/src/store.rs`, plugin archive downloading used `Command::new("curl")`, which resolved cleanly on macOS to the system `/usr/bin/curl`.
+- However, in `crates/overlay_ui/src/manager.rs:933`, the background model downloader explicitly spawned `Command::new("curl.exe")`.
+- On Windows, the OS binary loader resolves `C:\Windows\System32\curl.exe` without issue.
+- On macOS and Linux, the executable is strictly `curl` (no `.exe` extension exists). Attempting to spawn `curl.exe` triggered the Unix kernel error `ENOENT` (2: `No such file or directory`).
+
+### 2. Engineering Solution & Resilience
+1. **Cross-Platform `curl` Resolution (`manager.rs`):**
+   - On Windows, priority is given to `C:\Windows\System32\curl.exe` with a fallback to `"curl.exe"`.
+   - On macOS and Linux, priority is given to `/usr/bin/curl` with a fallback to `"curl"`.
+   - Added `--create-dirs` flag to instruct `curl` to automatically create parent directories for target files.
+   - Added `-f` (`--fail`) flag so HTTP 4xx/5xx network errors cause non-zero exit codes rather than saving HTML error pages as `.onnx` models.
+2. **Model Directory Resilience:**
+   - Model download paths verify directory write access (`is_dir_writable`). If the plugin directory is write-protected (e.g. read-only DMG volume or Program Files), downloads seamlessly divert to the user data folder `user_data_dir().join("plugins")`.
+   - In `crates/core_contracts/src/plugin.rs`, `is_model_installed` is extended to recognize models stored in user data directory paths.
+
+### 3. Verification & Definition of Done (Release v1.0.7)
+* Workspace test suite executed with `-j 1` (`cargo test --workspace -j 1`). All 98 tests passed.
+* Strict `i18n_lint_test` and `vector_first_lint_test` passed with zero errors.
+* Plugin validator verified all 6 plugins, rebuilt the registry, and packaged `.pcpl` archives.
+* Version synchronized across all build configurations (`Cargo.toml`, `installer.iss`, `Info.plist`, `package_release.ps1`, `package_release.sh`, `README.md`, `README.ru.md`) to **v1.0.7**.
+* Logged and marked `BUG-061` as RESOLVED in `docs/BUGS_AND_ISSUES.md`.

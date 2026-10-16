@@ -140,6 +140,18 @@ impl PluginManifest {
         if is_valid_file(&global) {
             return true;
         }
+        let user_models = crate::user_data_dir().join("models").join(&model.name);
+        if is_valid_file(&user_models) {
+            return true;
+        }
+        let user_plugin_models = crate::user_data_dir()
+            .join("plugins")
+            .join(&self.id)
+            .join("models")
+            .join(&model.name);
+        if is_valid_file(&user_plugin_models) {
+            return true;
+        }
         let fallback = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models").join(&model.name);
         is_valid_file(&fallback)
     }

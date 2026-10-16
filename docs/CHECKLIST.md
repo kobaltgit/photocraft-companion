@@ -539,3 +539,29 @@
     - 100% успешный прогон всех 98 тестов воркспейса (`cargo test --workspace -j 1`).
     - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без единого замечания.
     - Валидация каталога плагинов (`plugin_validator`) успешна: 6 плагинов валидны, registry.json и .pcpl созданы.
+
+- [x] **Фаза 56: Интеграция сообщества Discord в интерфейс и документацию**
+  - [x] **Константа и ссылки в `overlay_ui`**:
+    - В `crates/overlay_ui/src/updater.rs` добавлена глобальная константа `COMPANION_DISCORD_URL` со ссылкой на сервер сообщества `https://discord.gg/2gzn4Un4Bw` (100% без кириллицы).
+    - В `crates/overlay_ui/src/manager.rs` блок ссылок сообщества в `render_about_tab` переведен на адаптивный контейнер `ui.horizontal_wrapped(|ui| { ... })` с добавлением кликабельной ссылки на Discord («Discord Community» / «Сообщество Discord»).
+  - [x] **Бейджи в README**:
+    - В `README.md` добавлен англоязычный бейдж Discord со ссылкой-приглашением.
+    - В `README.ru.md` добавлен русскоязычный бейдж Discord со ссылкой-приглашением.
+  - [x] **Верификация и DoD**:
+    - Линтер локализации `i18n_lint_test` пройден без замечаний.
+    - Линтер `vector_first_lint_test` пройден без замечаний.
+    - 100% прогон тестов воркспейса (`cargo test --workspace -j 1`).
+    - Каталог плагинов валидирован через `plugin_validator`.
+
+- [x] **Фаза 57: Кроссплатформенная загрузка моделей ИИ и поддержка macOS/Linux (BUG-061, v1.0.7)**
+  - [x] **Устранение жестко закодированного `curl.exe`**:
+    - В `crates/overlay_ui/src/manager.rs` заменен хардкод `std::process::Command::new("curl.exe")` на кроссплатформенное автоопределение исполняемого файла: `C:\Windows\System32\curl.exe` / `curl.exe` на Windows, `/usr/bin/curl` / `curl` на macOS и Linux.
+    - Добавлен аргумент `--create-dirs` для гарантированного создания всех промежуточных подпапок.
+    - Добавлен аргумент `-f` (`--fail`) для безопасного завершения с кодом ошибки при сетевых сбоях HTTP.
+  - [x] **Отказоустойчивость директории моделей (Model Directory Resilience)**:
+    - При отсутствии прав на запись в директорию плагина целевая папка загрузки автоматически перенаправляется в изолированный пользовательский каталог `core_contracts::user_data_dir().join("plugins")`.
+    - В `crates/core_contracts/src/plugin.rs` метод `is_model_installed` расширен проверкой пользовательских директорий `user_data_dir().join("models")` и `user_data_dir().join("plugins").join(&id).join("models")`.
+  - [x] **Верификация и релиз v1.0.7**:
+    - 100% прогон всех 98 тестов воркспейса (`cargo test --workspace -j 1`).
+    - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без замечаний.
+    - Синхронизация версии 1.0.7 в `Cargo.toml`, `installer.iss`, `Info.plist`, `package_release.ps1`, `package_release.sh`, `README.md`, `README.ru.md`.
