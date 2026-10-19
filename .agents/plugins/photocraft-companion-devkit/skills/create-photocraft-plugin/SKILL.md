@@ -11,14 +11,19 @@ description: Пошаговое создание нового автономно
 Создайте директорию в `plugins/<id_плагина>/`.
 
 ## Шаг 2. Создание манифеста `plugin.json`
+В зависимости от типа инструмента выберите подходящий `plugin_type`:
+
+### Вариант А: ИИ-плагин (`native_ai`)
 Создайте `plugins/<id_плагина>/plugin.json`:
 ```json
 {
   "id": "ai.photocraft.plugins.my_tool",
   "name": "My Tool Name",
+  "name_ru": "Мой инструмент",
   "version": "1.0.0",
   "author": "kobaltGIT",
   "description": "Описание назначения плагина",
+  "description_ru": "Русское описание",
   "plugin_type": "native_ai",
   "action_id": "plugin:my_tool",
   "icon": "icon.svg",
@@ -42,7 +47,89 @@ description: Пошаговое создание нового автономно
   ]
 }
 ```
-*(Для плагинов без нейросетей укажите `plugin_type: "native_algorithm"` и секцию `algorithm: { "task": "vector_trace", ... }`)*
+
+### Вариант Б: Алгоритмический плагин (`native_algorithm`)
+```json
+{
+  "id": "ai.photocraft.plugins.vector_tracer",
+  "name": "Vector Tracer",
+  "name_ru": "Векторизация",
+  "version": "1.0.0",
+  "author": "kobaltGIT",
+  "description": "Алгоритмическая векторизация растра",
+  "description_ru": "Преобразование в вектор без ИИ",
+  "plugin_type": "native_algorithm",
+  "action_id": "plugin:vector_tracer",
+  "icon": "icon.svg",
+  "input": "active_layer",
+  "output_mode": "in_place",
+  "algorithm": {
+    "task": "vector_trace"
+  }
+}
+```
+
+### Вариант В: Макрос / No-Code плагин (`no_code`)
+```json
+{
+  "id": "ai.photocraft.plugins.quick_flatten",
+  "name": "Quick Flatten",
+  "name_ru": "Быстрое сведение",
+  "version": "1.0.0",
+  "author": "kobaltGIT",
+  "description": "Цепочка команд PhotoCraft без ИИ",
+  "description_ru": "Объединяет слои и подгоняет холст",
+  "plugin_type": "no_code",
+  "action_id": "plugin:quick_flatten",
+  "icon": "icon.svg",
+  "commands": [
+    "image.revealAll",
+    "layer.mergeDown"
+  ]
+}
+```
+
+### Вариант Г: Интерактивный UI-виджет / Панель (`interactive_ui`)
+Манифест `plugin.json` задает декларативную верстку окна (`WidgetNode`), подписки на события IPC и имя скрипта:
+```json
+{
+  "id": "ai.photocraft.plugins.color_helper",
+  "name": "Color Helper",
+  "name_ru": "Цветовой помощник",
+  "version": "1.0.0",
+  "author": "kobaltGIT",
+  "description": "Интерактивная панель работы с цветом",
+  "description_ru": "Палитра и диагностика контраста",
+  "plugin_type": "interactive_ui",
+  "action_id": "plugin:color_helper",
+  "icon": "icon.svg",
+  "interactive_ui": {
+    "title": "Color Helper",
+    "title_ru": "Цветовой помощник",
+    "width": 320.0,
+    "height": 420.0,
+    "resizable": false,
+    "script": "logic.rhai",
+    "ipc_subscriptions": [
+      "session.colors"
+    ],
+    "root": {
+      "type": "row",
+      "children": [
+        {
+          "type": "color_slot",
+          "id": "slot_fg",
+          "label": "FG Color",
+          "label_ru": "Основной цвет",
+          "color_key": "color_fg",
+          "action": "open_fg"
+        }
+      ]
+    }
+  }
+}
+```
+Рядом создается скрипт `plugins/<id_плагина>/logic.rhai` с хуками `on_state_changed(id, action, state)` и `on_session_colors(fg_hex, bg_hex, state)`.
 
 ## Шаг 3. Векторная иконка и веса модели
 1. Создайте адаптивную векторную иконку `icon.svg` (`viewBox="0 0 24 24"`, `stroke="currentColor"`).

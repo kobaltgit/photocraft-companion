@@ -9,6 +9,7 @@ pub mod updater;
 pub mod win32_window;
 
 pub use dynamic_tool::{DynamicToolEngine, DynamicWindowState};
+pub use eframe::egui;
 pub use icons::{get_egui_icon_data, get_icon_rgba, get_tray_icon, ICON_DARK_SVG, ICON_LIGHT_SVG};
 pub use manager::{ActiveTab, PluginManagerApp};
 pub use offline_modal::OfflineModalApp;
@@ -160,7 +161,8 @@ impl CompanionOverlayApp {
         exec_status: Option<core_contracts::SharedExecutionStatus>,
         connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
         on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
-        ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
+        _ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
+        dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
     ) -> Self {
         let prefs_path = prefs_path.into();
         let data_dir = prefs_path.parent().unwrap_or(&prefs_path).to_path_buf();
@@ -196,11 +198,6 @@ impl CompanionOverlayApp {
         let offline_modal = OfflineModalApp::new(current_lang, current_theme);
 
         let initial_conn = is_connected.load(Ordering::Relaxed);
-
-        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(
-            &manifests,
-            ipc_action_tx,
-        )));
 
         Self {
             toolstrip,
@@ -482,6 +479,9 @@ impl eframe::App for CompanionOverlayApp {
         if !self.is_hidden_to_tray {
             // Render dynamic interactive plugin windows (HueWheel, Sliders, Banners, etc.)
             if let Ok(mut engine) = self.dynamic_engine.lock() {
+                if engine.current_language() != self.manager.current_language {
+                    engine.set_language(self.manager.current_language);
+                }
                 engine.render(&ctx, &palette);
             }
 
@@ -816,6 +816,8 @@ pub fn launch_companion_overlay(
     on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
     on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
     ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
+    dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
+    egui_ctx_holder: Arc<std::sync::Mutex<Option<egui::Context>>>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -828,6 +830,7 @@ pub fn launch_companion_overlay(
         connection_state,
         on_token_saved,
         ipc_action_tx,
+        dynamic_engine,
     );
     if let Some(cb) = on_launch_requested {
         app = app.with_launch_callback(cb);
@@ -877,7 +880,12 @@ pub fn launch_companion_overlay(
     eframe::run_native(
         "PhotoCraft Toolbar",
         options,
-        Box::new(|_cc| Ok(Box::new(app))),
+        Box::new(move |cc| {
+            if let Ok(mut holder) = egui_ctx_holder.lock() {
+                *holder = Some(cc.egui_ctx.clone());
+            }
+            Ok(Box::new(app))
+        }),
     )
     .map_err(|e| anyhow::anyhow!("GUI Error: {e}"))
 }
@@ -1038,6 +1046,7 @@ mod tests {
         std::fs::write(&prefs_file, "{}").unwrap();
 
         let is_connected = Arc::new(AtomicBool::new(false));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
         let app = CompanionOverlayApp::new(
             OverlayBar::default_buttons(),
             vec![],
@@ -1049,6 +1058,7 @@ mod tests {
             None,
             None,
             None,
+            dynamic_engine.clone(),
         );
 
         // Initial default state
@@ -1079,6 +1089,7 @@ mod tests {
             None,
             None,
             None,
+            dynamic_engine,
         );
 
         assert!(app_restored.last_saved_vertical);
@@ -1103,6 +1114,7 @@ mod tests {
         std::fs::write(&prefs_file, "{}").unwrap();
 
         let is_connected = Arc::new(AtomicBool::new(true));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
         let mut app = CompanionOverlayApp::new(
             OverlayBar::default_buttons(),
             vec![],
@@ -1114,6 +1126,7 @@ mod tests {
             None,
             None,
             None,
+            dynamic_engine,
         );
 
         let ctx = egui::Context::default();

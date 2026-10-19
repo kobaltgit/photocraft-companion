@@ -8,39 +8,71 @@
   "icon": "icon.svg",
   "commands": [],
   "interactive_ui": {
+    "ipc_subscriptions": [
+      "session.colors"
+    ],
     "window_title": "ChromaSense A11y",
-    "default_width": 320.0,
-    "default_height": 520.0,
+    "window_title_ru": "ChromaSense Доступность",
+    "default_width": 350.0,
+    "default_height": 570.0,
     "script": "logic.rhai",
     "widgets": [
       {
         "type": "color_slot",
         "id": "color_fg",
-        "label": "Foreground",
-        "default_hex": "#2563eb"
+        "label": "Active Color",
+        "label_ru": "Выбранный цвет",
+        "default_hex": "#2563eb",
+        "selectable": true,
+        "target_binding": "edit_target"
+      },
+      {
+        "type": "button",
+        "id": "swap_colors",
+        "label": "Swap Colors",
+        "label_ru": "Поменять цвета",
+        "icon": "swap"
+      },
+      {
+        "type": "color_slot",
+        "id": "color_sim",
+        "label": "Vision Simulation",
+        "label_ru": "Как видит зритель",
+        "default_hex": "#2563eb",
+        "read_only": true
       },
       {
         "type": "color_slot",
         "id": "color_bg",
         "label": "Background",
-        "default_hex": "#ffffff"
+        "label_ru": "Цвет фона",
+        "default_hex": "#ffffff",
+        "selectable": true,
+        "target_binding": "edit_target"
       },
       {
         "type": "dropdown",
         "id": "vision_profile",
         "label": "Vision Profile",
+        "label_ru": "Профиль зрения",
         "options": [
           "Normal Vision",
           "Deuteranopia (Green-blind)",
           "Protanopia (Red-blind)",
           "Tritanopia (Blue-blind)"
         ],
+        "options_ru": [
+          "Обычное зрение",
+          "Дейтеранопия (зелёная слепота)",
+          "Протанопия (красная слепота)",
+          "Тританопия (синяя слепота)"
+        ],
         "default_index": 0
       },
       {
         "type": "hue_wheel",
         "id": "compass",
-        "source_color_id": "color_fg",
+        "source_color_id": "edit_target",
         "show_pointer": true
       },
       {
@@ -54,6 +86,7 @@
         "type": "slider",
         "id": "red",
         "label": "Red",
+        "label_ru": "Красный",
         "min": 0.0,
         "max": 255.0,
         "step": 1.0,
@@ -63,6 +96,7 @@
         "type": "slider",
         "id": "green",
         "label": "Green",
+        "label_ru": "Зеленый",
         "min": 0.0,
         "max": 255.0,
         "step": 1.0,
@@ -72,6 +106,7 @@
         "type": "slider",
         "id": "blue",
         "label": "Blue",
+        "label_ru": "Синий",
         "min": 0.0,
         "max": 255.0,
         "step": 1.0,

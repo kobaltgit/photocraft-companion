@@ -256,11 +256,21 @@ pub enum WidgetNode {
         id: String,
         label: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         default_hex: Option<String>,
+        #[serde(default)]
+        read_only: bool,
+        #[serde(default)]
+        selectable: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        target_binding: Option<String>,
     },
     Slider {
         id: String,
         label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
         min: f64,
         max: f64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -270,15 +280,29 @@ pub enum WidgetNode {
     Dropdown {
         id: String,
         label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
         options: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        options_ru: Option<Vec<String>>,
         #[serde(default)]
         default_index: usize,
     },
     Toggle {
         id: String,
         label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
         #[serde(default)]
         default: bool,
+    },
+    Button {
+        id: String,
+        label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<String>,
     },
     HueWheel {
         id: String,
@@ -302,10 +326,60 @@ pub enum WidgetNode {
     },
 }
 
+impl WidgetNode {
+    pub fn label_for_lang(&self, lang: crate::Language) -> &str {
+        let is_ru = matches!(lang, crate::Language::Ru);
+        match self {
+            WidgetNode::ColorSlot {
+                label, label_ru, ..
+            }
+            | WidgetNode::Slider {
+                label, label_ru, ..
+            }
+            | WidgetNode::Dropdown {
+                label, label_ru, ..
+            }
+            | WidgetNode::Toggle {
+                label, label_ru, ..
+            }
+            | WidgetNode::Button {
+                label, label_ru, ..
+            } => {
+                if is_ru {
+                    label_ru.as_deref().unwrap_or(label)
+                } else {
+                    label
+                }
+            }
+            _ => "",
+        }
+    }
+
+    pub fn options_for_lang<'a>(&'a self, lang: crate::Language) -> &'a [String] {
+        let is_ru = matches!(lang, crate::Language::Ru);
+        match self {
+            WidgetNode::Dropdown {
+                options,
+                options_ru,
+                ..
+            } => {
+                if is_ru {
+                    options_ru.as_deref().unwrap_or(options.as_slice())
+                } else {
+                    options.as_slice()
+                }
+            }
+            _ => &[],
+        }
+    }
+}
+
 /// Configuration for dynamic interactive UI plugins
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct InteractiveUiConfig {
     pub window_title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_title_ru: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_width: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -316,6 +390,21 @@ pub struct InteractiveUiConfig {
     pub widgets: Vec<WidgetNode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ipc_subscriptions: Vec<String>,
+}
+
+/// Standard IPC subscription topic for listening to active session colors in PhotoCraft
+pub const IPC_SUB_SESSION_COLORS: &str = "session.colors";
+
+impl InteractiveUiConfig {
+    pub fn window_title_for_lang(&self, lang: crate::Language) -> &str {
+        if matches!(lang, crate::Language::Ru) {
+            self.window_title_ru
+                .as_deref()
+                .unwrap_or(&self.window_title)
+        } else {
+            &self.window_title
+        }
+    }
 }
 
 /// Abstract action DTO sent between interactive plugin UI/script and companion engine
@@ -772,6 +861,7 @@ mod tests {
     fn test_interactive_ui_config_and_widgets_roundtrip() {
         let config = InteractiveUiConfig {
             window_title: "Harmonizer Studio".to_string(),
+            window_title_ru: Some("Студия гармонии".to_string()),
             default_width: Some(360.0),
             default_height: Some(540.0),
             script: Some("ui.rhai".to_string()),
@@ -785,7 +875,11 @@ mod tests {
                 WidgetNode::ColorSlot {
                     id: "primary_color".to_string(),
                     label: "Base Color".to_string(),
+                    label_ru: Some("Основной цвет".to_string()),
                     default_hex: Some("#FF5500".to_string()),
+                    read_only: false,
+                    selectable: true,
+                    target_binding: Some("target_slot".to_string()),
                 },
                 WidgetNode::HueWheel {
                     id: "color_wheel".to_string(),
@@ -795,6 +889,7 @@ mod tests {
                 WidgetNode::Slider {
                     id: "spread".to_string(),
                     label: "Spread Angle".to_string(),
+                    label_ru: Some("Угол охвата".to_string()),
                     min: 0.0,
                     max: 180.0,
                     step: Some(1.0),
@@ -803,16 +898,23 @@ mod tests {
                 WidgetNode::Dropdown {
                     id: "harmony_rule".to_string(),
                     label: "Harmony".to_string(),
+                    label_ru: Some("Гармония".to_string()),
                     options: vec![
                         "Complementary".to_string(),
                         "Analogous".to_string(),
                         "Triadic".to_string(),
                     ],
+                    options_ru: Some(vec![
+                        "Комплементарная".to_string(),
+                        "Аналоговая".to_string(),
+                        "Триадическая".to_string(),
+                    ]),
                     default_index: 1,
                 },
                 WidgetNode::Toggle {
                     id: "live_sync".to_string(),
                     label: "Live Sync".to_string(),
+                    label_ru: Some("Живая синхронизация".to_string()),
                     default: true,
                 },
                 WidgetNode::Separator,
@@ -824,12 +926,20 @@ mod tests {
                         WidgetNode::ColorSlot {
                             id: "accent_1".to_string(),
                             label: "Harmonic 1".to_string(),
+                            label_ru: None,
                             default_hex: None,
+                            read_only: true,
+                            selectable: false,
+                            target_binding: None,
                         },
                         WidgetNode::ColorSlot {
                             id: "accent_2".to_string(),
                             label: "Harmonic 2".to_string(),
+                            label_ru: None,
                             default_hex: None,
+                            read_only: true,
+                            selectable: false,
+                            target_binding: None,
                         },
                     ],
                 },
@@ -964,6 +1074,7 @@ mod tests {
                 id,
                 label,
                 default_hex,
+                ..
             } => {
                 assert_eq!(id, "base_color");
                 assert_eq!(label, "Base Color");
@@ -993,6 +1104,7 @@ mod tests {
                 max,
                 default,
                 step,
+                ..
             } => {
                 assert_eq!(id, "roughness");
                 assert_eq!(label, "Angle");
@@ -1010,6 +1122,7 @@ mod tests {
                 label,
                 options,
                 default_index,
+                ..
             } => {
                 assert_eq!(id, "mode");
                 assert_eq!(label, "Mode");
@@ -1020,7 +1133,9 @@ mod tests {
         }
 
         match &ui.widgets[5] {
-            WidgetNode::Toggle { id, label, default } => {
+            WidgetNode::Toggle {
+                id, label, default, ..
+            } => {
                 assert_eq!(id, "auto_update");
                 assert_eq!(label, "Auto Update");
                 assert!(!default);

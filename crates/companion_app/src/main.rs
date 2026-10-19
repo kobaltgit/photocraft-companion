@@ -10,7 +10,7 @@ use ai_engine::{AiEngine, GenericAiPlugin};
 use core_contracts::{
     ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
 };
-use overlay_ui::{get_icon_rgba, OverlayBar, ThemeMode};
+use overlay_ui::{get_icon_rgba, DynamicToolEngine, OverlayBar, ThemeMode};
 use photocraft_bridge::PhotoCraftClient;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -612,6 +612,59 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Initialize DynamicToolEngine and UI repaint context holder at composition root
+    let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+    let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new_with_language(
+        &manifests,
+        Some(ipc_action_tx.clone()),
+        current_lang,
+    )));
+    let egui_ctx_holder = Arc::new(std::sync::Mutex::new(None::<overlay_ui::egui::Context>));
+
+    // Background poller for live active session colors (PhotoCraft -> Plugins)
+    let client_colors = client.clone();
+    let dynamic_engine_colors = dynamic_engine.clone();
+    let is_conn_colors = is_connected.clone();
+    let ctx_holder_colors = egui_ctx_holder.clone();
+
+    rt_handle.spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(180));
+        loop {
+            interval.tick().await;
+            if !is_conn_colors.load(Ordering::Relaxed) {
+                continue;
+            }
+
+            let needs_sync = {
+                if let Ok(engine) = dynamic_engine_colors.lock() {
+                    engine
+                        .has_open_windows_with_subscription(core_contracts::IPC_SUB_SESSION_COLORS)
+                } else {
+                    false
+                }
+            };
+
+            if needs_sync {
+                if let Ok((fg, bg)) = client_colors.get_session_colors().await {
+                    let updated = {
+                        if let Ok(mut engine) = dynamic_engine_colors.lock() {
+                            engine.dispatch_session_colors(&fg, &bg)
+                        } else {
+                            false
+                        }
+                    };
+                    if updated {
+                        if let Ok(guard) = ctx_holder_colors.lock() {
+                            if let Some(ctx) = guard.as_ref() {
+                                ctx.request_repaint();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     overlay_ui::launch_companion_overlay(
         buttons,
         manifests,
@@ -625,6 +678,8 @@ fn main() -> anyhow::Result<()> {
         Some(on_token_saved),
         Some(on_launch_requested),
         Some(ipc_action_tx),
+        dynamic_engine,
+        egui_ctx_holder,
     )?;
 
     Ok(())

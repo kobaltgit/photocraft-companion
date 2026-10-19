@@ -44,6 +44,7 @@ pub use plugin::{
     ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode, Plugin,
     PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginManifest,
     PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, WidgetNode,
+    IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;
