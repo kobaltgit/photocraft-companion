@@ -345,6 +345,11 @@ impl DynamicToolEngine {
             .unwrap_or(false)
     }
 
+    /// Generates a deterministic ViewportId for an interactive plugin floating window
+    pub fn viewport_id_for_plugin(plugin_id: &str) -> egui::ViewportId {
+        egui::ViewportId::from_hash_of(&format!("dynamic_plugin_window_{}", plugin_id))
+    }
+
     fn execute_script_state_change(&mut self, plugin_id: &str) {
         if let Some(ast) = self.rhai_asts.get(plugin_id) {
             if let Some(state) = self.states.get_mut(plugin_id) {
@@ -401,22 +406,41 @@ impl DynamicToolEngine {
                 )
             };
 
-            let window = egui::Window::new(&win_title)
-                .open(&mut is_open)
-                .default_size(Vec2::new(default_w, default_h))
-                .resizable(true)
-                .collapsible(true);
+            let viewport_id = Self::viewport_id_for_plugin(&plugin_id);
 
-            window.show(ctx, |ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(6.0, 8.0);
+            let vp = egui::ViewportBuilder::default()
+                .with_title(&win_title)
+                .with_inner_size([default_w, default_h])
+                .with_min_inner_size([280.0, 260.0])
+                .with_resizable(true)
+                .with_always_on_top();
 
-                if let Some(state) = self.states.get_mut(&plugin_id) {
-                    for widget in &config.widgets {
-                        if Self::render_widget_node(ui, widget, state, palette) {
-                            state_changed = true;
-                        }
-                    }
+            ctx.show_viewport_immediate(viewport_id, vp, |sub_ctx, _class| {
+                if sub_ctx.input(|i| i.viewport().close_requested()) {
+                    is_open = false;
                 }
+
+                sub_ctx.set_visuals(palette.to_egui_visuals());
+
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .fill(palette.bg_fill)
+                            .inner_margin(egui::Margin::symmetric(14, 12)),
+                    )
+                    .show(sub_ctx, |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 8.0);
+
+                            if let Some(state) = self.states.get_mut(&plugin_id) {
+                                for widget in &config.widgets {
+                                    if Self::render_widget_node(ui, widget, state, palette) {
+                                        state_changed = true;
+                                    }
+                                }
+                            }
+                        });
+                    });
             });
 
             if !is_open {
@@ -449,7 +473,7 @@ impl DynamicToolEngine {
                 let parsed_color = parse_hex_color(&current_hex).unwrap_or(Color32::BLACK);
 
                 ui.horizontal(|ui| {
-                    let (rect, _) = ui.allocate_exact_size(Vec2::new(22.0, 22.0), Sense::hover());
+                    let (rect, _) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), Sense::hover());
                     ui.painter().rect_filled(rect, 4.0, parsed_color);
                     ui.painter().rect_stroke(
                         rect,
@@ -460,17 +484,19 @@ impl DynamicToolEngine {
 
                     ui.label(label);
 
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut current_hex)
-                            .desired_width(70.0)
-                            .font(egui::TextStyle::Monospace),
-                    );
-                    if response.changed() {
-                        state
-                            .values
-                            .insert(id.clone(), DynamicValue::String(current_hex));
-                        changed = true;
-                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let response = ui.add(
+                            egui::TextEdit::singleline(&mut current_hex)
+                                .desired_width(75.0)
+                                .font(egui::TextStyle::Monospace),
+                        );
+                        if response.changed() {
+                            state
+                                .values
+                                .insert(id.clone(), DynamicValue::String(current_hex));
+                            changed = true;
+                        }
+                    });
                 });
             }
 
@@ -488,7 +514,7 @@ impl DynamicToolEngine {
                 };
 
                 ui.horizontal(|ui| {
-                    ui.label(label);
+                    ui.add_sized([50.0, 18.0], egui::Label::new(label));
                     let mut slider = egui::Slider::new(&mut current_val, *min..=*max);
                     if let Some(s) = step {
                         slider = slider.step_by(*s);
@@ -516,6 +542,7 @@ impl DynamicToolEngine {
                     let selected_text = options.get(current_idx).cloned().unwrap_or_default();
                     egui::ComboBox::from_id_salt(id)
                         .selected_text(selected_text)
+                        .width(ui.available_width() - 8.0)
                         .show_ui(ui, |ui| {
                             for (idx, opt) in options.iter().enumerate() {
                                 if ui.selectable_value(&mut current_idx, idx, opt).changed() {
@@ -555,7 +582,9 @@ impl DynamicToolEngine {
                 let parsed = parse_hex_color(&source_hex).unwrap_or(Color32::from_rgb(255, 0, 0));
                 let hue_deg = rgb_to_hue_degrees(parsed);
 
-                Self::draw_vector_hue_wheel(ui, hue_deg, *show_pointer, palette);
+                ui.vertical_centered(|ui| {
+                    Self::draw_vector_hue_wheel(ui, hue_deg, *show_pointer, palette);
+                });
             }
 
             WidgetNode::Banner {
@@ -584,7 +613,9 @@ impl DynamicToolEngine {
                     Some(DynamicValue::String(s)) => s.clone(),
                     _ => String::new(),
                 };
-                ui.label(text);
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new(text).strong());
+                });
             }
 
             WidgetNode::Separator => {
@@ -876,5 +907,59 @@ mod tests {
             Some("#abcdef")
         );
         assert_eq!(state.values.get("size").unwrap().as_f64(), Some(75.0));
+    }
+
+    #[test]
+    fn test_viewport_id_deterministic_and_unique() {
+        let id1 = DynamicToolEngine::viewport_id_for_plugin("plugin.a");
+        let id2 = DynamicToolEngine::viewport_id_for_plugin("plugin.a");
+        let id3 = DynamicToolEngine::viewport_id_for_plugin("plugin.b");
+
+        assert_eq!(id1, id2, "ViewportId must be deterministic for same plugin");
+        assert_ne!(id1, id3, "ViewportId must be unique for different plugins");
+    }
+
+    #[test]
+    fn test_dynamic_tool_engine_lifecycle_and_dimensions() {
+        let manifest = PluginManifest {
+            id: "ui.photocraft.plugins.test_tool".to_string(),
+            name: "Test Tool".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: "Author".to_string(),
+            plugin_type: core_contracts::PluginType::InteractiveUi,
+            icon: None,
+            commands: vec![],
+            models: vec![],
+            interactive_ui: Some(InteractiveUiConfig {
+                window_title: "Test Floating Palette".to_string(),
+                default_width: Some(360.0),
+                default_height: Some(480.0),
+                script: None,
+                widgets: vec![],
+                ipc_subscriptions: vec![],
+            }),
+            ..Default::default()
+        };
+
+        let mut engine = DynamicToolEngine::new(&[manifest], None);
+        assert!(engine.has_plugin("ui.photocraft.plugins.test_tool"));
+        assert!(!engine.is_window_open("ui.photocraft.plugins.test_tool"));
+
+        // Toggle window open
+        engine.toggle_window("ui.photocraft.plugins.test_tool");
+        assert!(engine.is_window_open("ui.photocraft.plugins.test_tool"));
+
+        let state = engine
+            .states
+            .get("ui.photocraft.plugins.test_tool")
+            .unwrap();
+        assert_eq!(state.default_width, 360.0);
+        assert_eq!(state.default_height, 480.0);
+        assert_eq!(state.title, "Test Floating Palette");
+
+        // Toggle window closed
+        engine.toggle_window("ui.photocraft.plugins.test_tool");
+        assert!(!engine.is_window_open("ui.photocraft.plugins.test_tool"));
     }
 }

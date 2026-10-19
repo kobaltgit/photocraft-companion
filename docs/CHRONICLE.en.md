@@ -2223,6 +2223,41 @@ To validate and showcase the interactive infrastructure, we engineered the first
 - **Static Integrity Linters:** `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, and `vector_first_lint_test` all passed at 100%.
 - **Plugin Catalog & Packaging:** ecosystem expanded to 7 plugins. `plugin_validator` successfully validated `plugins/chromasense/` (manifest, bilingual README.md, vector icon.svg, and logic.rhai) and generated the `.pcpl` package `dist/chromasense.pcpl`.
 
+---
+
+## [2026-10-19 07:30] Chapter 68: Multi-Viewport Architecture for Interactive Plugins and Window Squashing Fix (BUG-066)
+
+*Time: October 19, 2026, 07:30 (~15 minutes)*
+
+### 1. Defect Context: BUG-066
+Upon initial launch of the companion release binary, clicking the ChromaSense interactive plugin button caused an immediate visual defect: the palette window was squashed into a 44-pixel-wide vertical strip, obscuring the toolbar and clipping the hue wheel and semantic color labels.
+
+The root cause stemmed from `egui` viewport mechanics: the UI subagent used `egui::Window::new`, which is strictly an in-viewport widget rendered within the parent window. Because the companion's toolbar viewport is only 44 pixels wide, any `egui::Window` inside it was clamped to those 44px boundaries.
+
+### 2. Resolution: True Floating Multi-Viewport Windows
+The defect was resolved cleanly without workarounds using the standard Multi-Viewport feature of `eframe`/`egui`:
+1. **Migration to `ctx.show_viewport_immediate`:**
+   In `DynamicToolEngine::render`, `egui::Window::new` was replaced with native multi-viewport window creation via `ctx.show_viewport_immediate`.
+   Each interactive plugin window now features:
+   - A deterministic `ViewportId::from_hash_of` preserving user window positions;
+   - Real desktop dimensions declared in the plugin manifest (`default_width`, `default_height` — e.g. 320×520);
+   - Floating palette behavior via `.with_always_on_top()` and `.with_resizable(true)`;
+   - Native OS titlebar and close handling.
+2. **Automated Guardrail Linter (`crates/overlay_ui/tests/multi_viewport_lint_test.rs`):**
+   Implemented an automated static test that:
+   - Prohibits `egui::Window::new` in `dynamic_tool.rs`;
+   - Enforces `show_viewport_immediate`, `with_always_on_top`, `with_inner_size`, and deterministic `ViewportId`;
+   - Validates reasonable window dimensions across all interactive plugin manifests.
+3. **Core Architectural Gate:**
+   Added `"chromasense"` to banned sniffing keywords and `"\"ui.photocraft.plugins."` to banned prefixes in `architecture_integrity_test.rs`.
+
+### 3. Verification & Definition of Done (Resource Guard)
+- `cargo fmt --all -- --check`: 0 divergence (exit code 0).
+- `cargo test --workspace -j 1`: **100% tests passed (all 126+ tests green)**.
+- Release binary `photocraft-companion.exe` successfully rebuilt with native multi-viewport support.
+- Defect tracked and resolved as `BUG-066` in `docs/BUGS_AND_ISSUES.md`.
+
+
 
 
 
