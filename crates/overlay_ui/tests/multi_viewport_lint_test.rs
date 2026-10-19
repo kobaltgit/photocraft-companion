@@ -137,7 +137,7 @@ fn test_all_interactive_ui_manifests_declare_sane_viewport_dimensions() {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
             assert!(
-                width >= 240.0 && width <= 1200.0,
+                (240.0..=1200.0).contains(&width),
                 "Plugin {} default_width ({width}) must be within [240.0, 1200.0] for sane OS window rendering!",
                 path.display()
             );
@@ -147,7 +147,7 @@ fn test_all_interactive_ui_manifests_declare_sane_viewport_dimensions() {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(0.0);
             assert!(
-                height >= 200.0 && height <= 1600.0,
+                (200.0..=1600.0).contains(&height),
                 "Plugin {} default_height ({height}) must be within [200.0, 1600.0] for sane OS window rendering!",
                 path.display()
             );

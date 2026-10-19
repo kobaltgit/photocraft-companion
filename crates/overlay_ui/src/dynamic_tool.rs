@@ -595,7 +595,7 @@ impl DynamicToolEngine {
 
     /// Generates a deterministic ViewportId for an interactive plugin floating window
     pub fn viewport_id_for_plugin(plugin_id: &str) -> egui::ViewportId {
-        egui::ViewportId::from_hash_of(&format!("dynamic_plugin_window_{}", plugin_id))
+        egui::ViewportId::from_hash_of(format!("dynamic_plugin_window_{}", plugin_id))
     }
 
     fn execute_script_state_change(&mut self, plugin_id: &str) {

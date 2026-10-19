@@ -355,7 +355,7 @@ impl WidgetNode {
         }
     }
 
-    pub fn options_for_lang<'a>(&'a self, lang: crate::Language) -> &'a [String] {
+    pub fn options_for_lang(&self, lang: crate::Language) -> &[String] {
         let is_ru = matches!(lang, crate::Language::Ru);
         match self {
             WidgetNode::Dropdown {
