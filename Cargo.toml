@@ -56,3 +56,7 @@ codegen-units = 1
 lto = false
 debug = false
 panic = "abort"
+
+[profile.release.package.rhai]
+opt-level = 1
+
