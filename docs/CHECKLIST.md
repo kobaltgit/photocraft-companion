@@ -565,3 +565,126 @@
     - 100% прогон всех 98 тестов воркспейса (`cargo test --workspace -j 1`).
     - Линтеры `i18n_lint_test` и `vector_first_lint_test` пройдены без замечаний.
     - Синхронизация версии 1.0.7 в `Cargo.toml`, `installer.iss`, `Info.plist`, `package_release.ps1`, `package_release.sh`, `README.md`, `README.ru.md`.
+
+- [x] **Фаза 58: Комплексная система предохранителей архитектурной чистоты и верификации моделей (BUG-062)**
+  - [x] **Предохранитель 1 (Тест-линтер архитектурной чистоты ядра)**:
+    - Создан интеграционный тест `crates/ai_engine/tests/architecture_integrity_test.rs`.
+    - Сканирует весь исходный код продакшн-модулей ядра (`crates/ai_engine/src`, `crates/companion_app/src`, `crates/photocraft_bridge/src`).
+    - Исключает комментарии (`//`, `/* ... */`) и тестовые модули (`#[cfg(test)] mod tests`).
+    - Детектирует и блокирует антипаттерны: keyword-sniffing имен моделей (`.contains("depth")`, `.contains("normal")`, `.contains("harmoniz")`, `.contains("birefnet")`), хардкод файлов весов (`.onnx` литералы) и префиксов ID плагинов.
+  - [x] **Предохранитель 2 (Ликвидация дыры со статусом «Model ready» в `core_contracts`)**:
+    - В `crates/core_contracts/src/plugin.rs` исправлен логический баг функции `all_models_installed()`: проверка `.filter(|m| m.required).all(...)` возвращала `true` на пустом списке опциональных моделей при их полном отсутствии на диске. Теперь статус гарантированно `Missing`, если хотя бы одна объявленная модель физически не установлена.
+    - Добавлен метод `required_models_installed()` для проверки только обязательных моделей.
+    - В структуру `ModelRequirement` добавлено опциональное поле `role: Option<String>` (`#[serde(default)]`) и метод `manifest.model_by_role(role)`.
+    - В манифесты `plugin.json` всех 4 Native AI плагинов (`remove_bg`, `depth_map`, `inpaint`, `upscale`) добавлена явная декларация ролей моделей (`background_removal`, `depth_estimation`, `inpainting`, `super_resolution`).
+    - В `crates/overlay_ui/src/manager.rs` кнопка `[ Download ]` переведена на поиск первой отсутствующей модели с URL (`manifest.models.iter().find(|m| !manifest.is_model_installed(m) && m.url.is_some())`).
+    - В `crates/plugin_validator/src/main.rs` добавлен запрет для плагинов `NativeAi`: плагин обязан объявлять модели и иметь минимум одну модель с `required: true`. Попытка скрыть отсутствие весов через `required: false` блокируется на этапе валидации.
+  - [x] **Очистка ядра от накопившихся костылей (De-Hacking)**:
+    - Из `crates/ai_engine/src/lib.rs` удален хардкод разрешения модели `"realesrgan-x2.onnx"` внутри постобработки inpaint и заменен на Catmull-Rom интерполяцию с unsharp mask.
+    - Удален keyword-sniffing `self.manifest.id.contains("denoise")` в пользу универсального наименования слоя `format!("{source_name} ({})", self.manifest.name)`.
+    - Из `crates/companion_app/src/main.rs` удален хардкод конкретных ID плагинов (`ai.photocraft.plugins.remove_bg`, `macro.photocraft.plugins.black_and_white`) в тестовом режиме `--test-plugin`, заменен на универсальную итерацию по реестру.
+  - [x] **Предохранитель 3 (Закрытие лазеек в регламентах субагентов)**:
+    - В `.agents/plugins/photocraft-companion-devkit/agents/ai-specialist.md` и `docs/agents/AGENT_2_AI_MODELS.md` зафиксирован жесткий запрет keyword-sniffing и манипуляций флагом `required: false`. Маршрутизация моделей строго через поле `role`.
+    - В `.agents/plugins/photocraft-companion-devkit/agents/quality-auditor.md` внесен аудит `git diff origin/main` на предмет правок ядра под плагины.
+  - [x] **Предохранитель 4 и DoD (Шлюз главного агента и обязательный `cargo fmt`)**:
+    - В `docs/AGENTS_MASTER_GUIDE.md`, `.agents/rules/AGENTS.md` и `GEMINI.md` зафиксирован «Шлюз главного агента» (Zero-Blind Trust Gateway): запрет на принятие отчетов субагентов без личного аудита `git diff` и проверки на реальных условиях.
+    - В Definition of Done во всех регламентах жестко закреплен обязательный запуск `cargo fmt --all -- --check` с нулевым допуском к расхождениям форматирования.
+  - [x] **Тестирование и верификация (Resource Guard & DoD)**:
+    - `cargo fmt --all -- --check` завершен с кодом 0 и нулевым числом расхождений.
+    - Все 102 теста воркспейса (`cargo test --workspace -j 1`) пройдены успешно (включая `architecture_integrity_test`, `i18n_lint_test`, `vector_first_lint_test`).
+    - Каталог плагинов успешно валидирован через `plugin_validator` (6 плагинов валидны, registry.json и пакеты .pcpl собраны).
+    - Зарегистрирован и закрыт дефект `BUG-062` в `docs/BUGS_AND_ISSUES.md`.
+
+- [x] **Фаза 59: Автоматический линтер регламентов разработки (Dev Regulations Lint Suite) и ликвидация скрытых дефектов (BUG-063)**
+  - [x] **Ликвидация скрытых рассинхронизаций и нарушений Resource Guard**:
+    - В `docs/CHRONICLE.md` исправлен уровень заголовка Главы 51 с `### ` на каноничный `## [2026-10-14 17:50] Глава 51`, синхронизировав счетчик глав (54/54) и нумерацию RU ↔ EN.
+    - В `scripts/package_release.sh` команды `cargo build` и `cargo run` оснащены обязательным флагом `-j 1` в соответствии с законом Resource Guard.
+    - В `.gitignore` внесены недостающие форматы нейросетевых весов: `*.safetensors`, `*.pt`, `*.pth`.
+  - [x] **Разработка интеграционного теста `crates/ai_engine/tests/dev_regulations_lint_test.rs`**:
+    - `test_app_version_synchronized_across_all_release_files`: контроль идентичности SemVer в 5 файлах (`Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`).
+    - `test_crate_dependency_isolation`: проверка `Cargo.toml` на запрет перекрестных зависимостей между `photocraft_bridge`, `ai_engine`, `overlay_ui` и изоляцию `core_contracts`.
+    - `test_resource_guard_config_and_release_scripts`: проверка `.cargo/config.toml` (`jobs = 1`, `codegen-units = 1`), `Cargo.toml` (`codegen-units = 1` в профилях `dev`, `test`, `release`) и наличия `-j 1` во всех скриптах.
+    - `test_chronicle_bilingual_synchronization`: строгий аудит синхронности глав летописи RU ↔ EN, совпадения номеров глав и наличия отметок времени.
+    - `test_readme_plugins_catalog_not_drifted`: обнаружение дрифта каталога (проверка присутствия всех плагинов из `plugins/` в таблицах `README.md` и `README.ru.md`).
+    - `test_git_model_weights_prohibition`: проверка наличия правил исключения весов в `.gitignore`.
+  - [x] **Обязательное закрепление в Definition of Done**:
+    - Внедрено требование прохождения `dev_regulations_lint_test` в `AGENTS.md`, `AGENTS_MASTER_GUIDE.md`, `GEMINI.md`, `quality-auditor.md` и `skills/definition-of-done/SKILL.md`.
+  - [x] **Верификация**:
+    - `cargo fmt --all -- --check` пройден с 0 расхождений.
+    - Все 108 тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+    - Валидация каталога плагинов пройдена (6/6).
+
+- [x] **Фаза 60: Изоляция моделей и самодостаточность плагинов (BUG-064, Strict Plugin Model Isolation)**
+  - [x] **Ликвидация устаревших абсолютных путей разработки**:
+    - В `crates/core_contracts/src/plugin.rs` и `crates/ai_engine/src/lib.rs` устранены устаревшие хардкоды путей разработчика (`D:\Portable Soft\ArtCraft\...`), заменены на стандартное обращение к `PhotoCraftData/models`.
+  - [x] **Запрет Directory Traversal и изоляция моделей на уровне контрактов и рантайма**:
+    - В `crates/core_contracts/src/plugin.rs` в метод `PluginManifest::is_model_installed` внедрена проверка имени файла модели: запрещены разделители путей (`/`, `\`) и переходы по каталогам (`..`).
+    - В `crates/ai_engine/src/lib.rs` в метод `AiEngine::resolve_model_path` внедрена аналогичная защита от directory traversal. Модели ищутся строго в директории вызывающего плагина либо в изолированной пользовательской директории.
+    - Добавлен модульный тест `test_plugin_cannot_use_another_plugin_model` в `crates/core_contracts/src/plugin.rs`: плагин B гарантированно не видит и не может использовать модель, скачанную плагином A.
+  - [x] **Валидатор плагинов (`plugin_validator`)**:
+    - Запрещено объявление путей с `/`, `\`, `..` в именах моделей манифеста `plugin.json`.
+    - Для плагинов `NativeAi` внедрено обязательное требование указания непустого валидного `url` загрузки для каждой модели (гарантия полной самодостаточности и автономности плагина).
+    - Добавлены модульные тесты `test_validate_plugin_rejects_cross_plugin_path_traversal` и `test_validate_plugin_rejects_native_ai_without_model_url`.
+  - [x] **Седьмой тест в `crates/ai_engine/tests/dev_regulations_lint_test.rs`**:
+    - Добавлен `test_plugin_model_isolation_and_self_containment`:
+      - Проверяет все зарегистрированные плагины в `plugins/` на отсутствие разделителей путей и `..` в именах моделей.
+      - Проверяет обязательное наличие `url` у всех нейросетевых моделей `NativeAi`.
+      - Проверяет в рантайме изоляцию двух независимых плагинов (Alpha и Beta): Beta не может использовать модель Alpha, попытки Directory Traversal блокируются на уровне манифеста и `AiEngine`.
+  - [x] **Верификация (Resource Guard & DoD)**:
+    - `cargo fmt --all -- --check` пройден с 0 расхождений.
+    - Все 114 тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+    - Валидация каталога плагинов пройдена (`cargo run --package plugin_validator -j 1 -- --validate plugins`).
+
+- [x] **Фаза 61: Автоматическая валидация ссылок на модели в документации плагинов (BUG-065, Model Links Enforcement)**
+  - [x] **Обновление документации всех ИИ-плагинов**:
+    - В `plugins/depth_map/README.md`, `plugins/inpaint/README.md`, `plugins/remove_bg/README.md`, `plugins/upscale/README.md` добавлены разделы `### Model Weights:` (English) и `### Ссылки на веса модели:` (Русский).
+    - Размещены прямые ссылки на скачивание `.onnx` моделей и ссылки на официальные репозитории Hugging Face.
+  - [x] **Автоматический барьер в `plugin_validator` (Правило 3.1, пункт 4)**:
+    - Функция `validate_plugin_readme` расширена аргументом `manifest: Option<&PluginManifest>`.
+    - Для всех плагинов типа `NativeAi`, требующих нейросетевые модели, валидатор проверяет:
+      1. Наличие раздела весов на английском языке (`Model Weights:` / `Weights:`);
+      2. Наличие раздела весов на русском языке (`веса` / `Ссылки на веса модели:`);
+      3. Наличие прямых ссылок `http://` или `https://` на скачивание или репозиторий;
+      4. Явное упоминание имени файла каждой объявленной в манифесте модели (или ее прямого URL) в тексте README.
+    - Написаны модульные тесты: `test_validate_plugin_readme_native_ai_rejects_missing_weights_section`, `test_validate_plugin_readme_native_ai_rejects_missing_model_reference`, `test_validate_plugin_readme_native_ai_success`.
+  - [x] **Верификация (Resource Guard & DoD)**:
+    - `cargo fmt --all -- --check` пройден с 0 расхождений.
+    - Все 117 тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+    - Валидатор плагинов подтвердил 6/6 плагинов (`cargo run --package plugin_validator -j 1 -- --validate plugins`).
+
+- [x] **Фаза 62: Актуализация README: бейджи надежности, Quality Gates и полнота структуры (README Polish)**
+  - [x] **Бейджи в шапке репозитория (`README.md` и `README.ru.md`)**:
+    - Обновлен счетчик тестов с 98 до 117: `[![Tests: 117 Passing](https://img.shields.io/badge/Tests-117_Passing-success.svg)](crates/)`.
+    - Добавлен архитектурный бейдж стандарта Zero-Core: `[![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)`.
+    - Добавлен бейдж стиля кода: `[![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)`.
+  - [x] **Подраздел контроля качества (Quality Gates & Testing)**:
+    - Добавлен развернутый каталог команд: форматирование `cargo fmt`, 117 тестов воркспейса `cargo test --workspace -j 1`, архитектурный тест `architecture_integrity_test`, тест регламентов `dev_regulations_lint_test`, UI-линтеры `i18n_lint_test` и `vector_first_lint_test`, валидатор `plugin_validator`.
+    - Добавлено предупреждение по строгому соблюдению **Resource Guard Rule** (`-j 1`).
+  - [x] **Актуализация дерева архитектуры и документации**:
+    - В ASCII-дерево папки `plugins/` внесены все 6 плагинов (добавлены `depth_map/` и `vectorize/`).
+    - В разделе документации диапазон багов обновлен до актуального: `BUG-001 through BUG-065`.
+    - Добавлена ссылка на мастер-регламент разработки `docs/AGENTS_MASTER_GUIDE.md`.
+  - [x] **Верификация**:
+    - `cargo fmt --all -- --check` пройден с 0 расхождений.
+    - Все 117 тестов воркспейса пройдены.
+    - Тест отсутствия дрифта каталога `test_readme_plugins_catalog_not_drifted` успешно пройден.
+
+- [x] **Фаза 63: Подготовка и выпуск мультиплатформенного релиза v1.0.8 (Release v1.0.8)**
+  - [x] **Синхронизация версий приложения**:
+    - Байт-в-байт синхронизирована версия `1.0.8` в 5 файлах: `Cargo.toml`, `scripts/package_release.ps1`, `scripts/package_release.sh`, `packaging/windows/installer.iss`, `packaging/macos/Info.plist`.
+  - [x] **Валидация каталога и сборка реестра**:
+    - Запущен `plugin_validator` с генерацией `dist/registry.json` и пакетов `.pcpl` для всех 6 плагинов.
+    - Проверена актуальность таблиц плагинов в `README.md` и `README.ru.md`.
+  - [x] **Верификация полного набора Quality Gates**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo clippy --workspace --all-targets -j 1 -- -D warnings` пройден без предупреждений.
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, 117 тестов).
+    - Линтеры архитектурной чистоты и регламентов разработки пройдены.
+  - [x] **Документирование**:
+    - Добавлены синхронные главы 66 в `docs/CHRONICLE.md` и `docs/CHRONICLE.en.md`.
+
+
+
+
+
+

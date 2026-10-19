@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use core_contracts::PluginManifest;
+use core_contracts::{PluginManifest, PluginType};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -233,6 +233,7 @@ pub fn package_lightweight_pcpl(plugin_dir: &Path, output_path: &Path) -> Result
     Ok(())
 }
 
+#[derive(Debug)]
 pub struct ValidatedPlugin {
     pub dir_name: String,
     pub dir_path: PathBuf,
@@ -311,10 +312,6 @@ fn validate_single_plugin(dir: &Path, skip_network: bool) -> Result<ValidatedPlu
         bail!("Field 'version' cannot be empty");
     }
 
-    // Validate Mandatory README.md Documentation
-    validate_plugin_readme(dir)
-        .with_context(|| format!("Documentation validation failed for {}", dir.display()))?;
-
     // Validate Icon if specified or if icon.svg exists
     let icon_filename = manifest.icon.as_deref().unwrap_or("icon.svg");
     let icon_path = dir.join(icon_filename);
@@ -330,10 +327,48 @@ fn validate_single_plugin(dir: &Path, skip_network: bool) -> Result<ValidatedPlu
         );
     }
 
-    // Validate Models
+    // Validate NativeAi Models
+    if manifest.plugin_type == core_contracts::PluginType::NativeAi {
+        if manifest.models.is_empty() {
+            bail!(
+                "NativeAi plugin '{}' must declare at least one model in 'models'",
+                manifest.id
+            );
+        }
+        let has_required = manifest.models.iter().any(|m| m.required);
+        if !has_required {
+            bail!(
+                "NativeAi plugin '{}' has invalid model configuration: at least one model must have 'required: true' (all models are marked required: false)",
+                manifest.id
+            );
+        }
+    }
+
+    // Validate Models: ensure self-containment and strict isolation
     for model in &manifest.models {
         if model.name.trim().is_empty() {
             bail!("Model requirement has empty 'name'");
+        }
+
+        // Strict isolation: model.name must be a simple filename, no path traversal or cross-plugin references
+        if model.name.contains('/') || model.name.contains('\\') || model.name.contains("..") {
+            bail!(
+                "Model '{}' contains forbidden path separators or parent directory traversal. Models must be strictly isolated to the plugin's own directory.",
+                model.name
+            );
+        }
+
+        if manifest.plugin_type == PluginType::NativeAi && model.url.is_none() {
+            bail!(
+                "Model '{}' in NativeAi plugin is missing a download 'url'. Every plugin must be self-contained and independently downloadable.",
+                model.name
+            );
+        }
+
+        if let Some(ref role) = model.role {
+            if role.trim().is_empty() {
+                bail!("Model '{}' has empty 'role'", model.name);
+            }
         }
 
         // Validate sha256 checksum format
@@ -365,6 +400,10 @@ fn validate_single_plugin(dir: &Path, skip_network: bool) -> Result<ValidatedPlu
             }
         }
     }
+
+    // Validate Mandatory README.md Documentation (including model weights links for NativeAi)
+    validate_plugin_readme(dir, Some(&manifest))
+        .with_context(|| format!("Documentation validation failed for {}", dir.display()))?;
 
     Ok(ValidatedPlugin {
         dir_name: dir
@@ -418,7 +457,7 @@ fn validate_svg_icon(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn validate_plugin_readme(dir: &Path) -> Result<()> {
+pub fn validate_plugin_readme(dir: &Path, manifest: Option<&PluginManifest>) -> Result<()> {
     let readme_path = dir.join("README.md");
     if !readme_path.exists() {
         bail!(
@@ -454,6 +493,56 @@ pub fn validate_plugin_readme(dir: &Path) -> Result<()> {
             "'README.md' in {} must contain a Russian documentation section (e.g., '**Русский:**' or '### Практическое применение:')",
             dir.display()
         );
+    }
+
+    // Rule 3.1 Item 4: If plugin is NativeAi and requires neural models, README must provide model download / repo links
+    if let Some(man) = manifest {
+        if man.plugin_type == core_contracts::PluginType::NativeAi && !man.models.is_empty() {
+            let has_weights_en = content.contains("Model Weights")
+                || content.contains("Weights:")
+                || content.contains("Model weights");
+            let has_weights_ru =
+                content.contains("веса") || content.contains("Веса") || content.contains("весов");
+
+            if !has_weights_en {
+                bail!(
+                    "'README.md' in {} (NativeAi plugin) must contain a model weights section in English (e.g. '### Model Weights:')",
+                    dir.display()
+                );
+            }
+            if !has_weights_ru {
+                bail!(
+                    "'README.md' in {} (NativeAi plugin) must contain a model weights section in Russian (e.g. '### Ссылки на веса модели:')",
+                    dir.display()
+                );
+            }
+
+            // Ensure README contains at least one direct link or repository link (http:// or https://)
+            if !content.contains("http://") && !content.contains("https://") {
+                bail!(
+                    "'README.md' in {} (NativeAi plugin) must contain direct links (http:// or https://) to Hugging Face, GitHub Releases or model weights downloads",
+                    dir.display()
+                );
+            }
+
+            // Verify that each declared model in manifest is referenced in README (either by name or URL)
+            for model in &man.models {
+                let model_name_referenced = content.contains(&model.name);
+                let model_url_referenced = model
+                    .url
+                    .as_ref()
+                    .map(|u| content.contains(u))
+                    .unwrap_or(false);
+
+                if !model_name_referenced && !model_url_referenced {
+                    bail!(
+                        "'README.md' in {} (NativeAi plugin) does not mention model '{}'. All required models must be documented with download links.",
+                        dir.display(),
+                        model.name
+                    );
+                }
+            }
+        }
     }
 
     Ok(())
@@ -800,7 +889,7 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp_dir);
         fs::create_dir_all(&tmp_dir).unwrap();
 
-        let result = validate_plugin_readme(&tmp_dir);
+        let result = validate_plugin_readme(&tmp_dir, None);
         assert!(result.is_err());
         assert!(result
             .unwrap_err()
@@ -830,7 +919,7 @@ Awesome plugin description for tests.
 "#;
         fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
 
-        assert!(validate_plugin_readme(&tmp_dir).is_ok());
+        assert!(validate_plugin_readme(&tmp_dir, None).is_ok());
 
         let _ = fs::remove_dir_all(tmp_dir);
     }
@@ -846,9 +935,318 @@ Awesome plugin description for tests.
             "# My Plugin\n**English:** Only english description here that is long enough.";
         fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
 
-        let result = validate_plugin_readme(&tmp_dir);
+        let result = validate_plugin_readme(&tmp_dir, None);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Russian"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_native_ai_rejects_missing_weights_section() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_ai_no_weights");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = r#"# My AI Plugin
+**English:**
+Awesome AI plugin description for tests.
+### Use Cases:
+- Case 1: Processing images
+
+---
+**Русский:**
+Отличный ИИ-плагин для тестирования валидатора.
+### Практическое применение:
+- Сценарий 1: Обработка изображений
+"#;
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest = PluginManifest {
+            id: "test.ai".to_string(),
+            name: "Test AI".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: "Tester".to_string(),
+            plugin_type: core_contracts::PluginType::NativeAi,
+            icon: None,
+            commands: vec![],
+            post_commands: vec![],
+            input: core_contracts::PluginInputSource::ActiveLayer,
+            output_mode: core_contracts::PluginOutputMode::InPlace,
+            models: vec![core_contracts::ModelRequirement {
+                name: "my_model.onnx".to_string(),
+                role: None,
+                required: true,
+                size_mb: Some(50),
+                url: Some("https://example.com/my_model.onnx".to_string()),
+                sha256: None,
+            }],
+            action_id: None,
+            entrypoint: None,
+            ai: None,
+            algorithm: None,
+            enabled: true,
+            plugin_dir: None,
+        };
+
+        let result = validate_plugin_readme(&tmp_dir, Some(&manifest));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must contain a model weights section in English"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_native_ai_rejects_missing_model_reference() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_ai_missing_model_ref");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = r#"# My AI Plugin
+**English:**
+Awesome AI plugin description for tests.
+### Use Cases:
+- Case 1: Processing images
+### Model Weights:
+- [other_model.onnx](https://example.com/other.onnx)
+
+---
+**Русский:**
+Отличный ИИ-плагин для тестирования валидатора.
+### Практическое применение:
+- Сценарий 1: Обработка изображений
+### Ссылки на веса модели:
+- [other_model.onnx](https://example.com/other.onnx)
+"#;
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest = PluginManifest {
+            id: "test.ai".to_string(),
+            name: "Test AI".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: "Tester".to_string(),
+            plugin_type: core_contracts::PluginType::NativeAi,
+            icon: None,
+            commands: vec![],
+            post_commands: vec![],
+            input: core_contracts::PluginInputSource::ActiveLayer,
+            output_mode: core_contracts::PluginOutputMode::InPlace,
+            models: vec![core_contracts::ModelRequirement {
+                name: "my_model.onnx".to_string(),
+                role: None,
+                required: true,
+                size_mb: Some(50),
+                url: Some("https://example.com/my_model.onnx".to_string()),
+                sha256: None,
+            }],
+            action_id: None,
+            entrypoint: None,
+            ai: None,
+            algorithm: None,
+            enabled: true,
+            plugin_dir: None,
+        };
+
+        let result = validate_plugin_readme(&tmp_dir, Some(&manifest));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("does not mention model 'my_model.onnx'"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_readme_native_ai_success() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_ai_readme_ok");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = r#"# My AI Plugin
+**English:**
+Awesome AI plugin description for tests.
+### Use Cases:
+- Case 1: Processing images
+### Model Weights:
+- [my_model.onnx](https://example.com/my_model.onnx)
+
+---
+**Русский:**
+Отличный ИИ-плагин для тестирования валидатора.
+### Практическое применение:
+- Сценарий 1: Обработка изображений
+### Ссылки на веса модели:
+- [my_model.onnx](https://example.com/my_model.onnx)
+"#;
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest = PluginManifest {
+            id: "test.ai".to_string(),
+            name: "Test AI".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Test".to_string(),
+            author: "Tester".to_string(),
+            plugin_type: core_contracts::PluginType::NativeAi,
+            icon: None,
+            commands: vec![],
+            post_commands: vec![],
+            input: core_contracts::PluginInputSource::ActiveLayer,
+            output_mode: core_contracts::PluginOutputMode::InPlace,
+            models: vec![core_contracts::ModelRequirement {
+                name: "my_model.onnx".to_string(),
+                role: None,
+                required: true,
+                size_mb: Some(50),
+                url: Some("https://example.com/my_model.onnx".to_string()),
+                sha256: None,
+            }],
+            action_id: None,
+            entrypoint: None,
+            ai: None,
+            algorithm: None,
+            enabled: true,
+            plugin_dir: None,
+        };
+
+        assert!(validate_plugin_readme(&tmp_dir, Some(&manifest)).is_ok());
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_rejects_native_ai_with_all_optional_models() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_all_optional");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = "# Test\n**English:** Test desc\n### Use Cases:\n- C1\n**Русский:** Тест\n### Практическое применение:\n- С1\n";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest_content = r#"{
+            "id": "test.native_ai.fake",
+            "name": "Fake AI Plugin",
+            "version": "1.0.0",
+            "description": "Testing validator bypass",
+            "plugin_type": "native_ai",
+            "models": [
+                {
+                    "name": "fake_model.onnx",
+                    "required": false
+                }
+            ]
+        }"#;
+        fs::write(tmp_dir.join("plugin.json"), manifest_content).unwrap();
+
+        let result = validate_single_plugin(&tmp_dir, true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("at least one model must have 'required: true'"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_rejects_native_ai_with_empty_models() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_empty_models");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = "# Test\n**English:** Test desc\n### Use Cases:\n- C1\n**Русский:** Тест\n### Практическое применение:\n- С1\n";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest_content = r#"{
+            "id": "test.native_ai.empty",
+            "name": "Empty AI Plugin",
+            "version": "1.0.0",
+            "description": "Testing empty models",
+            "plugin_type": "native_ai",
+            "models": []
+        }"#;
+        fs::write(tmp_dir.join("plugin.json"), manifest_content).unwrap();
+
+        let result = validate_single_plugin(&tmp_dir, true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("must declare at least one model in 'models'"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_rejects_cross_plugin_path_traversal() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_path_traversal");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = "# Test\n**English:** Test desc\n### Use Cases:\n- C1\n**Русский:** Тест\n### Практическое применение:\n- С1\n";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest_content = r#"{
+            "id": "test.native_ai.traversal",
+            "name": "Traversal AI Plugin",
+            "version": "1.0.0",
+            "description": "Testing path traversal",
+            "plugin_type": "native_ai",
+            "models": [
+                {
+                    "name": "../other_plugin/models/other.onnx",
+                    "required": true,
+                    "url": "https://example.com/other.onnx"
+                }
+            ]
+        }"#;
+        fs::write(tmp_dir.join("plugin.json"), manifest_content).unwrap();
+
+        let result = validate_single_plugin(&tmp_dir, true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("contains forbidden path separators or parent directory traversal"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_plugin_rejects_native_ai_without_model_url() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_missing_url");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = "# Test\n**English:** Test desc\n### Use Cases:\n- C1\n**Русский:** Тест\n### Практическое применение:\n- С1\n";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest_content = r#"{
+            "id": "test.native_ai.no_url",
+            "name": "No URL AI Plugin",
+            "version": "1.0.0",
+            "description": "Testing missing model url",
+            "plugin_type": "native_ai",
+            "models": [
+                {
+                    "name": "isolated_model.onnx",
+                    "required": true
+                }
+            ]
+        }"#;
+        fs::write(tmp_dir.join("plugin.json"), manifest_content).unwrap();
+
+        let result = validate_single_plugin(&tmp_dir, true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("is missing a download 'url'. Every plugin must be self-contained"));
 
         let _ = fs::remove_dir_all(tmp_dir);
     }

@@ -514,16 +514,54 @@ pub fn launch_installer(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Opens the folder containing the downloaded file and selects it
-pub fn reveal_in_folder(path: &Path) {
-    if cfg!(target_os = "windows") {
-        let _ = Command::new("explorer")
-            .arg(format!("/select,{}", path.display()))
-            .spawn();
-    } else if cfg!(target_os = "macos") {
-        let _ = Command::new("open").arg("-R").arg(path).spawn();
+/// Resolves a path for OS file explorer, ensuring an absolute path and determining if it is a directory.
+pub fn resolve_reveal_target(path: &Path) -> (PathBuf, bool) {
+    let abs_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(cwd) = std::env::current_dir() {
+        cwd.join(path)
     } else {
-        if let Some(parent) = path.parent() {
+        path.to_path_buf()
+    };
+
+    let target = if abs_path.exists() {
+        abs_path
+    } else if let Some(parent) = abs_path.parent() {
+        if parent.exists() {
+            parent.to_path_buf()
+        } else {
+            abs_path
+        }
+    } else {
+        abs_path
+    };
+
+    let is_dir = target.is_dir();
+    (target, is_dir)
+}
+
+/// Opens the directory directly in the OS file explorer, or reveals and selects a file inside its containing folder.
+pub fn reveal_in_folder(path: &Path) {
+    let (target, is_dir) = resolve_reveal_target(path);
+
+    if cfg!(target_os = "windows") {
+        if is_dir {
+            let _ = Command::new("explorer").arg(&target).spawn();
+        } else {
+            let _ = Command::new("explorer")
+                .arg(format!("/select,{}", target.display()))
+                .spawn();
+        }
+    } else if cfg!(target_os = "macos") {
+        if target.is_dir() {
+            let _ = Command::new("open").arg(&target).spawn();
+        } else {
+            let _ = Command::new("open").arg("-R").arg(&target).spawn();
+        }
+    } else {
+        if target.is_dir() {
+            let _ = Command::new("xdg-open").arg(&target).spawn();
+        } else if let Some(parent) = target.parent() {
             let _ = Command::new("xdg-open").arg(parent).spawn();
         }
     }

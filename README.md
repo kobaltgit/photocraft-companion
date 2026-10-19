@@ -17,7 +17,9 @@
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
-[![Tests: 98 Passing](https://img.shields.io/badge/Tests-98_Passing-success.svg)](crates/)
+[![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
+[![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
+[![Tests: 117 Passing](https://img.shields.io/badge/Tests-117_Passing-success.svg)](crates/)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
@@ -184,11 +186,36 @@ Model weights are excluded from Git (`.gitignore`) to keep the repository lightw
 ### 3. Build & Run
 
 ```bash
-# Run full workspace test suite (78 tests) with single-thread resource guard
-cargo test --workspace -j 1
-
 # Launch the companion application
 cargo run --package companion_app
+```
+
+### 4. Quality Gates & Testing
+
+To maintain uncompromising reliability and ensure the Zero-Core architecture remains free of hacks, execute our automated test barriers:
+
+> [!NOTE]
+> **Resource Guard Rule:** Always execute `cargo` commands with the `-j 1` single-thread flag to prevent CPU and RAM starvation on developer machines.
+
+```bash
+# 1. Code Formatting (Zero-tolerance style check)
+cargo fmt --all -- --check
+
+# 2. Complete Workspace Test Suite (117 unit & integration tests)
+cargo test --workspace -j 1
+
+# 3. Core Architecture Integrity Linter (Strict Zero-Core & anti-sniffing barrier)
+cargo test -p ai_engine --test architecture_integrity_test -j 1
+
+# 4. Dev Regulations Linter (5-file SemVer sync, crate isolation, chronicle parity, model isolation)
+cargo test -p ai_engine --test dev_regulations_lint_test -j 1
+
+# 5. UI Linters (Strict i18n localization & Vector-First UI / anti-tofu barrier)
+cargo test -p overlay_ui --test i18n_lint_test -j 1
+cargo test -p overlay_ui --test vector_first_lint_test -j 1
+
+# 6. Ecosystem Plugin & Registry Validator (Validates manifests, vector SVG icons & model links)
+cargo run -p plugin_validator -j 1 -- --validate plugins
 ```
 
 ---
@@ -208,10 +235,12 @@ photocraft-plugins/
 │   ├── plugin_validator/          # Ecosystem CLI: validation, packaging, marketplace generator
 │   └── companion_app/             # Main binary (system tray, lifecycle, DI container)
 ├── plugins/                       # Installed plugin directory
+│   ├── black_and_white/          # Declarative No-Code macro plugin
+│   ├── depth_map/                 # Autonomous AI 3D depth estimation plugin (Depth Anything V2)
+│   ├── inpaint/                   # Autonomous AI generative fill plugin (LaMa)
 │   ├── remove_bg/                 # Autonomous AI background removal plugin (RMBG-1.4)
 │   ├── upscale/                   # Autonomous AI 2x super-resolution plugin (Real-ESRGAN)
-│   ├── inpaint/                   # Autonomous AI generative fill plugin (LaMa)
-│   └── black_and_white/          # Declarative No-Code macro plugin
+│   └── vectorize/                 # Autonomous Smart Vectorizer / SVG Trace algorithm plugin
 ├── scripts/
 │   ├── fetch_models.ps1           # PowerShell model downloader
 │   ├── package_release.ps1        # Inno Setup & Windows packaging script
@@ -264,10 +293,11 @@ Download community plugins as ready-to-use `.pcpl` packages and drop them into y
 Detailed specifications and development history can be found in [`docs/`](docs/):
 
 - 📘 [`GEMINI.md`](GEMINI.md) — Master architectural manifest.
+- 📋 [`docs/AGENTS_MASTER_GUIDE.md`](docs/AGENTS_MASTER_GUIDE.md) — Master development regulations and AI agent guidelines.
 - 🎯 [`docs/PLAN.md`](docs/PLAN.md) — Implementation blueprint for floating UI and autonomous plugins.
 - 🗺️ [`docs/ROADMAP.md`](docs/ROADMAP.md) — Project roadmap and milestones.
 - ✅ [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — Interactive phase-by-phase checklist.
-- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Defect tracking log (BUG-001 through BUG-029).
+- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Defect tracking log (BUG-001 through BUG-065).
 - 📜 [`docs/CHRONICLE.md`](docs/CHRONICLE.md) / [`docs/CHRONICLE.en.md`](docs/CHRONICLE.en.md) — Chronological developer devlog in Russian and English.
 - 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.en.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) / [`RU`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) — Plugin Developer Guide (No-Code macros, AI inference, workflows).
 - 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) / [`RU`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) — Complete Catalog of all **851** PhotoCraft Engine Commands.

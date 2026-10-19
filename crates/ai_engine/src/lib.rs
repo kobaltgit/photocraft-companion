@@ -28,6 +28,11 @@ impl AiEngine {
         model_name: &str,
         plugin_dir: Option<&Path>,
     ) -> Option<PathBuf> {
+        // Enforce strict model isolation: model name must be a pure filename without path traversal
+        if model_name.contains("..") || model_name.contains('/') || model_name.contains('\\') {
+            return None;
+        }
+
         // 1. Check inside plugin directory: plugin_dir/models/<name> or plugin_dir/<name>
         if let Some(p_dir) = plugin_dir {
             let direct = p_dir.join("models").join(model_name);
@@ -66,10 +71,9 @@ impl AiEngine {
         }
 
         // 4. Fallback to PhotoCraft portable models directory
-        let portable = PathBuf::from(
-            r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models",
-        )
-        .join(model_name);
+        let portable = PathBuf::from("PhotoCraftData")
+            .join("models")
+            .join(model_name);
         if portable.exists() {
             return Some(portable);
         }
@@ -627,44 +631,13 @@ impl AiEngine {
         )?;
 
         // If the context window was scaled (because it was larger than tile_size),
-        // we recover high-frequency sharpness using Real-ESRGAN super-resolution + adaptive unsharp filter
+        // we recover high-frequency sharpness using Catmull-Rom interpolation + adaptive unsharp filter
         let restored_crop = if infilled_crop.width() == crop_w && infilled_crop.height() == crop_h {
             infilled_crop
         } else {
-            // Check if Real-ESRGAN model is available to restore neural micro-textures
-            let upscaler_path = self.resolve_model_path("realesrgan-x2.onnx", None);
-            let mut enhanced = if let Some(ref sr_path) = upscaler_path {
-                info!("Restoring inpaint micro-sharpness via Real-ESRGAN super-resolution...");
-                match self.execute_super_resolution(
-                    sr_path,
-                    &infilled_crop,
-                    &AiPipelineConfig {
-                        task: AiTask::SuperResolution,
-                        scale: Some(2),
-                        tile_size: Some(512),
-                        tile_pad: Some(16),
-                        normalize: Some(NormalizationMode::ZeroToOne),
-                        input_size: None,
-                        output_type: None,
-                    },
-                ) {
-                    Ok(sr_img) => DynamicImage::ImageRgba8(sr_img)
-                        .resize_exact(crop_w, crop_h, FilterType::CatmullRom)
-                        .to_rgba8(),
-                    Err(e) => {
-                        warn!(
-                            "Real-ESRGAN detail recovery failed ({e}), using Catmull-Rom fallback"
-                        );
-                        DynamicImage::ImageRgba8(infilled_crop)
-                            .resize_exact(crop_w, crop_h, FilterType::CatmullRom)
-                            .to_rgba8()
-                    }
-                }
-            } else {
-                DynamicImage::ImageRgba8(infilled_crop)
-                    .resize_exact(crop_w, crop_h, FilterType::CatmullRom)
-                    .to_rgba8()
-            };
+            let mut enhanced = DynamicImage::ImageRgba8(infilled_crop)
+                .resize_exact(crop_w, crop_h, FilterType::CatmullRom)
+                .to_rgba8();
 
             // Apply unsharp mask enhancement to eliminate remaining soft blur and restore crisp edges
             let dyn_img = DynamicImage::ImageRgba8(enhanced.clone());
@@ -1082,15 +1055,7 @@ impl Plugin for GenericAiPlugin {
             }
             AiTask::SuperResolution => lang.format_upscale_name(&source_name),
             AiTask::Inpainting => lang.format_inpaint_name(&source_name),
-            AiTask::ImageToImage => {
-                if self.manifest.id.contains("denoise")
-                    || self.manifest.name.to_lowercase().contains("denoise")
-                {
-                    lang.format_denoise_name(&source_name)
-                } else {
-                    format!("{source_name} (AI)")
-                }
-            }
+            AiTask::ImageToImage => format!("{source_name} ({})", self.manifest.name),
         };
 
         // 3. Execute inference in blocking thread
@@ -1217,6 +1182,7 @@ mod tests {
             author: "kobaltGIT".to_string(),
             plugin_type: PluginType::NativeAi,
             models: vec![ModelRequirement {
+                role: Some("super_resolution".to_string()),
                 name: "realesrgan-x2.onnx".to_string(),
                 required: true,
                 size_mb: Some(68),
@@ -1310,6 +1276,7 @@ mod tests {
             author: "Tester".to_string(),
             plugin_type: PluginType::NativeAi,
             models: vec![ModelRequirement {
+                role: None,
                 name: "missing_model_12345.onnx".to_string(),
                 required: true,
                 size_mb: None,
@@ -1402,6 +1369,7 @@ mod tests {
             author: "kobaltGIT".to_string(),
             plugin_type: PluginType::NativeAi,
             models: vec![ModelRequirement {
+                role: Some("depth_estimation".to_string()),
                 name: "depth-anything-v2-small.onnx".to_string(),
                 required: true,
                 size_mb: Some(99),

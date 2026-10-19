@@ -4,16 +4,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="1.0.7"
+VERSION="1.0.8"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"
 
 echo ">>> Building release binary (photocraft-companion)..."
-cargo build --package companion_app --release
+cargo build --package companion_app --release -j 1
 
 echo ">>> Building plugin registry and .pcpl packages..."
-cargo run --package plugin_validator -- --validate plugins --build-registry --package-plugins || true
+cargo run --package plugin_validator -j 1 -- --validate plugins --build-registry --package-plugins || true
 
 mkdir -p "${DIST_DIR}"
 OS_NAME="$(uname -s)"

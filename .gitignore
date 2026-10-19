@@ -18,6 +18,9 @@ env/
 # Large Model Weights & Binary Blobs (>100MB, fetched via scripts/fetch_models.ps1)
 *.onnx
 *.bin
+*.safetensors
+*.pt
+*.pth
 plugins/**/models/*.onnx
 PhotoCraftData/models/*.onnx
 *.pcpl

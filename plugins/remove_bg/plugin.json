@@ -15,6 +15,7 @@
   },
   "models": [
     {
+      "role": "background_removal",
       "name": "rmbg-1.4.onnx",
       "required": true,
       "size_mb": 168,

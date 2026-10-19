@@ -7,12 +7,16 @@ description: Пошаговый регламент сдачи задач в Phot
 
 Используйте этот сценарий при завершении любого этапа, фичи или исправления бага в PhotoCraft Plugins & Companion.
 
-## Шаг 1. Тестирование с ограничением ресурсов
-Выполните запуск всех тестов в режиме строгого Resource Guard:
+## Шаг 1. Форматирование и тестирование с ограничением ресурсов
+1. Проверьте чистоту форматирования кода:
+```powershell
+cargo fmt --all -- --check
+```
+2. Выполните запуск всех тестов в режиме строгого Resource Guard:
 ```powershell
 cargo test --workspace -j 1
 ```
-*Убедитесь, что все тесты во всех крейтах (`core_contracts`, `photocraft_bridge`, `ai_engine`, `overlay_ui`, `companion_app`, `plugin_validator`) завершились с успехом.*
+*Убедитесь, что все тесты во всех крейтах (`core_contracts`, `photocraft_bridge`, `ai_engine`, `overlay_ui`, `companion_app`, `plugin_validator`), включая линтер архитектурной чистоты `architecture_integrity_test.rs` и линтер регламентов разработки `dev_regulations_lint_test.rs`, завершились со 100% успехом.*
 
 ## Шаг 2. Валидация каталога плагинов
 ```powershell

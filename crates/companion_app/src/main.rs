@@ -339,7 +339,6 @@ fn main() -> anyhow::Result<()> {
 
     if is_test_run {
         println!("\n>>> Running Native AI Plugin Execution via PluginRegistry <<<");
-        let t0 = Instant::now();
         let client_test = client.clone();
         let data_dir_test = data_dir.clone();
         let plugins_dir_test = plugins_dir.clone();
@@ -347,36 +346,34 @@ fn main() -> anyhow::Result<()> {
 
         rt.block_on(async {
             let doc_info = client_test.get_document_info().await?;
-            let ctx = PluginContext {
-                document: doc_info,
-                models_dir: data_dir_test.join("models"),
-                plugin_dir: plugins_dir_test.join("remove_bg"),
-                client: client_test.clone(),
-            };
-
-            let result = reg_test
-                .execute("ai.photocraft.plugins.remove_bg", &ctx)
-                .await?;
-            println!(
-                "  Result: {} in {:.2}s",
-                result.message,
-                t0.elapsed().as_secs_f32()
-            );
-
-            if reg_test
-                .get("macro.photocraft.plugins.black_and_white")
-                .is_some()
-            {
-                println!("\n>>> Running No-Code Macro Plugin Execution via PluginRegistry <<<");
-                let t1 = Instant::now();
-                let res_macro = reg_test
-                    .execute("macro.photocraft.plugins.black_and_white", &ctx)
-                    .await?;
+            for manifest in reg_test.list_manifests() {
                 println!(
-                    "  Result: {} in {:.2}s",
-                    res_macro.message,
-                    t1.elapsed().as_secs_f32()
+                    "\n>>> Testing registered plugin execution: {} [{}] <<<",
+                    manifest.name, manifest.id
                 );
+                let p_dir = manifest
+                    .plugin_dir
+                    .clone()
+                    .unwrap_or_else(|| plugins_dir_test.join(&manifest.id));
+                let ctx = PluginContext {
+                    document: doc_info.clone(),
+                    models_dir: data_dir_test.join("models"),
+                    plugin_dir: p_dir,
+                    client: client_test.clone(),
+                };
+                let t0 = Instant::now();
+                match reg_test.execute(&manifest.id, &ctx).await {
+                    Ok(result) => {
+                        println!(
+                            "  Result: {} in {:.2}s",
+                            result.message,
+                            t0.elapsed().as_secs_f32()
+                        );
+                    }
+                    Err(e) => {
+                        println!("  Error: {} in {:.2}s", e, t0.elapsed().as_secs_f32());
+                    }
+                }
             }
             Ok::<(), anyhow::Error>(())
         })?;

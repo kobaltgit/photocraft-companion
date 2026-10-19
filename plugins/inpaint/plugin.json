@@ -19,6 +19,7 @@
   },
   "models": [
     {
+      "role": "inpainting",
       "name": "lama_inpaint.onnx",
       "required": true,
       "size_mb": 208,

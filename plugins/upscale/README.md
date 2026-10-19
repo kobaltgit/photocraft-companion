@@ -13,6 +13,10 @@ Enhances textures, cleans compression artifacts, and doubles image dimensions wh
 - **Print Preparation:** Doubling DPI for printing digital art and illustrations created at smaller canvas resolutions.
 - **Cropped Detail Enhancement:** Restoring clarity on tightly cropped fragments of macro shots and textures.
 
+### Model Weights:
+- **Direct Download:** [realesrgan-x2.onnx](https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx) (68 MB)
+- **Hugging Face Repository:** [yuvraj108c/ComfyUI-Upscaler-Onnx](https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx)
+
 ---
 
 **Русский:**
@@ -23,3 +27,8 @@ Enhances textures, cleans compression artifacts, and doubles image dimensions wh
 - **Восстановление архивных снимков:** Увеличение разрешения старых цифровых фото и сжатых JPEG без мыла и пикселизации.
 - **Подготовка к широкоформатной печати:** Повышение плотности пикселей (DPI) для иллюстраций и артов, изначально нарисованных в меньшем размере.
 - **Ретушь кропов:** Повышение детализации сильно приближенных фрагментов макросъемки и текстурных вставок в PhotoCraft.
+
+### Ссылки на веса модели:
+- **Прямое скачивание:** [realesrgan-x2.onnx](https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx) (68 МБ)
+- **Репозиторий Hugging Face:** [yuvraj108c/ComfyUI-Upscaler-Onnx](https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx)
+

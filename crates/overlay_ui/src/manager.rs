@@ -676,6 +676,32 @@ impl PluginManagerApp {
                         }
                     }
                 }
+
+                // Open plugins directory button
+                let open_folder_btn = egui::Button::new(
+                    RichText::new(self.t("Open Plugins Folder", "Папка с плагинами"))
+                        .size(11.0)
+                        .color(palette.text_primary),
+                )
+                .fill(palette.button_secondary)
+                .corner_radius(4.0)
+                .min_size(Vec2::new(130.0, 24.0));
+
+                if ui.add(open_folder_btn).clicked() {
+                    let dir = if self.plugins_dir.exists() {
+                        self.plugins_dir.clone()
+                    } else if let Some(parent) = self
+                        .manifests
+                        .iter()
+                        .find_map(|m| m.plugin_dir.as_ref().and_then(|p| p.parent()))
+                    {
+                        parent.to_path_buf()
+                    } else {
+                        self.plugins_dir.clone()
+                    };
+                    let _ = std::fs::create_dir_all(&dir);
+                    crate::updater::reveal_in_folder(&dir);
+                }
             });
         });
 
@@ -879,7 +905,11 @@ impl PluginManagerApp {
                                             .corner_radius(2.0);
                                         ui.add(bar);
                                     }
-                                } else if let Some(req) = manifest.models.first() {
+                                } else if let Some(req) = manifest
+                                    .models
+                                    .iter()
+                                    .find(|m| !manifest.is_model_installed(m) && m.url.is_some())
+                                {
                                     if let Some(ref url) = req.url {
                                         let dl_btn = egui::Button::new(
                                             RichText::new(msg_download)

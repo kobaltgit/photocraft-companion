@@ -18,6 +18,7 @@
   },
   "models": [
     {
+      "role": "depth_estimation",
       "name": "depth-anything-v2-small.onnx",
       "required": true,
       "size_mb": 99,

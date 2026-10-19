@@ -13,6 +13,10 @@ Accurately segments foreground subjects (people, animals, vehicles, complex prod
 - **E-Commerce Product Photography:** Quick extraction of goods for marketplace listings with transparent or pure white backdrops.
 - **Creative Compositing:** Fast extraction of elements to combine multiple visual assets onto new backgrounds in PhotoCraft.
 
+### Model Weights:
+- **Direct Download:** [rmbg-1.4.onnx](https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx) (168 MB)
+- **Hugging Face Repository:** [briaai/RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4)
+
 ---
 
 **Русский:**
@@ -23,3 +27,8 @@ Accurately segments foreground subjects (people, animals, vehicles, complex prod
 - **Портретная и коммерческая ретушь:** Мгновенное отделение моделей от фона с сохранением сложных прядей волос и полупрозрачных тканей без ручного выделения пером.
 - **Карточки товаров для маркетплейсов:** Быстрая изоляция предметов для предметной фотосъемки и размещения на белом или фирменном фоне.
 - **Художественный коллаж:** Извлечение ключевых объектов из разных фотографий для быстрой компоновки многослойных артов в PhotoCraft.
+
+### Ссылки на веса модели:
+- **Прямое скачивание:** [rmbg-1.4.onnx](https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx) (168 МБ)
+- **Репозиторий Hugging Face:** [briaai/RMBG-1.4](https://huggingface.co/briaai/RMBG-1.4)
+

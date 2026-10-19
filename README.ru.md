@@ -17,7 +17,9 @@
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
-[![Tests: 97 Passing](https://img.shields.io/badge/Tests-98_Passing-success.svg)](crates/)
+[![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
+[![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
+[![Tests: 117 Passing](https://img.shields.io/badge/Tests-117_Passing-success.svg)](crates/)
 
 **Экосистема плагинов, локальных нейросетей и оверлей-панелей для графического редактора PhotoCraft.**
 
@@ -189,11 +191,36 @@ _(Либо веса можно скачать в один клик через к
 ### 3. Сборка и запуск
 
 ```bash
-# Запуск тестов воркспейса (78 тестов) с безопасным ограничением потоков
-cargo test --workspace -j 1
-
 # Запуск приложения компаньона
 cargo run --package companion_app
+```
+
+### 4. Контроль качества и тестирование (Quality Gates)
+
+Для гарантии бескомпромиссной надежности и строгого соблюдения архитектуры Zero-Core запустите автоматизированные рубежи проверки:
+
+> [!NOTE]
+> **Правило Resource Guard:** Всегда запускайте команды `cargo` с ограничением потоков (`-j 1`), чтобы не перегружать CPU и оперативную память рабочей станции.
+
+```bash
+# 1. Проверка стиля кода (Zero-tolerance к расхождениям форматирования)
+cargo fmt --all -- --check
+
+# 2. Полный прогон всех 117 тестов воркспейса (с защитой ресурсов -j 1)
+cargo test --workspace -j 1
+
+# 3. Линтер архитектурной чистоты ядра (запрет keyword-sniffing и хардкода весов моделей)
+cargo test -p ai_engine --test architecture_integrity_test -j 1
+
+# 4. Линтер регламентов разработки (контроль версий в 5 файлах, изоляция крейтов, синхронность летописи, изоляция моделей)
+cargo test -p ai_engine --test dev_regulations_lint_test -j 1
+
+# 5. Линтеры интерфейса (строгая i18n-локализация и Vector-First UI / защита от квадратов «тофу»)
+cargo test -p overlay_ui --test i18n_lint_test -j 1
+cargo test -p overlay_ui --test vector_first_lint_test -j 1
+
+# 6. Валидатор каталога плагинов (проверка манифестов, чистоты SVG-иконок и ссылок на веса)
+cargo run -p plugin_validator -j 1 -- --validate plugins
 ```
 
 ---
@@ -213,10 +240,12 @@ photocraft-plugins/
 │   ├── plugin_validator/          # Валидатор плагинов, сборщик .pcpl и генератор каталога
 │   └── companion_app/             # Главный бинарник (системный трей, DI, жизненный цикл)
 ├── plugins/                       # Каталог установленных плагинов
-│   ├── remove_bg/                 # Автономный плагин нейросетевого удаления фона (RMBG-1.4)
-│   ├── upscale/                   # Автономный плагин 2x супер-разрешения (Real-ESRGAN)
-│   ├── inpaint/                   # Автономный плагин генеративной заливки (LaMa)
-│   └── black_and_white/          # Декларативный No-Code макрос
+│   ├── black_and_white/          # Декларативный No-Code макрос
+│   ├── depth_map/                 # Автономный AI плагин карты глубины 3D (Depth Anything V2)
+│   ├── inpaint/                   # Автономный AI плагин генеративной заливки (LaMa)
+│   ├── remove_bg/                 # Автономный AI плагин нейросетевого удаления фона (RMBG-1.4)
+│   ├── upscale/                   # Автономный AI плагин 2x супер-разрешения (Real-ESRGAN)
+│   └── vectorize/                 # Автономный плагин Smart Vectorizer / SVG Trace трассировки
 ├── scripts/
 │   ├── fetch_models.ps1           # Скрипт подгрузки нейросетевых моделей (PowerShell)
 │   ├── package_release.ps1        # Скрипт сборки инсталлятора Windows (Inno Setup)
@@ -269,10 +298,11 @@ my_plugin.pcpl
 Подробные инженерные спецификации и журнал разработки находятся в папке [`docs/`](docs/):
 
 - 📘 [`GEMINI.md`](GEMINI.md) — Главный архитектурный манифест проекта.
+- 📋 [`docs/AGENTS_MASTER_GUIDE.md`](docs/AGENTS_MASTER_GUIDE.md) — Генеральный регламент разработки и правила для субагентов.
 - 🎯 [`docs/PLAN.md`](docs/PLAN.md) — План реализации плавающей панели и автономных плагинов.
 - 🗺️ [`docs/ROADMAP.md`](docs/ROADMAP.md) — Дорожная карта этапов разработки.
 - ✅ [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — Интерактивный чек-лист статуса всех фаз.
-- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Журнал решенных дефектов (BUG-001 – BUG-029).
+- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Журнал решенных дефектов (BUG-001 – BUG-065).
 - 📜 [`docs/CHRONICLE.md`](docs/CHRONICLE.md) / [`docs/CHRONICLE.en.md`](docs/CHRONICLE.en.md) — Авторская летопись разработки.
 - 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) / [`EN`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) — Руководство разработчика плагинов (No-Code макросы, нейросети, создание расширений).
 - 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) / [`EN`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) — Полный каталог всех **851** команд ядра PhotoCraft.

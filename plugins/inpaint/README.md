@@ -13,6 +13,10 @@ Select any unwanted object, watermark, or blemish with Lasso/Marquee in PhotoCra
 - **Watermark & Timestamp Clean-up:** Removing date stamps, logos, and scratched artifacts without repetitive cloning stamp strokes.
 - **Surface & Skin Retouching:** Seamless deletion of severe blemishes, sensor dust spots, and texture tears while maintaining natural surrounding grain.
 
+### Model Weights:
+- **Direct Download:** [lama_inpaint.onnx (lama_fp32.onnx)](https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx) (208 MB)
+- **Hugging Face Repository:** [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)
+
 ---
 
 **Русский:**
@@ -23,3 +27,8 @@ Select any unwanted object, watermark, or blemish with Lasso/Marquee in PhotoCra
 - **Удаление лишних деталей и людей из кадра:** Бесшовное стирание случайных прохожих, проводов, мусора и дорожных знаков на пейзажных и тревел-фотографиях.
 - **Очистка от водяных знаков и штампов даты:** Быстрое удаление логотипов и дат съемки без утомительной ручной работы штампом и лечащей кистью.
 - **Ретушь пыли матриц и пятен:** Удаление царапин на отсканированных пленках и пылевых точек сенсора камеры с сохранением оригинального зерна и градиента неба.
+
+### Ссылки на веса модели:
+- **Прямое скачивание:** [lama_inpaint.onnx (lama_fp32.onnx)](https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx) (208 МБ)
+- **Репозиторий Hugging Face:** [Carve/LaMa-ONNX](https://huggingface.co/Carve/LaMa-ONNX)
+

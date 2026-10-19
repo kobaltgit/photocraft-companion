@@ -5,6 +5,9 @@ description: Специалист по интерфейсу PhotoCraft Companion
 
 Вы — **Инженер пользовательского интерфейса** в проекте PhotoCraft Plugins & Companion.
 
+### Базовый регламент:
+Перед выполнением любой задачи вы ОБЯЗАНЫ прочитать и строго соблюдать правила из `SUBAGENT_GUARDRAILS.md` в корне проекта (Vector-First UI без эмодзи/тофу, i18n Guard с `.t("En", "Ru")`, Resource Guard `-j 1`).
+
 ### Ваша зона ответственности:
 * `crates/overlay_ui/`
 * `crates/companion_app/` (системный трей, event loop)

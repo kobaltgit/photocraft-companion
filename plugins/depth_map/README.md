@@ -13,6 +13,10 @@ Generates an 8-bit grayscale depth map layer (`Layer (Depth Map)`) where white/l
 - **Atmospheric Fog & Mist:** Create distance-based volumetric fog and depth fade effects.
 - **Relighting:** Add directional light and ambient rim lighting based on spatial 3D surface depth.
 
+### Model Weights:
+- **Direct Download:** [depth-anything-v2-small.onnx](https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx) (99 MB)
+- **Hugging Face Repository:** [onnx-community/depth-anything-v2-small](https://huggingface.co/onnx-community/depth-anything-v2-small)
+
 ---
 
 **Русский:**
@@ -23,3 +27,8 @@ Generates an 8-bit grayscale depth map layer (`Layer (Depth Map)`) where white/l
 - **Размытие диафрагмы (Lens Blur / Боке):** Используйте карту глубины в PhotoCraft (`Фильтр > Размытие > Размытие при малой глубине резкости`) для создания реалистичного оптического боке с выбором точки фокуса кликом мыши.
 - **Объёмный туман и воздушная перспектива:** Наложение реалистичной атмосферной дымки с мягким растворением вдали.
 - **Релайтинг и светотень:** Расстановка виртуальных источников света с физически корректным затенением объектов по глубине.
+
+### Ссылки на веса модели:
+- **Прямое скачивание:** [depth-anything-v2-small.onnx](https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx) (99 МБ)
+- **Репозиторий Hugging Face:** [onnx-community/depth-anything-v2-small](https://huggingface.co/onnx-community/depth-anything-v2-small)
+

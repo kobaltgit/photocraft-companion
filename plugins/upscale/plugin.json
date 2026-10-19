@@ -23,6 +23,7 @@
   },
   "models": [
     {
+      "role": "super_resolution",
       "name": "realesrgan-x2.onnx",
       "required": true,
       "size_mb": 68,

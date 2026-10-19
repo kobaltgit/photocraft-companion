@@ -112,6 +112,11 @@ pub struct AiPipelineConfig {
 
 impl PluginManifest {
     pub fn is_model_installed(&self, model: &ModelRequirement) -> bool {
+        // Enforce strict model isolation: model name must be a pure filename without path traversal
+        if model.name.contains("..") || model.name.contains('/') || model.name.contains('\\') {
+            return false;
+        }
+
         let is_valid_file = |path: &PathBuf| {
             if let Ok(meta) = std::fs::metadata(path) {
                 meta.is_file()
@@ -152,15 +157,29 @@ impl PluginManifest {
         if is_valid_file(&user_plugin_models) {
             return true;
         }
-        let fallback = PathBuf::from(r"D:\Portable Soft\ArtCraft\photocraft-0.6.0-windows-x64-portable\PhotoCraftData\models").join(&model.name);
+        let fallback = PathBuf::from("PhotoCraftData")
+            .join("models")
+            .join(&model.name);
         is_valid_file(&fallback)
     }
 
     pub fn all_models_installed(&self) -> bool {
-        self.models
-            .iter()
-            .filter(|m| m.required)
-            .all(|m| self.is_model_installed(m))
+        if self.models.is_empty() {
+            return true;
+        }
+        self.models.iter().all(|m| self.is_model_installed(m))
+    }
+
+    pub fn required_models_installed(&self) -> bool {
+        let required_models: Vec<_> = self.models.iter().filter(|m| m.required).collect();
+        if required_models.is_empty() {
+            return self.all_models_installed();
+        }
+        required_models.iter().all(|m| self.is_model_installed(m))
+    }
+
+    pub fn model_by_role(&self, role: &str) -> Option<&ModelRequirement> {
+        self.models.iter().find(|m| m.role.as_deref() == Some(role))
     }
 }
 
@@ -243,6 +262,8 @@ pub struct PluginCommandStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelRequirement {
+    #[serde(default)]
+    pub role: Option<String>,
     pub name: String,
     pub required: bool,
     pub size_mb: Option<u64>,
@@ -399,6 +420,7 @@ mod tests {
             commands: vec![],
             models: vec![
                 ModelRequirement {
+                    role: Some("primary".to_string()),
                     name: "test_model.onnx".to_string(),
                     required: true,
                     size_mb: Some(1),
@@ -406,6 +428,7 @@ mod tests {
                     sha256: None,
                 },
                 ModelRequirement {
+                    role: Some("secondary".to_string()),
                     name: "optional_model.onnx".to_string(),
                     required: false,
                     size_mb: None,
@@ -423,13 +446,36 @@ mod tests {
 
         assert!(manifest.is_model_installed(&manifest.models[0]));
         assert!(!manifest.is_model_installed(&manifest.models[1]));
-        // Since optional_model is not required, all required models are installed:
+        assert_eq!(
+            manifest.model_by_role("primary").map(|m| m.name.as_str()),
+            Some("test_model.onnx")
+        );
+        assert_eq!(
+            manifest.model_by_role("secondary").map(|m| m.name.as_str()),
+            Some("optional_model.onnx")
+        );
+        assert!(manifest.model_by_role("non_existent").is_none());
+
+        // Because optional_model is declared but missing, all_models_installed is FALSE:
+        assert!(!manifest.all_models_installed());
+        // But required models are installed:
+        assert!(manifest.required_models_installed());
+
+        // Empty models manifest returns true
+        let empty_manifest = PluginManifest::default();
+        assert!(empty_manifest.all_models_installed());
+        assert!(empty_manifest.required_models_installed());
+
+        // Once optional_model is installed, all_models_installed becomes TRUE:
+        let opt_file = models_dir.join("optional_model.onnx");
+        std::fs::write(&opt_file, b"dummy opt").unwrap();
         assert!(manifest.all_models_installed());
 
         // Now test flat plugin_dir placement
         let flat_model = temp_dir.join("flat_model.onnx");
         std::fs::write(&flat_model, b"dummy flat").unwrap();
         let flat_req = ModelRequirement {
+            role: None,
             name: "flat_model.onnx".to_string(),
             required: true,
             size_mb: None,
@@ -442,6 +488,7 @@ mod tests {
         let zero_byte_model = models_dir.join("zero_byte.onnx");
         std::fs::write(&zero_byte_model, b"").unwrap();
         let zero_req = ModelRequirement {
+            role: None,
             name: "zero_byte.onnx".to_string(),
             required: true,
             size_mb: None,
@@ -453,6 +500,7 @@ mod tests {
         let part_model = models_dir.join("in_progress.onnx.part");
         std::fs::write(&part_model, b"partial data").unwrap();
         let part_req = ModelRequirement {
+            role: None,
             name: "in_progress.onnx.part".to_string(),
             required: true,
             size_mb: None,
@@ -535,5 +583,53 @@ mod tests {
         assert_eq!(algo.corner_threshold, Some(60));
         assert!(algo.copy_clipboard);
         assert!(!algo.export_file);
+    }
+
+    #[test]
+    fn test_plugin_cannot_use_another_plugin_model() {
+        let base_tmp = std::env::temp_dir().join("test_model_cross_plugin_isolation");
+        let _ = std::fs::remove_dir_all(&base_tmp);
+
+        let plugin_a = base_tmp.join("plugin_a");
+        let plugin_b = base_tmp.join("plugin_b");
+        std::fs::create_dir_all(plugin_a.join("models")).unwrap();
+        std::fs::create_dir_all(plugin_b.join("models")).unwrap();
+
+        // Model exists strictly in plugin_a
+        let model_a_file = plugin_a.join("models").join("isolated_model.onnx");
+        std::fs::write(&model_a_file, b"FAKE_ONNX_DATA").unwrap();
+
+        // Plugin B attempts to access isolated_model.onnx
+        let manifest_b = PluginManifest {
+            id: "ai.photocraft.plugins.plugin_b".to_string(),
+            name: "Plugin B".to_string(),
+            version: "1.0.0".to_string(),
+            description: "Plugin B description".to_string(),
+            author: "Author".to_string(),
+            plugin_type: PluginType::NativeAi,
+            models: vec![ModelRequirement {
+                name: "isolated_model.onnx".to_string(),
+                required: true,
+                role: Some("custom_role".to_string()),
+                size_mb: Some(10),
+                sha256: None,
+                url: Some("https://example.com/isolated_model.onnx".to_string()),
+            }],
+            plugin_dir: Some(plugin_b.clone()),
+            ..Default::default()
+        };
+
+        // Plugin B MUST NOT find model in plugin A's directory!
+        let model_req = &manifest_b.models[0];
+        assert!(
+            !manifest_b.is_model_installed(model_req),
+            "Violation: Plugin B was able to see and use Plugin A's model!"
+        );
+        assert!(
+            !manifest_b.all_models_installed(),
+            "Violation: Plugin B falsely reported all_models_installed when model belongs to Plugin A!"
+        );
+
+        let _ = std::fs::remove_dir_all(base_tmp);
     }
 }

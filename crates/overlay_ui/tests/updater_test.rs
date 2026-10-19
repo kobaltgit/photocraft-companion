@@ -1,6 +1,6 @@
 use overlay_ui::updater::{
     categorize_asset, generate_update_script, is_asset_matching_os, is_version_newer,
-    prepare_portable_update, ReleaseAsset, UpdateCheckResult, UpdateState,
+    prepare_portable_update, resolve_reveal_target, ReleaseAsset, UpdateCheckResult, UpdateState,
 };
 use std::path::PathBuf;
 
@@ -271,4 +271,24 @@ fn test_portable_update_script_content() {
 
     let _ = std::fs::remove_file(&temp_zip_path);
     let _ = std::fs::remove_file(&generated_path);
+}
+
+#[test]
+fn test_resolve_reveal_target() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
+    // Directory resolution
+    let (target_dir, is_dir) = resolve_reveal_target(&manifest_dir);
+    assert!(target_dir.is_absolute());
+    assert!(is_dir);
+
+    // Relative directory resolution
+    let (target_rel_dir, is_dir_rel) = resolve_reveal_target(&PathBuf::from("src"));
+    assert!(target_rel_dir.is_absolute());
+    assert!(is_dir_rel);
+
+    // File resolution
+    let (target_file, is_file_dir) = resolve_reveal_target(&PathBuf::from("Cargo.toml"));
+    assert!(target_file.is_absolute());
+    assert!(!is_file_dir);
 }
