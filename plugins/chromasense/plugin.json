@@ -1,0 +1,91 @@
+{
+  "id": "ui.photocraft.plugins.chromasense",
+  "name": "ChromaSense",
+  "version": "1.0.0",
+  "description": "Accessibility Color Assistant for artists with color vision deficiencies",
+  "author": "PhotoCraft Community",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "interactive_ui": {
+    "window_title": "ChromaSense A11y",
+    "default_width": 320.0,
+    "default_height": 520.0,
+    "script": "logic.rhai",
+    "widgets": [
+      {
+        "type": "color_slot",
+        "id": "color_fg",
+        "label": "Foreground",
+        "default_hex": "#2563eb"
+      },
+      {
+        "type": "color_slot",
+        "id": "color_bg",
+        "label": "Background",
+        "default_hex": "#ffffff"
+      },
+      {
+        "type": "dropdown",
+        "id": "vision_profile",
+        "label": "Vision Profile",
+        "options": [
+          "Normal Vision",
+          "Deuteranopia (Green-blind)",
+          "Protanopia (Red-blind)",
+          "Tritanopia (Blue-blind)"
+        ],
+        "default_index": 0
+      },
+      {
+        "type": "hue_wheel",
+        "id": "compass",
+        "source_color_id": "color_fg",
+        "show_pointer": true
+      },
+      {
+        "type": "label",
+        "text_binding": "semantic_color_name"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "slider",
+        "id": "red",
+        "label": "Red",
+        "min": 0.0,
+        "max": 255.0,
+        "step": 1.0,
+        "default": 37.0
+      },
+      {
+        "type": "slider",
+        "id": "green",
+        "label": "Green",
+        "min": 0.0,
+        "max": 255.0,
+        "step": 1.0,
+        "default": 99.0
+      },
+      {
+        "type": "slider",
+        "id": "blue",
+        "label": "Blue",
+        "min": 0.0,
+        "max": 255.0,
+        "step": 1.0,
+        "default": 235.0
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "banner",
+        "id": "collision_guard",
+        "message_binding": "collision_warning",
+        "style_binding": "collision_style"
+      }
+    ]
+  }
+}

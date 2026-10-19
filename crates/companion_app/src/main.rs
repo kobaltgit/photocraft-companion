@@ -214,6 +214,7 @@ fn main() -> anyhow::Result<()> {
             PluginType::NativeAlgorithm => "Native Algorithm",
             PluginType::Script => "Script Automation",
             PluginType::ExternalCli => "External CLI Tool",
+            PluginType::InteractiveUi => "Interactive UI Panel",
         };
         println!(
             "  - [{}] {} (v{}) by {}",
@@ -492,6 +493,31 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // IPC action execution worker for interactive dynamic plugins (e.g. Rhai scripts, palette harmony)
+    let (ipc_action_tx, mut ipc_action_rx) =
+        tokio::sync::mpsc::unbounded_channel::<core_contracts::PluginIpcAction>();
+    let client_ipc = client.clone();
+    rt_handle.spawn(async move {
+        while let Some(action) = ipc_action_rx.recv().await {
+            info!(
+                "Executing IPC action '{}' with params: {}",
+                action.command, action.params
+            );
+            if action.command == "tools.setColors" {
+                let fg = action.params.get("foreground").and_then(|v| v.as_str());
+                let bg = action.params.get("background").and_then(|v| v.as_str());
+                if let Err(e) = client_ipc.set_colors(fg, bg).await {
+                    tracing::warn!("Failed to set colors via IPC: {e}");
+                }
+            } else if let Err(e) = client_ipc
+                .execute_command(&action.command, action.params)
+                .await
+            {
+                tracing::warn!("Failed to execute IPC action '{}': {e}", action.command);
+            }
+        }
+    });
+
     if is_daemon_only {
         println!("\nPhotoCraft Companion is active in system tray! (Press Ctrl+C to stop)");
         // Register direct tray exit handler for daemon mode
@@ -598,6 +624,7 @@ fn main() -> anyhow::Result<()> {
         Some(connection_state),
         Some(on_token_saved),
         Some(on_launch_requested),
+        Some(ipc_action_tx),
     )?;
 
     Ok(())

@@ -239,6 +239,13 @@ impl PluginRegistry {
                                         );
                                         self.manifests.push(manifest);
                                     }
+                                    PluginType::InteractiveUi => {
+                                        info!(
+                                            "Found Interactive UI plugin manifest: {} [{}]",
+                                            manifest.name, manifest.id
+                                        );
+                                        self.manifests.push(manifest);
+                                    }
                                 }
                             }
                             Err(e) => {

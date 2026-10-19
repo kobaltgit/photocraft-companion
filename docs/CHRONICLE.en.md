@@ -2175,6 +2175,55 @@ Version **v1.0.8** elevates the PhotoCraft Companion codebase to an industry-gra
 * `plugin_validator` validated all 6 plugins with zero errors.
 * Prepared release tag `v1.0.8` triggering multiplatform CI packaging for Windows, Linux, and macOS.
 
+---
+
+## [2026-10-19 07:00] Chapter 67: Universal Interactive UI Plugin Infrastructure and ChromaSense Accessibility Assistant
+
+*Time: October 19, 2026, 07:00 (~30 minutes)*
+
+### 1. Context: Moving Beyond Static Macros and Batch AI
+Until now, the PhotoCraft Companion ecosystem operated around two established paradigms:
+1. **No-Code Macros** — linear chains of internal PhotoCraft API invocations (`commands`);
+2. **Native AI Plugins** — single-pass neural network inference (`GenericAiPlugin`: RMBG segmentation, LaMa inpainting, Real-ESRGAN upscaling, Depth Anything estimation, vectorize).
+
+However, digital artists and graphic designers regularly face a broad spectrum of creative tasks requiring continuous bidirectional feedback: dynamic color pickers, spectral hue compasses, mixer palettes, contrast checkers, and interactive accessibility assistants. Fulfilling these workflows via static toolbar buttons is impossible — creators require responsive floating tool windows with real-time state manipulation and computational logic.
+
+This motivated the design and implementation of our third plugin paradigm: **`PluginType::InteractiveUi`**.
+
+### 2. Architectural Boundary & Zero-Core Hardcoding
+The foundational law of our architecture is strict runtime neutrality: any third-party creator must be able to craft an interactive UI tool simply by dropping a declarative JSON manifest and a logic script into `plugins/`, with zero modifications to the core Companion codebase and no recompilation required.
+
+To prevent the temptation of hardcoding bespoke egui windows for specific tools, we developed an open, declarative interactive tool runtime:
+- **`core_contracts` Extensions**: added `InteractiveUiConfig` and declarative `WidgetNode` trees to `PluginManifest`.
+- **Rhai Scripting Sandbox**: embedded the lightweight, secure Rhai engine into the runtime. All state updates, color conversions, and mathematical formulas evaluate safely inside `logic.rhai` with no direct access to filesystem, network, or arbitrary host memory.
+- **Vector-First UI Widget Library (`overlay_ui::dynamic_tool`)**:
+  - `HueWheel` — vector-rendered spectral color wheel featuring a live hue angle pointer;
+  - `ColorSlot` — interactive slot for previewing and modifying HEX colors;
+  - `Slider` & `Dropdown` — smooth-scrubbing parameter controls and option pickers;
+  - `Banner` — notification callouts with Info, Warning, and Error styles, adhering strictly to the Vector-First UI standard (drawn purely with geometric strokes and fills, completely devoid of emojis or tofu Unicode glyphs);
+  - `Label` & `Separator` — dynamic text bindings and visual dividers.
+
+### 3. Crate Isolation and Asynchronous IPC
+Pursuant to the Master Development Regulations, the user interface layer `overlay_ui` must never directly depend on the socket client in `photocraft_bridge`.
+
+Communication between interactive tools and PhotoCraft is decoupled through asynchronous message passing:
+- Whenever widgets trigger external editor side-effects, `DynamicToolEngine` dispatches a `PluginIpcAction` (`ExecuteCommand`, `SetSelection`, `UpdateLayer`);
+- Actions are sent over a thread-safe `tokio::sync::mpsc::UnboundedSender<PluginIpcAction>` channel to `companion_app`;
+- The companion runtime dispatches them directly to the `PhotoCraftClient` socket, preserving clean boundary isolation between UI rendering and socket networking.
+
+### 4. Reference Flagship: ChromaSense A11y (Accessibility Assistant)
+To validate and showcase the interactive infrastructure, we engineered the first live interactive plugin: `plugins/chromasense/` (ChromaSense A11y). Designed for digital painters with color vision deficiencies (CVD) as well as designers building WCAG-compliant assets:
+1. **Semantic Color Naming:** `logic.rhai` computes real-time perceptual RGB/HSV metrics, producing intuitive descriptive names (e.g., distinguishing subtle shades of green and amber for red-green color-blind artists).
+2. **WCAG 2.1 Contrast Calculation:** calculates relative luminance $L_1$ and $L_2$ dynamically to verify contrast ratios between foreground and background against accessibility standards (3:1 for graphic elements, 4.5:1 for body copy), triggering live vector collision warnings.
+3. **Color Vision Deficiency Simulation:** features real-time preview profiles for Deuteranopia (green blindness), Protanopia (red blindness), and Tritanopia (blue blindness), allowing artists to verify that vital visual anchors remain legible to all viewers.
+
+### 5. Verification & Definition of Done (Resource Guard)
+- **100% Green Test Suite:** full workspace test run `cargo test --workspace -j 1` completed with exit code 0 — **122+ tests passed with zero failures**!
+- **Code Style:** `cargo fmt --all -- --check` verified zero formatting drift.
+- **Static Integrity Linters:** `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, and `vector_first_lint_test` all passed at 100%.
+- **Plugin Catalog & Packaging:** ecosystem expanded to 7 plugins. `plugin_validator` successfully validated `plugins/chromasense/` (manifest, bilingual README.md, vector icon.svg, and logic.rhai) and generated the `.pcpl` package `dist/chromasense.pcpl`.
+
+
 
 
 

@@ -36,6 +36,8 @@ pub struct PluginManifest {
     pub ai: Option<AiPipelineConfig>,
     #[serde(default)]
     pub algorithm: Option<AlgorithmConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactive_ui: Option<InteractiveUiConfig>,
     #[serde(default = "default_true")]
     pub enabled: bool,
     #[serde(skip)]
@@ -202,6 +204,7 @@ impl Default for PluginManifest {
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             enabled: true,
             plugin_dir: None,
         }
@@ -216,7 +219,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginType {
     /// Declarative macro running PhotoCraft engine commands sequentially
@@ -230,6 +233,113 @@ pub enum PluginType {
     Script,
     /// External CLI process communicating via stdin/stdout or clipboard
     ExternalCli,
+    /// Dynamic interactive user interface plugin (with custom widgets or script bindings)
+    InteractiveUi,
+}
+
+/// Visual style variant for informative UI banners
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BannerStyle {
+    #[default]
+    Info,
+    Warning,
+    Error,
+    Success,
+}
+
+/// Abstract declarative UI widget node for dynamic plugin panels
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WidgetNode {
+    ColorSlot {
+        id: String,
+        label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        default_hex: Option<String>,
+    },
+    Slider {
+        id: String,
+        label: String,
+        min: f64,
+        max: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        step: Option<f64>,
+        default: f64,
+    },
+    Dropdown {
+        id: String,
+        label: String,
+        options: Vec<String>,
+        #[serde(default)]
+        default_index: usize,
+    },
+    Toggle {
+        id: String,
+        label: String,
+        #[serde(default)]
+        default: bool,
+    },
+    HueWheel {
+        id: String,
+        source_color_id: String,
+        #[serde(default = "default_true")]
+        show_pointer: bool,
+    },
+    Banner {
+        id: String,
+        message_binding: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        style_binding: Option<String>,
+    },
+    Label {
+        text_binding: String,
+    },
+    Separator,
+    Row {
+        #[serde(default)]
+        items: Vec<WidgetNode>,
+    },
+}
+
+/// Configuration for dynamic interactive UI plugins
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct InteractiveUiConfig {
+    pub window_title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_width: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_height: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub widgets: Vec<WidgetNode>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ipc_subscriptions: Vec<String>,
+}
+
+/// Abstract action DTO sent between interactive plugin UI/script and companion engine
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PluginIpcAction {
+    pub command: String,
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
+impl PluginIpcAction {
+    pub fn new(command: impl Into<String>, params: serde_json::Value) -> Self {
+        Self {
+            command: command.into(),
+            params,
+        }
+    }
+
+    pub fn command_only(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            params: serde_json::Value::Null,
+        }
+    }
 }
 
 /// Declarative algorithm pipeline specification for non-neural tasks (vectorization, 3D LUT, etc.)
@@ -631,5 +741,311 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(base_tmp);
+    }
+
+    #[test]
+    fn test_plugin_type_interactive_ui() {
+        assert_eq!(PluginType::default(), PluginType::NoCode);
+        let serialized = serde_json::to_string(&PluginType::InteractiveUi).unwrap();
+        assert_eq!(serialized, "\"interactive_ui\"");
+        let deserialized: PluginType = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized, PluginType::InteractiveUi);
+    }
+
+    #[test]
+    fn test_banner_style_serialization() {
+        let styles = [
+            (BannerStyle::Info, "\"info\""),
+            (BannerStyle::Warning, "\"warning\""),
+            (BannerStyle::Error, "\"error\""),
+            (BannerStyle::Success, "\"success\""),
+        ];
+        for (style, expected_json) in styles {
+            let serialized = serde_json::to_string(&style).unwrap();
+            assert_eq!(serialized, expected_json);
+            let deserialized: BannerStyle = serde_json::from_str(&serialized).unwrap();
+            assert_eq!(deserialized, style);
+        }
+    }
+
+    #[test]
+    fn test_interactive_ui_config_and_widgets_roundtrip() {
+        let config = InteractiveUiConfig {
+            window_title: "Harmonizer Studio".to_string(),
+            default_width: Some(360.0),
+            default_height: Some(540.0),
+            script: Some("ui.rhai".to_string()),
+            ipc_subscriptions: vec!["photocraft.layer.color_picked".to_string()],
+            widgets: vec![
+                WidgetNode::Banner {
+                    id: "status_banner".to_string(),
+                    message_binding: "banner_msg".to_string(),
+                    style_binding: Some("banner_style".to_string()),
+                },
+                WidgetNode::ColorSlot {
+                    id: "primary_color".to_string(),
+                    label: "Base Color".to_string(),
+                    default_hex: Some("#FF5500".to_string()),
+                },
+                WidgetNode::HueWheel {
+                    id: "color_wheel".to_string(),
+                    source_color_id: "primary_color".to_string(),
+                    show_pointer: true,
+                },
+                WidgetNode::Slider {
+                    id: "spread".to_string(),
+                    label: "Spread Angle".to_string(),
+                    min: 0.0,
+                    max: 180.0,
+                    step: Some(1.0),
+                    default: 45.0,
+                },
+                WidgetNode::Dropdown {
+                    id: "harmony_rule".to_string(),
+                    label: "Harmony".to_string(),
+                    options: vec![
+                        "Complementary".to_string(),
+                        "Analogous".to_string(),
+                        "Triadic".to_string(),
+                    ],
+                    default_index: 1,
+                },
+                WidgetNode::Toggle {
+                    id: "live_sync".to_string(),
+                    label: "Live Sync".to_string(),
+                    default: true,
+                },
+                WidgetNode::Separator,
+                WidgetNode::Label {
+                    text_binding: "summary_text".to_string(),
+                },
+                WidgetNode::Row {
+                    items: vec![
+                        WidgetNode::ColorSlot {
+                            id: "accent_1".to_string(),
+                            label: "Harmonic 1".to_string(),
+                            default_hex: None,
+                        },
+                        WidgetNode::ColorSlot {
+                            id: "accent_2".to_string(),
+                            label: "Harmonic 2".to_string(),
+                            default_hex: None,
+                        },
+                    ],
+                },
+            ],
+        };
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let deserialized: InteractiveUiConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_plugin_ipc_action_serialization() {
+        let action = PluginIpcAction {
+            command: "photocraft.palette.apply".to_string(),
+            params: serde_json::json!({
+                "colors": ["#FF0000", "#00FF00", "#0000FF"],
+                "target_layer_id": 12
+            }),
+        };
+
+        let json = serde_json::to_string(&action).unwrap();
+        let deserialized: PluginIpcAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, deserialized);
+
+        // Test command without params
+        let bare_action_json = r#"{"command": "photocraft.canvas.refresh"}"#;
+        let bare_action: PluginIpcAction = serde_json::from_str(bare_action_json).unwrap();
+        assert_eq!(bare_action.command, "photocraft.canvas.refresh");
+        assert_eq!(bare_action.params, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_plugin_manifest_interactive_ui_deserialization() {
+        let manifest_json = r##"{
+            "id": "ui.color_harmonizer",
+            "name": "Color Harmonizer",
+            "version": "1.0.0",
+            "description": "Interactive color harmony wheel and palette generator",
+            "plugin_type": "interactive_ui",
+            "interactive_ui": {
+                "window_title": "Color Harmonizer",
+                "default_width": 320.0,
+                "default_height": 480.0,
+                "script": "harmonizer.rhai",
+                "widgets": [
+                    {
+                        "type": "banner",
+                        "id": "tip_banner",
+                        "message_binding": "tip_text"
+                    },
+                    {
+                        "type": "color_slot",
+                        "id": "base_color",
+                        "label": "Base Color",
+                        "default_hex": "#3498db"
+                    },
+                    {
+                        "type": "hue_wheel",
+                        "id": "wheel",
+                        "source_color_id": "base_color"
+                    },
+                    {
+                        "type": "slider",
+                        "id": "roughness",
+                        "label": "Angle",
+                        "min": 0.0,
+                        "max": 360.0,
+                        "default": 180.0
+                    },
+                    {
+                        "type": "dropdown",
+                        "id": "mode",
+                        "label": "Mode",
+                        "options": ["Analogous", "Complementary"]
+                    },
+                    {
+                        "type": "toggle",
+                        "id": "auto_update",
+                        "label": "Auto Update"
+                    },
+                    {
+                        "type": "separator"
+                    },
+                    {
+                        "type": "label",
+                        "text_binding": "status_msg"
+                    },
+                    {
+                        "type": "row",
+                        "items": [
+                            {
+                                "type": "color_slot",
+                                "id": "res_1",
+                                "label": "Color 1"
+                            }
+                        ]
+                    }
+                ],
+                "ipc_subscriptions": ["palette.changed"]
+            }
+        }"##;
+
+        let manifest: PluginManifest = serde_json::from_str(manifest_json).unwrap();
+        assert_eq!(manifest.id, "ui.color_harmonizer");
+        assert_eq!(manifest.plugin_type, PluginType::InteractiveUi);
+        assert!(manifest.interactive_ui.is_some());
+
+        let ui = manifest.interactive_ui.unwrap();
+        assert_eq!(ui.window_title, "Color Harmonizer");
+        assert_eq!(ui.default_width, Some(320.0));
+        assert_eq!(ui.default_height, Some(480.0));
+        assert_eq!(ui.script.as_deref(), Some("harmonizer.rhai"));
+        assert_eq!(ui.widgets.len(), 9);
+        assert_eq!(ui.ipc_subscriptions, vec!["palette.changed"]);
+
+        match &ui.widgets[0] {
+            WidgetNode::Banner {
+                id,
+                message_binding,
+                style_binding,
+            } => {
+                assert_eq!(id, "tip_banner");
+                assert_eq!(message_binding, "tip_text");
+                assert_eq!(style_binding, &None);
+            }
+            other => panic!("Expected Banner, got {:?}", other),
+        }
+
+        match &ui.widgets[1] {
+            WidgetNode::ColorSlot {
+                id,
+                label,
+                default_hex,
+            } => {
+                assert_eq!(id, "base_color");
+                assert_eq!(label, "Base Color");
+                assert_eq!(default_hex.as_deref(), Some("#3498db"));
+            }
+            other => panic!("Expected ColorSlot, got {:?}", other),
+        }
+
+        match &ui.widgets[2] {
+            WidgetNode::HueWheel {
+                id,
+                source_color_id,
+                show_pointer,
+            } => {
+                assert_eq!(id, "wheel");
+                assert_eq!(source_color_id, "base_color");
+                assert!(show_pointer);
+            }
+            other => panic!("Expected HueWheel, got {:?}", other),
+        }
+
+        match &ui.widgets[3] {
+            WidgetNode::Slider {
+                id,
+                label,
+                min,
+                max,
+                default,
+                step,
+            } => {
+                assert_eq!(id, "roughness");
+                assert_eq!(label, "Angle");
+                assert_eq!(*min, 0.0);
+                assert_eq!(*max, 360.0);
+                assert_eq!(*default, 180.0);
+                assert_eq!(step, &None);
+            }
+            other => panic!("Expected Slider, got {:?}", other),
+        }
+
+        match &ui.widgets[4] {
+            WidgetNode::Dropdown {
+                id,
+                label,
+                options,
+                default_index,
+            } => {
+                assert_eq!(id, "mode");
+                assert_eq!(label, "Mode");
+                assert_eq!(options, &["Analogous", "Complementary"]);
+                assert_eq!(*default_index, 0);
+            }
+            other => panic!("Expected Dropdown, got {:?}", other),
+        }
+
+        match &ui.widgets[5] {
+            WidgetNode::Toggle { id, label, default } => {
+                assert_eq!(id, "auto_update");
+                assert_eq!(label, "Auto Update");
+                assert!(!default);
+            }
+            other => panic!("Expected Toggle, got {:?}", other),
+        }
+
+        match &ui.widgets[6] {
+            WidgetNode::Separator => {}
+            other => panic!("Expected Separator, got {:?}", other),
+        }
+
+        match &ui.widgets[7] {
+            WidgetNode::Label { text_binding } => {
+                assert_eq!(text_binding, "status_msg");
+            }
+            other => panic!("Expected Label, got {:?}", other),
+        }
+
+        match &ui.widgets[8] {
+            WidgetNode::Row { items } => {
+                assert_eq!(items.len(), 1);
+                assert!(matches!(items[0], WidgetNode::ColorSlot { .. }));
+            }
+            other => panic!("Expected Row, got {:?}", other),
+        }
     }
 }

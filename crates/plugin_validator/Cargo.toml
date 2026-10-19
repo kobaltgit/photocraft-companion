@@ -13,3 +13,4 @@ anyhow = { workspace = true }
 ureq = "3.4"
 roxmltree = "0.20"
 zip = { workspace = true }
+rhai = { workspace = true }

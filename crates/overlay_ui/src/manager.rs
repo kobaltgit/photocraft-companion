@@ -742,12 +742,14 @@ impl PluginManagerApp {
                             PluginType::NativeAlgorithm => "ALGO",
                             PluginType::Script => "SCRIPT",
                             PluginType::ExternalCli => "CLI",
+                            PluginType::InteractiveUi => "UI PANEL",
                         };
 
                         let type_color = match manifest.plugin_type {
                             PluginType::NativeAi => palette.accent_blue,
                             PluginType::NativeAlgorithm => Color32::from_rgb(0x17, 0xa2, 0xb8),
                             PluginType::NoCode => Color32::from_rgb(0x28, 0xa7, 0x45),
+                            PluginType::InteractiveUi => Color32::from_rgb(0x9b, 0x59, 0xb6),
                             _ => palette.text_muted,
                         };
 
@@ -2881,6 +2883,7 @@ mod tests {
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             plugin_dir: None,
         };
 

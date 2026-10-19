@@ -683,6 +683,27 @@
   - [x] **Документирование**:
     - Добавлены синхронные главы 66 в `docs/CHRONICLE.md` и `docs/CHRONICLE.en.md`.
 
+- [x] **Фаза 64: Универсальная инфраструктура интерактивных UI-плагинов и плагин доступности ChromaSense (Interactive UI & ChromaSense A11y)**
+  - [x] **Контракты `core_contracts` для интерактивного UI (`PluginType::InteractiveUi`)**:
+    - Добавлен тип `PluginType::InteractiveUi` и структура `InteractiveUiConfig` в схему `PluginManifest`.
+    - Разработана система декларативных виджетов `WidgetNode`: `ColorSlot`, `HueWheel`, `Dropdown`, `Slider`, `Banner`, `Label`, `Separator`.
+    - Введен тип `PluginIpcAction` для асинхронного взаимодействия плагинов с PhotoCraft через сокет без нарушения изоляции крейтов.
+  - [x] **Универсальный рантайм `DynamicToolEngine` и скриптовая песочница Rhai в `overlay_ui`**:
+    - Интеграция легковесного встраиваемого движка Rhai (`rhai::Engine`) для безопасного исполнения логики плагинов (`logic.rhai`) без прямого доступа к диску и сети.
+    - Векторная библиотека виджетов: спектральный круг `HueWheel`, векторные баннеры `Banner` (стили Info, Warning, Error без использования эмодзи и спец-символов), двунаправленная реактивная привязка переменных состояния `DynamicValue`.
+    - Асинхронная отправка `PluginIpcAction` через канал `tokio::sync::mpsc` в `companion_app`.
+  - [x] **Реализация эталонного плагина `plugins/chromasense/` (ChromaSense A11y)**:
+    - Декларативный манифест `plugin.json` с полным набором элементов управления и палитрой доступности.
+    - Скрипт `logic.rhai`: расчет относительной яркости и коэффициента контрастности WCAG 2.1, семантическое именование оттенков, детекция цветовых коллизий при дейтеранопии, протанопии и тританопии.
+    - Двуязычный `README.md` (English & Русский) с практическими сценариями для художников и дизайнеров и векторная иконка `icon.svg`.
+  - [x] **Верификация и Quality Gates (Resource Guard & Definition of Done)**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, 122+ теста).
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`.
+    - Валидатор `plugin_validator` подтвердил валидность всех 7 плагинов и собрал пакет `dist/chromasense.pcpl`.
+    - Добавлены синхронные главы 67 в `docs/CHRONICLE.md` и `docs/CHRONICLE.en.md`.
+
+
 
 
 

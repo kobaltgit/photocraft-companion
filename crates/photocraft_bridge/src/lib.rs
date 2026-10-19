@@ -1175,6 +1175,23 @@ impl PhotoCraftClient {
         self.execute_command("edit.pasteSpecial.pasteInPlace", json!({}))
             .await
     }
+
+    /// Set foreground and/or background colors in PhotoCraft via tools.setColors
+    pub async fn set_colors(
+        &self,
+        foreground: Option<&str>,
+        background: Option<&str>,
+    ) -> Result<Value> {
+        let mut params = serde_json::Map::new();
+        if let Some(fg) = foreground {
+            params.insert("foreground".to_string(), json!(fg));
+        }
+        if let Some(bg) = background {
+            params.insert("background".to_string(), json!(bg));
+        }
+        self.execute_command("tools.setColors", Value::Object(params))
+            .await
+    }
 }
 
 #[async_trait::async_trait]

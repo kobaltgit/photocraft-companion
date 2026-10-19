@@ -36,6 +36,7 @@ resvg = "0.48"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
 vtracer = "0.6.5"
+rhai = { version = "1.19", default-features = false, features = ["sync", "serde"] }
 
 [profile.dev]
 opt-level = 0
