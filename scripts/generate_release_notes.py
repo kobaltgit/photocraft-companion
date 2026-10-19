@@ -40,16 +40,18 @@ def generate_release_notes(version):
 ## 🌟 What's New in v{version} / Что нового в версии {version}
 
 ### 🇬🇧 English
-* **🚀 One-Click PhotoCraft Launch & Automated Onboarding (BUG-058)**: Launch PhotoCraft directly from Companion's waiting modal or manager settings with automatic 64-character crypto token generation (`control.token`), multi-source executable discovery, and silent process startup (`CREATE_NO_WINDOW`).
-* **🛡️ Tokio UI Thread Safety & Zero-Crash Settings (BUG-059)**: Eliminated application crash upon clicking "Save" in Plugins Manager by establishing ambient Tokio runtime guard and thread-safe async dispatching via runtime handle.
-* **💾 Fail-Safe Configuration Mirroring & Path Persistence (BUG-059)**: Automatic configuration migration from legacy locations, portable executable-adjacent settings mirroring, and robust `photocraft_path` recovery on every start.
-* **📚 First-Launch Onboarding Guide**: Added comprehensive visual and algorithmic steps in documentation for first-time Companion users.
+* **🛡️ Zero-Core Architecture & Quality Gates (BUG-062)**: Introduced role-based model routing (`manifest.model_by_role(...)`) in `core_contracts` and established the `architecture_integrity_test` linter to strictly eliminate keyword-sniffing and hardcoded model filenames or plugin IDs in core runtime.
+* **🔒 Strict Plugin Model Isolation (BUG-064)**: Blocked Directory Traversal (`..`, `/`, `\\`) in manifest parsing and runtime path resolution. Plugins are completely self-contained and isolated from accessing peer plugin models.
+* **📦 Mandatory Model Weights Verification (BUG-065)**: Enforced bilingual model weights documentation (`Model Weights:` / `Ссылки на веса модели:`) with verified Hugging Face download links in `plugin_validator` CI.
+* **📂 Plugins Folder Explorer & Multiplatform Reveal**: Added "Open Plugins Folder" button in Plugin Manager header with cross-platform native folder launch (`resolve_reveal_target`) across Windows, macOS, and Linux.
+* **🧪 Automated Development Regulations Linter (BUG-063)**: Added 7-point compliance suite (`dev_regulations_lint_test`) ensuring version sync across 5 manifests, crate dependency isolation, Resource Guard enforcement, and bilingual chronicle sync.
 
 ### 🇷🇺 Русский
-* **🚀 Запуск PhotoCraft в один клик и автоматический онбординг (BUG-058)**: Запуск PhotoCraft прямо из окна ожидания Компаньона или вкладки настроек с автоматической криптографической генерацией 64-значного токена (`control.token`), мульти-источниковым поиском экзешника и скрытым стартом без черных окон терминала (`CREATE_NO_WINDOW`).
-* **🛡️ Изоляция рантайма Tokio и устранение падения при сохранении (BUG-059)**: Устранена паника ядра и краш программы при клике на «Сохранить» в менеджере плагинов благодаря постоянной гарде рантайма на главном потоке и безопасной диспетчеризации задач через дескриптор `rt_handle`.
-* **💾 Зеркалирование настроек и надежное сохранение пути (BUG-059)**: Автоматическая миграция старых конфигов, зеркалирование файла настроек рядом с бинарником в портативном режиме и гарантированное восстановление `photocraft_path` при каждом старте.
-* **📚 Пошаговая инструкция первого запуска в README**: Наглядное руководство пользователя по быстрому старту связки PhotoCraft + Companion.
+* **🛡️ Архитектурный барьер Zero-Core и Quality Gates (BUG-062)**: Внедрена ролевая маршрутизация моделей (`model_by_role(...)`) в `core_contracts` и статический линтер `architecture_integrity_test`, полностью искоренивший keyword-sniffing и хардкод имен файлов моделей и ID плагинов в ядре.
+* **🔒 Железная изоляция моделей плагинов (BUG-064)**: Заблокирован Directory Traversal (`..`, `/`, `\\`) в манифестах и рантайме. Плагины полностью автономны и физически изолированы от использования чужих моделей.
+* **📦 Автоматическая валидация ссылок на веса моделей (BUG-065)**: Введено аппаратное требование двуязычных разделов со ссылками на веса моделей и репозитории Hugging Face в валидаторе плагинов.
+* **📂 Кнопка «Папка с плагинами» и кроссплатформенное открытие**: В заголовок менеджера плагинов добавлена кнопка быстрого перехода к папке плагинов с поддержкой нативного открытия в проводнике Windows, Finder на macOS и файловом менеджере Linux.
+* **🧪 Линтер регламентов разработки (BUG-063)**: Внедрен автоматический тест из 7 проверок (`dev_regulations_lint_test`), контролирующий синхронизацию версий в 5 файлах, изоляцию крейтов, флаги Resource Guard и синхронность глав летописи.
 
 ---
 
