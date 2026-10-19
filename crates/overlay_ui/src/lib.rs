@@ -1,3 +1,4 @@
+pub mod dynamic_tool;
 pub mod icons;
 pub mod manager;
 pub mod offline_modal;
@@ -7,6 +8,8 @@ pub mod toolstrip;
 pub mod updater;
 pub mod win32_window;
 
+pub use dynamic_tool::{DynamicToolEngine, DynamicWindowState};
+pub use eframe::egui;
 pub use icons::{get_egui_icon_data, get_icon_rgba, get_tray_icon, ICON_DARK_SVG, ICON_LIGHT_SVG};
 pub use manager::{ActiveTab, PluginManagerApp};
 pub use offline_modal::OfflineModalApp;
@@ -42,6 +45,7 @@ impl OverlayBar {
                     core_contracts::PluginType::NativeAi => Some("wand".to_string()),
                     core_contracts::PluginType::NoCode => Some("bw".to_string()),
                     core_contracts::PluginType::NativeAlgorithm => Some("vector".to_string()),
+                    core_contracts::PluginType::InteractiveUi => Some("palette".to_string()),
                     _ => None,
                 });
                 let icon_path = match (&m.plugin_dir, &m.icon) {
@@ -142,6 +146,7 @@ pub struct CompanionOverlayApp {
     pub last_saved_vertical: bool,
     pub last_saved_pos: Option<[f32; 2]>,
     pub on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
 }
 
 impl CompanionOverlayApp {
@@ -156,6 +161,8 @@ impl CompanionOverlayApp {
         exec_status: Option<core_contracts::SharedExecutionStatus>,
         connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
         on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
+        _ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
+        dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
     ) -> Self {
         let prefs_path = prefs_path.into();
         let data_dir = prefs_path.parent().unwrap_or(&prefs_path).to_path_buf();
@@ -175,8 +182,9 @@ impl CompanionOverlayApp {
         });
 
         let toolstrip = ToolstripApp::new(buttons, current_theme).with_orientation(cfg.is_vertical);
-        let mut manager = PluginManagerApp::new(manifests, &prefs_path, is_connected.clone())
-            .with_connection_state(conn_state_arc.clone());
+        let mut manager =
+            PluginManagerApp::new(manifests.clone(), &prefs_path, is_connected.clone())
+                .with_connection_state(conn_state_arc.clone());
         manager.config_path = config_path.clone();
         if manager.photocraft_path.is_empty() {
             if let Some(ref p) = cfg.photocraft_path {
@@ -211,6 +219,7 @@ impl CompanionOverlayApp {
             last_saved_vertical: cfg.is_vertical,
             last_saved_pos: cfg.window_position,
             on_launch_requested: None,
+            dynamic_engine,
         }
     }
 
@@ -424,8 +433,21 @@ impl eframe::App for CompanionOverlayApp {
 
         // Process any pending button clicks from toolstrip
         if let Some(action) = self.toolstrip.pending_action.take() {
-            if let Some(ref tx) = self.action_tx {
-                let _ = tx.send(action);
+            let handled_by_dynamic = if let Ok(mut engine) = self.dynamic_engine.lock() {
+                if engine.has_plugin(&action) {
+                    engine.toggle_window(&action);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if !handled_by_dynamic {
+                if let Some(ref tx) = self.action_tx {
+                    let _ = tx.send(action);
+                }
             }
         }
 
@@ -455,6 +477,14 @@ impl eframe::App for CompanionOverlayApp {
 
         // Render main toolbar panel if not hidden to tray
         if !self.is_hidden_to_tray {
+            // Render dynamic interactive plugin windows (HueWheel, Sliders, Banners, etc.)
+            if let Ok(mut engine) = self.dynamic_engine.lock() {
+                if engine.current_language() != self.manager.current_language {
+                    engine.set_language(self.manager.current_language);
+                }
+                engine.render(&ctx, &palette);
+            }
+
             if connected {
                 self.toolstrip.render(ui, &palette);
 
@@ -785,6 +815,9 @@ pub fn launch_companion_overlay(
     connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
     on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
     on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
+    ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
+    dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
+    egui_ctx_holder: Arc<std::sync::Mutex<Option<egui::Context>>>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -796,6 +829,8 @@ pub fn launch_companion_overlay(
         exec_status,
         connection_state,
         on_token_saved,
+        ipc_action_tx,
+        dynamic_engine,
     );
     if let Some(cb) = on_launch_requested {
         app = app.with_launch_callback(cb);
@@ -845,7 +880,12 @@ pub fn launch_companion_overlay(
     eframe::run_native(
         "PhotoCraft Toolbar",
         options,
-        Box::new(|_cc| Ok(Box::new(app))),
+        Box::new(move |cc| {
+            if let Ok(mut holder) = egui_ctx_holder.lock() {
+                *holder = Some(cc.egui_ctx.clone());
+            }
+            Ok(Box::new(app))
+        }),
     )
     .map_err(|e| anyhow::anyhow!("GUI Error: {e}"))
 }
@@ -1006,6 +1046,7 @@ mod tests {
         std::fs::write(&prefs_file, "{}").unwrap();
 
         let is_connected = Arc::new(AtomicBool::new(false));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
         let app = CompanionOverlayApp::new(
             OverlayBar::default_buttons(),
             vec![],
@@ -1016,6 +1057,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            dynamic_engine.clone(),
         );
 
         // Initial default state
@@ -1045,6 +1088,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            dynamic_engine,
         );
 
         assert!(app_restored.last_saved_vertical);
@@ -1069,6 +1114,7 @@ mod tests {
         std::fs::write(&prefs_file, "{}").unwrap();
 
         let is_connected = Arc::new(AtomicBool::new(true));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
         let mut app = CompanionOverlayApp::new(
             OverlayBar::default_buttons(),
             vec![],
@@ -1079,6 +1125,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            dynamic_engine,
         );
 
         let ctx = egui::Context::default();

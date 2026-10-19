@@ -23,6 +23,7 @@ const BANNED_SNIFFING_KEYWORDS: &[&str] = &[
     "depth_map",
     "vectorize",
     "black_and_white",
+    "chromasense",
 ];
 
 /// Prohibited hardcoded model weight file extensions in string literals inside core crates.
@@ -33,6 +34,7 @@ const BANNED_PLUGIN_ID_PREFIXES: &[&str] = &[
     "\"ai.photocraft.plugins.",
     "\"macro.photocraft.plugins.",
     "\"algorithm.photocraft.plugins.",
+    "\"ui.photocraft.plugins.",
     "\"plugin:",
 ];
 

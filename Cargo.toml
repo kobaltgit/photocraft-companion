@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.8"
+version = "1.1.0"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
@@ -36,6 +36,7 @@ resvg = "0.48"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
 vtracer = "0.6.5"
+rhai = { version = "1.19", default-features = false, features = ["sync", "serde"] }
 
 [profile.dev]
 opt-level = 0
@@ -45,7 +46,7 @@ incremental = false
 
 [profile.test]
 opt-level = 0
-debug = 1
+debug = 0
 codegen-units = 1
 incremental = false
 
@@ -55,3 +56,7 @@ codegen-units = 1
 lto = false
 debug = false
 panic = "abort"
+
+[profile.release.package.rhai]
+opt-level = 1
+

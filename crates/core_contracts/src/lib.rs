@@ -40,10 +40,11 @@ pub use i18n::Language;
 
 pub mod plugin;
 pub use plugin::{
-    AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BridgeOperations, ExecutionState,
-    ModelRequirement, NormalizationMode, Plugin, PluginCommandStep, PluginContext,
-    PluginInputSource, PluginManifest, PluginOutputMode, PluginResult, PluginType,
-    SharedExecutionStatus,
+    AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle, BridgeOperations,
+    ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode, Plugin,
+    PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginManifest,
+    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, WidgetNode,
+    IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;

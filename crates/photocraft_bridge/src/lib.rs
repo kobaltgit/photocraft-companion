@@ -985,6 +985,14 @@ impl PhotoCraftClient {
         self.call("ui.screenshot", json!({})).await
     }
 
+    /// Query current active foreground and background colors from PhotoCraft session
+    pub async fn get_session_colors(&self) -> Result<(String, String)> {
+        let res = self
+            .execute_command("session.inspect", serde_json::json!({}))
+            .await?;
+        Ok(parse_session_colors(&res))
+    }
+
     /// Get current active document info
     pub async fn get_document_info(&self) -> Result<DocumentInfo> {
         let inspect = self.execute_command("document.inspect", json!({})).await?;
@@ -1175,6 +1183,23 @@ impl PhotoCraftClient {
         self.execute_command("edit.pasteSpecial.pasteInPlace", json!({}))
             .await
     }
+
+    /// Set foreground and/or background colors in PhotoCraft via tools.setColors
+    pub async fn set_colors(
+        &self,
+        foreground: Option<&str>,
+        background: Option<&str>,
+    ) -> Result<Value> {
+        let mut params = serde_json::Map::new();
+        if let Some(fg) = foreground {
+            params.insert("foreground".to_string(), json!(fg));
+        }
+        if let Some(bg) = background {
+            params.insert("background".to_string(), json!(bg));
+        }
+        self.execute_command("tools.setColors", Value::Object(params))
+            .await
+    }
 }
 
 #[async_trait::async_trait]
@@ -1198,6 +1223,27 @@ impl core_contracts::BridgeOperations for PhotoCraftClient {
     async fn get_document_info(&self) -> Result<DocumentInfo> {
         self.get_document_info().await
     }
+}
+
+/// Parse foreground and background normalized float colors from `session.inspect` JSON response into hex strings (`#rrggbb`).
+/// Falls back to `("#000000", "#ffffff")` if keys are missing or malformed.
+pub fn parse_session_colors(res: &serde_json::Value) -> (String, String) {
+    let parse_color = |key: &str| -> Option<String> {
+        let arr = res.get(key)?.as_array()?;
+        if arr.len() >= 3 {
+            let r = (arr[0].as_f64()? * 255.0).round().clamp(0.0, 255.0) as u8;
+            let g = (arr[1].as_f64()? * 255.0).round().clamp(0.0, 255.0) as u8;
+            let b = (arr[2].as_f64()? * 255.0).round().clamp(0.0, 255.0) as u8;
+            Some(format!("#{:02x}{:02x}{:02x}", r, g, b))
+        } else {
+            None
+        }
+    };
+
+    let fg = parse_color("foreground").unwrap_or_else(|| "#000000".to_string());
+    let bg = parse_color("background").unwrap_or_else(|| "#ffffff".to_string());
+
+    (fg, bg)
 }
 
 #[cfg(test)]
@@ -1311,6 +1357,14 @@ mod tests {
                                             "ok": true,
                                             "result": { "layer": 99 }
                                         }),
+                                        "session.inspect" => json!({
+                                            "id": req["id"],
+                                            "ok": true,
+                                            "result": {
+                                                "foreground": [0.13, 0.77, 0.36, 1.0],
+                                                "background": [1.0, 1.0, 1.0, 1.0]
+                                            }
+                                        }),
                                         _ => json!({ "id": req["id"], "ok": true, "result": null }),
                                     }
                                 }
@@ -1365,6 +1419,11 @@ mod tests {
         // Test ui_screenshot
         let ss = client.ui_screenshot().await.unwrap();
         assert_eq!(ss["base64"], "dummy_img");
+
+        // Test get_session_colors
+        let (fg, bg) = client.get_session_colors().await.unwrap();
+        assert_eq!(fg, "#21c45c");
+        assert_eq!(bg, "#ffffff");
 
         server_handle.abort();
     }
@@ -1614,5 +1673,32 @@ mod tests {
         let token = generate_token();
         assert_eq!(token.len(), 64);
         assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_parse_session_colors_success() {
+        let json = json!({
+            "foreground": [0.13, 0.77, 0.36, 1.0],
+            "background": [1.0, 1.0, 1.0, 1.0]
+        });
+        let (fg, bg) = parse_session_colors(&json);
+        assert_eq!(fg, "#21c45c");
+        assert_eq!(bg, "#ffffff");
+    }
+
+    #[test]
+    fn test_parse_session_colors_fallback() {
+        let empty = json!({});
+        let (fg, bg) = parse_session_colors(&empty);
+        assert_eq!(fg, "#000000");
+        assert_eq!(bg, "#ffffff");
+
+        let malformed = json!({
+            "foreground": [0.5],
+            "background": "invalid"
+        });
+        let (fg2, bg2) = parse_session_colors(&malformed);
+        assert_eq!(fg2, "#000000");
+        assert_eq!(bg2, "#ffffff");
     }
 }

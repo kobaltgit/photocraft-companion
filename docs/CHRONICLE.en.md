@@ -2175,6 +2175,282 @@ Version **v1.0.8** elevates the PhotoCraft Companion codebase to an industry-gra
 * `plugin_validator` validated all 6 plugins with zero errors.
 * Prepared release tag `v1.0.8` triggering multiplatform CI packaging for Windows, Linux, and macOS.
 
+---
+
+## [2026-10-19 07:00] Chapter 67: Universal Interactive UI Plugin Infrastructure and ChromaSense Accessibility Assistant
+
+*Time: October 19, 2026, 07:00 (~30 minutes)*
+
+### 1. Context: Moving Beyond Static Macros and Batch AI
+Until now, the PhotoCraft Companion ecosystem operated around two established paradigms:
+1. **No-Code Macros** — linear chains of internal PhotoCraft API invocations (`commands`);
+2. **Native AI Plugins** — single-pass neural network inference (`GenericAiPlugin`: RMBG segmentation, LaMa inpainting, Real-ESRGAN upscaling, Depth Anything estimation, vectorize).
+
+However, digital artists and graphic designers regularly face a broad spectrum of creative tasks requiring continuous bidirectional feedback: dynamic color pickers, spectral hue compasses, mixer palettes, contrast checkers, and interactive accessibility assistants. Fulfilling these workflows via static toolbar buttons is impossible — creators require responsive floating tool windows with real-time state manipulation and computational logic.
+
+This motivated the design and implementation of our third plugin paradigm: **`PluginType::InteractiveUi`**.
+
+### 2. Architectural Boundary & Zero-Core Hardcoding
+The foundational law of our architecture is strict runtime neutrality: any third-party creator must be able to craft an interactive UI tool simply by dropping a declarative JSON manifest and a logic script into `plugins/`, with zero modifications to the core Companion codebase and no recompilation required.
+
+To prevent the temptation of hardcoding bespoke egui windows for specific tools, we developed an open, declarative interactive tool runtime:
+- **`core_contracts` Extensions**: added `InteractiveUiConfig` and declarative `WidgetNode` trees to `PluginManifest`.
+- **Rhai Scripting Sandbox**: embedded the lightweight, secure Rhai engine into the runtime. All state updates, color conversions, and mathematical formulas evaluate safely inside `logic.rhai` with no direct access to filesystem, network, or arbitrary host memory.
+- **Vector-First UI Widget Library (`overlay_ui::dynamic_tool`)**:
+  - `HueWheel` — vector-rendered spectral color wheel featuring a live hue angle pointer;
+  - `ColorSlot` — interactive slot for previewing and modifying HEX colors;
+  - `Slider` & `Dropdown` — smooth-scrubbing parameter controls and option pickers;
+  - `Banner` — notification callouts with Info, Warning, and Error styles, adhering strictly to the Vector-First UI standard (drawn purely with geometric strokes and fills, completely devoid of emojis or tofu Unicode glyphs);
+  - `Label` & `Separator` — dynamic text bindings and visual dividers.
+
+### 3. Crate Isolation and Asynchronous IPC
+Pursuant to the Master Development Regulations, the user interface layer `overlay_ui` must never directly depend on the socket client in `photocraft_bridge`.
+
+Communication between interactive tools and PhotoCraft is decoupled through asynchronous message passing:
+- Whenever widgets trigger external editor side-effects, `DynamicToolEngine` dispatches a `PluginIpcAction` (`ExecuteCommand`, `SetSelection`, `UpdateLayer`);
+- Actions are sent over a thread-safe `tokio::sync::mpsc::UnboundedSender<PluginIpcAction>` channel to `companion_app`;
+- The companion runtime dispatches them directly to the `PhotoCraftClient` socket, preserving clean boundary isolation between UI rendering and socket networking.
+
+### 4. Reference Flagship: ChromaSense A11y (Accessibility Assistant)
+To validate and showcase the interactive infrastructure, we engineered the first live interactive plugin: `plugins/chromasense/` (ChromaSense A11y). Designed for digital painters with color vision deficiencies (CVD) as well as designers building WCAG-compliant assets:
+1. **Semantic Color Naming:** `logic.rhai` computes real-time perceptual RGB/HSV metrics, producing intuitive descriptive names (e.g., distinguishing subtle shades of green and amber for red-green color-blind artists).
+2. **WCAG 2.1 Contrast Calculation:** calculates relative luminance $L_1$ and $L_2$ dynamically to verify contrast ratios between foreground and background against accessibility standards (3:1 for graphic elements, 4.5:1 for body copy), triggering live vector collision warnings.
+3. **Color Vision Deficiency Simulation:** features real-time preview profiles for Deuteranopia (green blindness), Protanopia (red blindness), and Tritanopia (blue blindness), allowing artists to verify that vital visual anchors remain legible to all viewers.
+
+### 5. Verification & Definition of Done (Resource Guard)
+- **100% Green Test Suite:** full workspace test run `cargo test --workspace -j 1` completed with exit code 0 — **122+ tests passed with zero failures**!
+- **Code Style:** `cargo fmt --all -- --check` verified zero formatting drift.
+- **Static Integrity Linters:** `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, and `vector_first_lint_test` all passed at 100%.
+- **Plugin Catalog & Packaging:** ecosystem expanded to 7 plugins. `plugin_validator` successfully validated `plugins/chromasense/` (manifest, bilingual README.md, vector icon.svg, and logic.rhai) and generated the `.pcpl` package `dist/chromasense.pcpl`.
+
+---
+
+## [2026-10-19 07:30] Chapter 68: Multi-Viewport Architecture for Interactive Plugins and Window Squashing Fix (BUG-066)
+
+*Time: October 19, 2026, 07:30 (~15 minutes)*
+
+### 1. Defect Context: BUG-066
+Upon initial launch of the companion release binary, clicking the ChromaSense interactive plugin button caused an immediate visual defect: the palette window was squashed into a 44-pixel-wide vertical strip, obscuring the toolbar and clipping the hue wheel and semantic color labels.
+
+The root cause stemmed from `egui` viewport mechanics: the UI subagent used `egui::Window::new`, which is strictly an in-viewport widget rendered within the parent window. Because the companion's toolbar viewport is only 44 pixels wide, any `egui::Window` inside it was clamped to those 44px boundaries.
+
+### 2. Resolution: True Floating Multi-Viewport Windows
+The defect was resolved cleanly without workarounds using the standard Multi-Viewport feature of `eframe`/`egui`:
+1. **Migration to `ctx.show_viewport_immediate`:**
+   In `DynamicToolEngine::render`, `egui::Window::new` was replaced with native multi-viewport window creation via `ctx.show_viewport_immediate`.
+   Each interactive plugin window now features:
+   - A deterministic `ViewportId::from_hash_of` preserving user window positions;
+   - Real desktop dimensions declared in the plugin manifest (`default_width`, `default_height` — e.g. 320×520);
+   - Floating palette behavior via `.with_always_on_top()` and `.with_resizable(true)`;
+   - Native OS titlebar and close handling.
+2. **Automated Guardrail Linter (`crates/overlay_ui/tests/multi_viewport_lint_test.rs`):**
+   Implemented an automated static test that:
+   - Prohibits `egui::Window::new` in `dynamic_tool.rs`;
+   - Enforces `show_viewport_immediate`, `with_always_on_top`, `with_inner_size`, and deterministic `ViewportId`;
+   - Validates reasonable window dimensions across all interactive plugin manifests.
+3. **Core Architectural Gate:**
+   Added `"chromasense"` to banned sniffing keywords and `"\"ui.photocraft.plugins."` to banned prefixes in `architecture_integrity_test.rs`.
+
+### 3. Verification & Definition of Done (Resource Guard)
+- `cargo fmt --all -- --check`: 0 divergence (exit code 0).
+- `cargo test --workspace -j 1`: **100% tests passed (all 126+ tests green)**.
+- Release binary `photocraft-companion.exe` successfully rebuilt with native multi-viewport support.
+- Defect tracked and resolved as `BUG-066` in `docs/BUGS_AND_ISSUES.md`.
+
+---
+
+## [2026-10-19 08:15] Chapter 69: Full Redesign of ChromaSense A11y, Native Rhai Localization, and Brettel Daltonization Simulation (BUG-067, BUG-068, BUG-069)
+
+*Time: October 19, 2026, 08:15 (~45 minutes)*
+
+### 1. Challenge & Identified Defects
+Following the multi-viewport window implementation in Chapter 68, rigorous manual and automated testing of ChromaSense revealed three critical usability and architecture defects:
+1. **Broken HEX Formatting (BUG-067):** Dragging the hue wheel pointer caused abrupt resets to black (`#000000`). In `logic.rhai`, HEX calculations used floating-point division `(val / 16).round()`, yielding malformed float strings like `"#0.00.0ff"`, which failed `egui`'s color parser.
+2. **Hardcoded Language & Dual Labels (BUG-068):** Rhai scripts were disconnected from the companion's localization state, forcing awkward dual strings like `"Emerald Jade (Изумрудный зеленый)"`. Manifests lacked Russian metadata fields.
+3. **Missing Visual CVD Simulation (BUG-069):** The plugin only reported text collision warnings without showing *how* a color-blind viewer actually perceives the selected color. Furthermore, color choices were never dispatched to PhotoCraft.
+
+### 2. Architectural Solution in `DynamicToolEngine` and `core_contracts`
+We implemented a clean, zero-hardcode resolution across the pipeline:
+1. **Native Rhai Helpers & Reactive Localization:**
+   - Registered native Rust helpers in Rhai: `rgb_to_hex(r, g, b)` (`format!("#{r:02x}{g:02x}{b:02x}")`), `hex_to_rgb(hex)`, `t(en, ru)`, and `current_language()`.
+   - Thread-safe language access via `Arc<RwLock<Language>>`, synchronized on the fly whenever the user toggles languages in Settings.
+   - Added declarative `label_ru` and `options_ru` to `core_contracts::WidgetNode` and `window_title_ru` to `InteractiveUiConfig`.
+2. **Perceptual Database of 152 Artists' Pigments:**
+   - Integrated 152 classical artist pigments (Ultramarine, Burnt Sienna, Ochre, Carmine, Malachite, etc.) and CSS3 shades with English and Russian names.
+   - Built integer-only perceptual matching via weighted color distance $2\Delta R^2 + 4\Delta G^2 + 3\Delta B^2$.
+3. **Color Vision Deficiency Simulation (Brettel-Viénot LMS Daltonization):**
+   - Implemented `simulate_cvd(r, g, b, profile_idx)` based on standard LMS space projections for Protanopia, Deuteranopia, and Tritanopia.
+   - Added `read_only: bool` to `WidgetNode::ColorSlot` and introduced a second live color slot `color_sim` ("Viewer Simulation" / "Как видит зритель").
+4. **PhotoCraft Live Color Dispatch:**
+   - Dispatches `tools.setColors` IPC commands with `foreground` and `background` parameters to the active PhotoCraft session on color change.
+5. **Regression Linter (`crates/overlay_ui/tests/plugin_i18n_lint_test.rs`):**
+   - Automated test scanning `*.rhai` to ban dual bilingual parentheses and ensuring complete bilingual metadata across interactive plugin manifests.
+
+### 3. Verification & Definition of Done (Resource Guard)
+- **100% Green Test Suite:** `cargo test --workspace -j 1` — **all 127 tests passed with zero failures!**
+- **Formatting:** `cargo fmt --all -- --check` — 0 differences.
+- **Linters:** All 6 specialized workspace linters passed cleanly.
+- **Plugin Validator:** Validated all 7 plugins with 0 errors.
+
+---
+
+## [2026-10-19 09:20] Chapter 70: Interactive Slot Target Focus, Vector Swap Button, and Adaptive Banner Text Wrapping (BUG-070)
+
+*Time: October 19, 2026, 09:20 (~25 minutes)*
+
+### 1. Challenge & Ergonomic Dead-End: From Usability to Mathematical Rigor
+During real-world testing of the refreshed ChromaSense panel, a cluster of defects was uncovered:
+1. **One-Way Editing Limitation:** The UI presented two color slots — "Active Color" (Foreground) and "Background". However, the RGB sliders and hue wheel exclusively modified the foreground slot. Manually picking a background tone or swapping colors required keying in hex codes by hand.
+2. **Banner and Swatch Clipping:** Long accessibility notices were cut off at the right edge in Russian localization (`... зри`), and the focus outline around the active color swatch was clipped on top by the scroll area due to `rect.expand()` with an outside stroke.
+3. **Swap Arrows Overlapping Label:** The vector arrows on the Swap button collided with the `"Swap Colors"` text label.
+4. **Flawed Vision Collision Heuristic:** Swapping `#2563eb` (Blue) and `#ffffff` (White) turned the warning from Green ("Distinguishable") to Orange ("Deuteranopia Alert: Red and green blend together"). The original Rhai logic used an isolated heuristic `(r_fg - g_fg).abs() < 40`, checking only the active color without comparing it to the background. For white (`255, 255`), `|255 - 255| = 0 < 40`, incorrectly flagging neutral white as a red-green collision.
+
+### 2. Architectural Solution in `core_contracts` and `DynamicToolEngine`
+Abiding by the ironclad Zero-Core Hardcoding principle, rather than coding bespoke workarounds into the companion core, we expanded the generic declarative specification in `WidgetNode` for the entire ecosystem:
+1. **Interactive Focusable Color Slots (`ColorSlot`):**
+   - Added `selectable: bool` and `target_binding: Option<String>` to `WidgetNode::ColorSlot`.
+   - In `DynamicToolEngine`, selectable slots register `Sense::click()` and use a `PointingHand` cursor.
+   - The focused slot receives an active vector outline drawn inside its bounds (`StrokeKind::Inside`, `palette.accent_blue`), paired with a `ui.add_space(2.0)` at the top of the scroll container to ensure zero border clipping.
+2. **Generic `WidgetNode::Button` with Vector Swap Arrows (Rule 6):**
+   - Introduced a new generic widget node `Button` with `id`, `label`, `label_ru`, `icon`.
+   - In strict compliance with Rule 6 (Vector-First UI, zero emojis and tofu unicode glyphs), the `"swap"` icon is rendered entirely via vector `line_segment` primitives within a dedicated left padding zone (`button_padding = Vec2::new(18.0, 4.0)`), completely eliminating overlap with the label.
+   - Clicking sets `action_<id> = true` in reactive state.
+3. **Multi-line Banner Text Wrapping:**
+   - In `draw_vector_banner`, replaced standard single-line rendering with `ui.add(egui::Label::new(...).wrap_mode(egui::TextWrapMode::Wrap))`, allowing the banner to smoothly expand vertically.
+4. **Native WCAG 2.1 Contrast Function:**
+   - Registered `calculate_contrast(r1, g1, b1, r2, g2, b2)` in the Rhai engine, computing W3C WCAG 2.1 sRGB linear luminance $L = 0.2126R_{lin} + 0.7152G_{lin} + 0.0722B_{lin}$ and contrast ratio $(L_1 + 0.05) / (L_2 + 0.05)$. Contrast is 100% mathematically symmetric: `contrast(A, B) == contrast(B, A)`.
+
+### 3. Symmetric Accessibility Math in `logic.rhai`
+In `plugins/chromasense/logic.rhai`, the mock heuristic was completely eliminated:
+- **Normal Vision:** Contrast ratio between foreground and background. $\ge 4.5:1$ achieves WCAG AAA, $\ge 3.0:1$ achieves WCAG AA, and $< 3.0:1$ triggers a low-contrast notice.
+- **Daltonism Profiles (Deuteranopia, Protanopia, Tritanopia):** Both foreground and background colors are simulated using the Brettel LMS model (`simulate_cvd`). We then calculate the simulated contrast ratio and perceptual color difference $\Delta_{\text{sim}}$ in the CVD viewer's perception. A collision is flagged only when colors genuinely blend together ($\text{ratio} < 2.5:1$ and $\Delta < 80$).
+- **100% Symmetry:** Swapping foreground and background never produces conflicting warnings.
+
+### 4. Verification & Definition of Done (Resource Guard)
+- **Workspace Tests:** `cargo test --workspace -j 1` — **all tests across all crates passed with zero failures**.
+- **Style & Architecture:** `cargo fmt --all -- --check` clean; `architecture_integrity_test` and `dev_regulations_lint_test` passed 100%.
+- **UI & i18n Linters:** `plugin_i18n_lint_test`, `vector_first_lint_test`, and `multi_viewport_lint_test` verified zero regressions.
+- **Plugin Packaging:** `plugin_validator` re-validated all 7 plugins and updated catalog tables.
+- **Release Build:** `photocraft-companion.exe` successfully compiled with `--release -j 1`.
+
+---
+
+## [2026-10-19 09:50] Chapter 71: Migration to International W3C WCAG 2.1 Standard and Brettel LMS in ChromaSense (BUG-071)
+
+*Time: October 19, 2026, 09:50 (~25 minutes)*
+
+### 1. Challenge: False-Positive Accessibility Rating
+During live testing of the ChromaSense accessibility plugin on light pink (`#ffb4eb`) over pure white (`#ffffff`), a critical diagnostic defect was discovered:
+- Under normal vision, the contrast ratio measured **1.6:1**, triggering a valid warning ("WCAG Notice: Low contrast").
+- Upon switching to color blindness profiles (Deuteranopia, Protanopia, Tritanopia), the contrast ratio dropped even further to **1.2:1 .. 1.4:1**, yet the status banner unexpectedly displayed a **green success indicator** ("Distinguishable").
+- This presented a misleading false positive: if text is illegible to viewers with normal vision at 1.6:1, it is physically impossible for a color-blind viewer to read it with even lower contrast (1.2:1).
+- **Root Cause:** The earlier logic evaluated isolated color difference `sim_diff < 80` without enforcing an absolute contrast floor. Distinct hues with nearly identical brightness were falsely marked as accessible.
+
+### 2. Alignment with Industry Standards (W3C WCAG 2.1 & Stark / WebAIM)
+Adhering to official W3C WCAG 2.1 specifications, readability is determined by relative luminance contrast rather than color hue:
+$$\text{Ratio} = \frac{L_1 + 0.05}{L_2 + 0.05}$$
+1. **Strict 3.0:1 Baseline Threshold:**
+   Any ratio below 3.0:1 constitutes an accessibility failure. Standard accessibility tools never award a passing grade to unreadable contrast.
+2. **Differentiated Warning Context:**
+   - If simulated contrast $< 3.0:1$ but normal vision contrast was $\ge 3.0:1$, an alert is triggered: `Color collision — colors blend together for viewer` (e.g. blue blindness shifting navy into light teal `#28b0aa` at 2.7:1 over white).
+   - If contrast was already deficient under normal vision, it flags `Low contrast — indistinguishable on background`.
+3. **Validated Success Tiers:**
+   Green badges are awarded strictly when meeting WCAG AA ($\ge 3.0:1$) and WCAG AAA ($\ge 4.5:1$).
+
+### 3. Verification & Definition of Done
+- **Unit Tests:** Implemented `test_chromasense_wcag_and_cvd_standard_compliance` in `crates/overlay_ui/src/dynamic_tool.rs` verifying all 4 vision profiles.
+- **Linters:** Zero failures across `plugin_i18n_lint_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`.
+- **Workspace Tests:** 100% pass rate in `cargo test --workspace -j 1`.
+- **Packaging & Release:** `.pcpl` packages re-generated; `photocraft-companion.exe` recompiled with `--release -j 1`.
+
+---
+
+## [2026-10-19 11:10] Chapter 72: Declarative Bidirectional Session Color Synchronization PhotoCraft ⇄ Interactive Plugins (BUG-072 / TASK-014)
+
+*Time: October 19, 2026, 11:10 (~45 minutes)*
+
+### 1. Challenge: Unidirectional Color Isolation
+Prior to this release, color communication between PhotoCraft and dynamic plugins (such as ChromaSense A11y and future palette generators) was strictly one-way:
+- Moving RGB sliders or selecting color swatches in ChromaSense pushed brush colors to PhotoCraft via `tools.setColors`.
+- However, when an artist in PhotoCraft selected a color using the **Eyedropper tool (`I`)**, reset defaults using **`D`** (black/white), or inverted palettes using **`X`**, the companion plugin remained unaware of canvas changes.
+- Artists were forced to re-type hex codes or work with static previews.
+- We needed a true bidirectional, live color synchronization protocol with zero user-perceptible latency, zero-core plugin hardcoding, and foolproof protection against infinite echo feedback loops.
+
+### 2. Architecture: Zero-Core Hardcoding & Two-Tier Echo Guard
+We developed a declarative, generic subscription architecture that any current or future interactive plugin can utilize:
+1. **Subscription Contract in `core_contracts`:**
+   Leveraging the existing `ipc_subscriptions: Vec<String>` field in `InteractiveUiConfig`, we established a canonical system topic:
+   ```rust
+   pub const IPC_SUB_SESSION_COLORS: &str = "session.colors";
+   ```
+2. **Socket Query & Parser in `photocraft_bridge`:**
+   In `crates/photocraft_bridge`, we implemented `PhotoCraftClient::get_session_colors()` and `parse_session_colors()` targeting `session.inspect`. The method cleanly parses normalized float arrays `[r, g, b, a]` (0.0..1.0) into hex strings `#rrggbb`, with strict clamping (`0..255`) and safe fallback `("#000000", "#ffffff")`.
+3. **Two-Tier Echo Guard in `DynamicToolEngine`:**
+   Whenever a plugin initiates `tools.setColors`, PhotoCraft updates its state, which the socket poller then reads back. Without suppression, the returned colors would trigger a recursive dispatch loop.
+   - We introduced an `echo_guard: Arc<Mutex<Option<(String, String)>>>` shared state.
+   - When Rhai calls `execute_command("tools.setColors", ...)` or `set_colors(...)`, outgoing colors are recorded in `echo_guard`.
+   - Incoming socket colors matching `echo_guard` are immediately discarded (`return false`), suppressing echo.
+4. **Adaptive Tokio Poller (`companion_app/src/main.rs`):**
+   - Composition root checks `has_open_windows_with_subscription(IPC_SUB_SESSION_COLORS)`.
+   - When all subscribed windows are closed, socket polling is completely idle (0% CPU and network overhead).
+   - When an interactive window opens, a lightweight 180ms poller queries `session.inspect`. Received colors trigger `dispatch_session_colors()` and `egui::Context::request_repaint()`, updating UI sliders and previews instantly without requiring mouse movement.
+5. **Isolated Rhai Hook in `plugins/chromasense/logic.rhai`:**
+   - Implemented `on_session_colors(fg_hex, bg_hex, state)`: updates `color_fg`, `color_bg`, syncs active `edit_target` RGB sliders, and invokes `recalculate_diagnostics(state)`.
+   - `execute_command("tools.setColors")` is strictly prohibited inside this hook, preventing echo loops at the script level.
+
+### 3. Personal Code Audit and Definition of Done (DoD)
+In strict compliance with project engineering regulations:
+- **Zero-Core Hardcoding:** Core production crates are 100% agnostic with zero keyword sniffing (`architecture_integrity_test` passed).
+- **Integration Tests:** Added `crates/photocraft_bridge/tests/session_colors_test.rs` and `crates/overlay_ui/tests/dynamic_tool_echo_test.rs`.
+- **Resource Guard:** All builds and tests executed with `-j 1`.
+- **Full Workspace Pass:** `cargo test --workspace -j 1` — **all 130 tests across all crates passed with zero failures**.
+- **Linters & Style:** `cargo fmt --all -- --check` clean; verified `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`.
+- **Plugin Packaging:** Validated 7/7 plugins with `plugin_validator` and re-packaged `.pcpl` archives in `dist/`.
+- **Release Compilation:** `photocraft-companion.exe` successfully generated.
+
+---
+
+## [2026-10-19 13:50] Chapter 73: Comprehensive Core Specification & Plugin Development Guide v2.0
+
+*Time: October 19, 2026, 13:50 (~40 minutes)*
+
+### 1. Challenge: Documentation Gap Between Core Capabilities and Third-Party Authors
+Following the successful implementation of 4 fundamental plugin architectures, the declarative Rhai-based dynamic UI engine, and bidirectional color synchronization with PhotoCraft, we conducted an audit of the developer documentation (`docs/PLUGIN_DEVELOPMENT_GUIDE.md`).
+The audit revealed that the developer guide had fallen significantly behind actual core engine capabilities:
+- It only documented traditional plugins (AI and macros);
+- The entire specification for the newly introduced `interactive_ui` plugin class was missing;
+- The 10 built-in `WidgetNode` types, layout nodes, and localization options were completely absent;
+- The capabilities of the Rhai scripting runtime (`logic.rhai`), lifecycle hooks `on_state_changed` and `on_session_colors`, and native color math/IPC functions were undocumented;
+- Third-party authors lacked guidance on PhotoCraft IPC subscriptions (`ipc_subscriptions: ["session.colors"]`) and Echo Guard mechanics;
+- Packaging instructions still referenced an outdated PowerShell script instead of the unified `plugin_validator` utility.
+
+### 2. Implementation: Plugin Development Guide v2.0
+We synchronously updated the documentation in both English and Russian (`PLUGIN_DEVELOPMENT_GUIDE.en.md` and `PLUGIN_DEVELOPMENT_GUIDE.md`), as well as the step-by-step workflow `skills/create-photocraft-plugin/SKILL.md`:
+1. **Classification of 4 Architectural Plugin Types:**
+   - `no_code` — declarative PhotoCraft command chains without neural weights or scripts;
+   - `native_ai` — ONNX neural models with automated inference across 4 computer vision paradigms;
+   - `native_algorithm` — pure algorithmic processors (vectorization, splines) without weights;
+   - `interactive_ui` — standalone floating panels and dynamic tools with declarative layout and Rhai scripts.
+2. **Declarative UI & Widget Specification:**
+   - Detailed specification of all 10 `WidgetNode` types: `color_slot`, `slider`, `dropdown`, `toggle`, `button`, `hue_wheel`, `banner`, `label`, `row`, `separator`.
+   - Comprehensive localization attributes (`label_ru`, `title_ru`, `options_ru`) for bilingual tooltips and controls.
+3. **Rhai Scripting API Specification (`logic.rhai`):**
+   - Entry hooks: user event hook `on_state_changed(id, action, state)` and system event hook `on_session_colors(fg_hex, bg_hex, state)`.
+   - Native bindings: editor command execution `execute_command(cmd, args)`, brush color setting `set_colors(fg, bg)`, localization `t(en, ru)`, format conversion `rgb_to_hex` / `hex_to_rgb`, named colors `get_named_color`, color vision deficiency simulation `simulate_cvd` (Brettel LMS), and contrast calculation `calculate_contrast` (W3C WCAG 2.1).
+4. **Bidirectional Synchronization Architecture:**
+   - Documented the `"session.colors"` topic in `ipc_subscriptions` and explained the two-tier Echo Guard loop-suppression mechanism.
+5. **Canonical Packaging and Distribution:**
+   - Standardized validation, lightweight `.pcpl` packaging, and marketplace catalog generation via `plugin_validator`.
+
+### 3. Verification & Definition of Done
+- **Formatting:** `cargo fmt --all -- --check` clean with zero diffs.
+- **Tests & Linters:** `cargo test --workspace -j 1` 100% passing; `dev_regulations_lint_test` verified chronicle chapter synchronization and documentation integrity.
+- **Plugin Validator:** Verified and re-packaged all 7 plugins in the ecosystem.
+
+
+
+
+
 
 
 

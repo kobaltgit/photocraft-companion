@@ -596,6 +596,7 @@ pub fn build_registry_index(plugins: &[ValidatedPlugin], repo_url: &str) -> Regi
                 core_contracts::PluginType::NativeAlgorithm => "native_algorithm",
                 core_contracts::PluginType::Script => "script",
                 core_contracts::PluginType::ExternalCli => "external_cli",
+                core_contracts::PluginType::InteractiveUi => "interactive_ui",
             };
 
             let models = m
@@ -732,6 +733,7 @@ pub fn generate_markdown_catalog_table(
             core_contracts::PluginType::NoCode => "`⚡ Macro`",
             core_contracts::PluginType::Script => "`📜 Script`",
             core_contracts::PluginType::ExternalCli => "`💻 CLI`",
+            core_contracts::PluginType::InteractiveUi => "`🎨 UI Panel`",
         };
 
         let download_badge = if is_russian {
@@ -859,6 +861,7 @@ mod tests {
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             enabled: true,
             plugin_dir: None,
         };
@@ -986,6 +989,7 @@ Awesome AI plugin description for tests.
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             enabled: true,
             plugin_dir: None,
         };
@@ -1048,6 +1052,7 @@ Awesome AI plugin description for tests.
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             enabled: true,
             plugin_dir: None,
         };
@@ -1110,6 +1115,7 @@ Awesome AI plugin description for tests.
             entrypoint: None,
             ai: None,
             algorithm: None,
+            interactive_ui: None,
             enabled: true,
             plugin_dir: None,
         };

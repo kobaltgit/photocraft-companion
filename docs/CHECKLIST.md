@@ -683,8 +683,121 @@
   - [x] **Документирование**:
     - Добавлены синхронные главы 66 в `docs/CHRONICLE.md` и `docs/CHRONICLE.en.md`.
 
+- [x] **Фаза 64: Универсальная инфраструктура интерактивных UI-плагинов и плагин доступности ChromaSense (Interactive UI & ChromaSense A11y)**
+  - [x] **Контракты `core_contracts` для интерактивного UI (`PluginType::InteractiveUi`)**:
+    - Добавлен тип `PluginType::InteractiveUi` и структура `InteractiveUiConfig` в схему `PluginManifest`.
+    - Разработана система декларативных виджетов `WidgetNode`: `ColorSlot`, `HueWheel`, `Dropdown`, `Slider`, `Banner`, `Label`, `Separator`.
+    - Введен тип `PluginIpcAction` для асинхронного взаимодействия плагинов с PhotoCraft через сокет без нарушения изоляции крейтов.
+  - [x] **Универсальный рантайм `DynamicToolEngine` и скриптовая песочница Rhai в `overlay_ui`**:
+    - Интеграция легковесного встраиваемого движка Rhai (`rhai::Engine`) для безопасного исполнения логики плагинов (`logic.rhai`) без прямого доступа к диску и сети.
+    - Векторная библиотека виджетов: спектральный круг `HueWheel`, векторные баннеры `Banner` (стили Info, Warning, Error без использования эмодзи и спец-символов), двунаправленная реактивная привязка переменных состояния `DynamicValue`.
+    - Асинхронная отправка `PluginIpcAction` через канал `tokio::sync::mpsc` в `companion_app`.
+  - [x] **Реализация эталонного плагина `plugins/chromasense/` (ChromaSense A11y)**:
+    - Декларативный манифест `plugin.json` с полным набором элементов управления и палитрой доступности.
+    - Скрипт `logic.rhai`: расчет относительной яркости и коэффициента контрастности WCAG 2.1, семантическое именование оттенков, детекция цветовых коллизий при дейтеранопии, протанопии и тританопии.
+    - Двуязычный `README.md` (English & Русский) с практическими сценариями для художников и дизайнеров и векторная иконка `icon.svg`.
+  - [x] **Верификация и Quality Gates (Resource Guard & Definition of Done)**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, 122+ теста).
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`.
+    - Валидатор `plugin_validator` подтвердил валидность всех 7 плагинов и собрал пакет `dist/chromasense.pcpl`.
+    - Добавлены синхронные главы 67 в `docs/CHRONICLE.md` и `docs/CHRONICLE.en.md`.
 
+- [x] **Фаза 65: Редизайн ChromaSense A11y, нативная мультиязычность в Rhai и колориметрическая симуляция дальтонизма (BUG-067, BUG-068, BUG-069)**
+  - [x] **Ликвидация бага форматирования HEX (BUG-067)**:
+    - Перенос форматирования HEX на строгий нативный Rust `rgb_to_hex(r, g, b)` (`format!("#{r:02x}{g:02x}{b:02x}")`) и нативный парсер `hex_to_rgb(hex)`.
+    - Устранение сброса в `#000000` и скачков указателя спектрального круга `HueWheel`.
+  - [x] **Полноценная нативная мультиязычность Rhai и виджетов (BUG-068)**:
+    - Регистрация нативных функций `t(en, ru)` и `current_language()` в Rhai через `Arc<RwLock<Language>>` с динамической синхронизацией при переключении языка в Companion App.
+    - Добавление `label_ru` и `options_ru` в `WidgetNode` (`ColorSlot`, `Dropdown`, `Slider`, `Toggle`) и `window_title_ru` в `InteractiveUiConfig`.
+    - Разработка автоматического линтера `crates/overlay_ui/tests/plugin_i18n_lint_test.rs` для предотвращения сдвоенных скобок в скриптах Rhai.
+  - [x] **Перцептивная база 152 оттенков и колориметрическая симуляция Бреттла (BUG-069)**:
+    - Внедрение базы 152 классических художественных пигментов (Ультрамарин, Жжёная сиена, Охра, Кармин, Малахит и др.) и CSS3 цветов.
+    - Быстрый подбор ближайшего имени по перцептивному расстоянию $2\Delta R^2 + 4\Delta G^2 + 3\Delta B^2$.
+    - Колориметрическая симуляция дальтонизма по матрицам Бреттла-Вьено (LMS Daltonization) для дейтеранопии, протанопии и тританопии.
+    - Добавление слота предпросмотра `color_sim` (`read_only: true`) и реальная передача выбранного цвета в PhotoCraft через команду `tools.setColors`.
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, все 127 тестов во всем воркспейсе).
+    - Пройдены все 6 специализированных линтеров воркспейса.
+    - Валидатор подтвердил 7/7 плагинов (`cargo run --package plugin_validator -j 1 -- --validate plugins`).
 
+- [x] **Фаза 66: Двунаправленный выбор фокуса, векторная кнопка Swap и адаптивный перенос текста баннера (BUG-070)**
+  - [x] **Декларативные расширения `core_contracts` (Zero-Core Hardcoding)**:
+    - Добавлены поля `selectable: bool` и `target_binding: Option<String>` в `WidgetNode::ColorSlot`.
+    - Добавлен универсальный виджет `WidgetNode::Button` (`id`, `label`, `label_ru`, `icon`) с проверкой в линтере локализации `plugin_i18n_lint_test.rs`.
+  - [x] **Адаптивный UI и векторная кнопка Swap в `overlay_ui` (Vector-First по Правилу 6)**:
+    - Активная акцентная векторная рамка фокуса (`palette.accent_blue`) вокруг выбранного слота цвета (`is_selected`).
+    - Векторная отрисовка встречных стрелок иконки Swap (`line_segment`) без использования смайликов и тофу-глифов.
+    - Включение многострочного переноса `wrap_mode(egui::TextWrapMode::Wrap)` в `draw_vector_banner` для ликвидации обрезания строк на любых языках.
+    - Динамическая привязка `HueWheel`: автоматическое чтение HEX текущего активного слота через indirection target binding.
+  - [x] **Обновление плагина ChromaSense A11y (`plugins/chromasense/`)**:
+    - Расширение базовой ширины окна до 350.0x570.0 для свободного размещения элементов управления.
+    - Декларативная разметка слотов `color_fg`, `color_bg` с селектором и кнопкой `swap_colors`.
+    - Логика `logic.rhai`: реактивное переключение фокуса между цветом переднего плана и фоном, перекалибровка слайдеров RGB, инверсия по кнопке Swap и лаконичные формулировки уведомлений без риска коллизий.
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, все тесты воркспейса).
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`.
+    - Валидатор подтвердил 7/7 плагинов и пересобрал `.pcpl` пакеты.
+    - Успешная сборка релизного бинарника `cargo build --package companion_app --release -j 1`.
+
+- [x] **Фаза 67: Переход на международный стандарт WCAG 2.1 и Brettel LMS в ChromaSense (BUG-071)**
+  - [x] **Ликвидация ложноположительных вердиктов доступности в `logic.rhai`**:
+    - Полное удаление эвристики `sim_diff < 80`, выдававшей ложный зеленый статус `success` при нечитаемом контрасте 1.2:1..1.6:1 (бледно-розовый на белом).
+    - Внедрение строгого порога стандарта W3C WCAG 2.1: любой симулированный контраст $< 3.0:1$ строго классифицируется как предупреждение `warning` (Fail).
+    - Разделение причин предупреждения: специфическая коллизия дальтонизма (когда цвета различались при обычном зрении, но слились у зрителя) против изначально неконтрастной пары цветов.
+    - Зеленый статус `success` выдается строго при достижении нормативных уровней WCAG AA ($\ge 3.0:1$) и WCAG AAA ($\ge 4.5:1$).
+  - [x] **Автоматизированное тестирование и валидация**:
+    - Добавлен юнит-тест `test_chromasense_wcag_and_cvd_standard_compliance` в `crates/overlay_ui/src/dynamic_tool.rs` (проверка контраста светло-розового на белом для обычного зрения 1.58:1, Дейтеранопии 1.2:1, Протанопии 1.3:1, Тританопии 1.4:1).
+    - Проверка линтера локализации скриптов `plugin_i18n_lint_test.rs`.
+    - Все тесты воркспейса пройдены со 100% результатом (`cargo test --workspace -j 1`).
+    - Пакеты `.pcpl` пересобраны валидатором (`plugin_validator`).
+    - Релизный бинарник `photocraft-companion.exe` успешно собран (`cargo build --package companion_app --release -j 1`).
+
+- [x] **Фаза 68: Декларативная двунаправленная синхронизация цветов PhotoCraft ⇄ Интерактивные плагины (BUG-072 / TASK-014)**
+  - [x] **Контракты ядра (`crates/core_contracts`)**:
+    - Добавлена публичная константа топика подписки `pub const IPC_SUB_SESSION_COLORS: &str = "session.colors";`.
+    - Подтверждена сериализация/десериализация `ipc_subscriptions: Vec<String>` в `InteractiveUiConfig`.
+  - [x] **Сетевой мост сокета (`crates/photocraft_bridge`)**:
+    - Реализован асинхронный метод `PhotoCraftClient::get_session_colors()` и утилита `parse_session_colors()` для опроса команды `session.inspect`.
+    - Точный парсинг нормализованных float `[r, g, b, a]` (0.0..1.0) в hex строки `#rrggbb` с безопасным fallback `("#000000", "#ffffff")` и клампингом.
+    - Добавлены модульные тесты в мок-сервер сокета и интеграционный тест `crates/photocraft_bridge/tests/session_colors_test.rs`.
+  - [x] **Движок инструментов (`crates/overlay_ui/src/dynamic_tool.rs`)**:
+    - Добавлен потокобезопасный двухэшелонный контейнер подавления эхо `echo_guard: Arc<Mutex<Option<(String, String)>>>`.
+    - Обновление `echo_guard` синхронизировано в обоих обработчиках Rhai: `execute_command("tools.setColors", ...)` и `set_colors(...)`.
+    - Добавлен метод проверки открытых окон с топиком `has_open_windows_with_subscription(topic)`.
+    - Добавлен метод `dispatch_session_colors(fg, bg)` с вызовом специализированного хука `on_session_colors` в AST Rhai.
+    - Добавлен интеграционный тест `crates/overlay_ui/tests/dynamic_tool_echo_test.rs`.
+  - [x] **Точка сборки (`crates/companion_app/src/main.rs`)**:
+    - `DynamicToolEngine` поднят на уровень главного потока ОС (Composition Root).
+    - Запущен легкий фоновый поллер Tokio (180 мс), опрашивающий цвета только при наличии открытых окон с подпиской `"session.colors"`.
+    - Перерисовка UI инициируется через потокобезопасный держатель `egui_ctx_holder.request_repaint()`.
+  - [x] **Плагин ChromaSense (`plugins/chromasense/`)**:
+    - В `plugin.json` добавлена декларативная подписка `"ipc_subscriptions": ["session.colors"]`.
+    - В `logic.rhai` выделена общая функция `recalculate_diagnostics(state)` и хук `on_session_colors(fg_hex, bg_hex, state)`.
+    - Хук `on_session_colors` строго изолирован от повторной отправки команд `tools.setColors` в PhotoCraft.
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, все 130 тестов во всем воркспейсе).
+    - Пройдены все 6 специализированных линтеров воркспейса.
+    - Валидатор подтвердил 7/7 плагинов (`cargo run --package plugin_validator -j 1 -- --validate plugins`).
+    - Пакеты `.pcpl` пересобраны в `dist/`.
+
+- [x] **Фаза 69: Актуализация руководства разработчика плагинов (Plugin Development Guide v2.0 & Interactive UI)**
+  - [x] **Синхронное обновление руководств разработчика (`docs/PLUGIN_DEVELOPMENT_GUIDE.md` и `.en.md`)**:
+    - Добавлена полная спецификация всех 4 архитектурных типов плагинов: `no_code`, `native_ai`, `native_algorithm`, `interactive_ui`.
+    - Документирован декларативный манифест `interactive_ui`: окно `title`/`width`/`height`/`resizable`, скрипт `script`, подписки `ipc_subscriptions: ["session.colors"]`.
+    - Описаны все 10 типов виджетов `WidgetNode` (`color_slot`, `slider`, `dropdown`, `toggle`, `button`, `hue_wheel`, `banner`, `label`, `row`, `separator`) с поддержкой двуязычия (`label_ru`, `title_ru`, `options_ru`).
+    - Специфицирован скриптовый движок Rhai (`logic.rhai`), хуки жизненного цикла (`on_state_changed`, `on_session_colors`) и встроенные нативные API (`execute_command`, `set_colors`, `t`, `current_language`, `rgb_to_hex`, `hex_to_rgb`, `get_named_color`, `simulate_cvd`, `calculate_contrast`).
+    - Описана архитектура двунаправленной синхронизации цветов и двухэшелонная защита от эхо-петель (Echo Guard).
+    - Актуализированы команды сборки и дистрибуции через `plugin_validator`.
+  - [x] **Обновление обучающего навыка DevKit (`skills/create-photocraft-plugin/SKILL.md`)**:
+    - Включены готовые примеры манифестов для всех 4 категорий плагинов (`native_ai`, `native_algorithm`, `no_code`, `interactive_ui`).
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов).
+    - Линтеры регламентов `dev_regulations_lint_test` и каталога плагинов подтверждены.
 
 
 
