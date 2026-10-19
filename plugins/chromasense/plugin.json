@@ -3,7 +3,7 @@
   "name": "ChromaSense",
   "version": "1.0.0",
   "description": "Accessibility Color Assistant for artists with color vision deficiencies",
-  "author": "PhotoCraft Community",
+  "author": "kobaltGIT",
   "plugin_type": "interactive_ui",
   "icon": "icon.svg",
   "commands": [],
