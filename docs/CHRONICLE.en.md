@@ -715,7 +715,8 @@ We dismantled the legacy monolithic plugin implementations inside the engine cor
 3. execute_inpainting (Generative Hole Filling): LaMa zero-prompt filling with native context window, binary mask dilation, and original pixel preservation.
 4. execute_segmentation (Foreground & Silhouette Masks): for RMBG-1.4 and foreground extraction networks.
 
-### 2. Universal Tiling Engine un_tiled_rgb_inference
+### 2. Universal Tiling Engine 
+un_tiled_rgb_inference
 Processing ultra-large imagery (2K, 4K, 8K) previously suffered from GPU VRAM exhaustion or forced downsampling to 512x512 that decimated sharpness.
 We implemented a universal chunking and stitching module with adaptive linear boundary blending:
 - Canvas is segmented into overlapping tiles of size 	ile_size (default 512x512) with overlap 	ile_pad (16-32 px).
@@ -2568,3 +2569,33 @@ Following the comprehensive architectural upgrades (Workflow Engine, context var
 - `cargo test --workspace -j 1` confirmed 100% pass across all 152 tests.
 - All specialized linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`) passed.
 - `plugin_validator` validated the catalog and verified zero drift in README tables.
+
+---
+
+## [2026-10-20 18:45] Chapter 77: Native Vector Discord Community Button in Plugins Manager
+
+*Time: October 20, 2026, 18:45 (~25 minutes)*
+
+### 1. Context and Objective
+The user requested adding a quick-access button to join the official Discord community server directly from the header navigation bar of `PhotoCraft - Plugins Manager` (positioned at the top-right corner opposite the primary tabs).
+
+Key design principles were agreed upon:
+- **Strict Rule 6 Compliance (Vector-First UI):** Zero Unicode emojis or font-based symbols. The icon is rendered strictly as a pure SVG vector graphic via `usvg`/`tiny_skia`, eliminating tofu (`□`) glyph rendering defects.
+- **Button Sizing & Ergonomics:** Compact square footprint (26×26 px), matching the exact height and corner radius (6.0 px) of adjacent navigation tabs, keeping the header clean without cluttering it with repetitive text.
+- **Theme-Adaptive Visuals:** In the idle (unhovered) state, the button blends seamlessly with the active theme using `palette.button_secondary` and theme text color (light silver in dark mode, dark graphite in light mode). Upon hovering, the icon illuminates with Discord's signature Blurple brand color (`#5865F2`).
+
+### 2. Implementation
+1. **Vector Assets & Caching (`crates/overlay_ui/src/icons.rs`):**
+   - Added `DISCORD_SVG` (with `fill="currentColor"` and precise `viewBox="0 0 256 199"`) and `DISCORD_COLOR_SVG` (with branded `fill="#5865f2"`).
+   - Introduced `SvgIconCache::get_or_load_discord(ctx, is_hovered, is_dark)` with automatic cache invalidation upon theme changes.
+   - Optimized `load_from_svg_str` to verify existing cached texture handles before re-rasterizing SVG markup.
+2. **Window Header Integration (`crates/overlay_ui/src/manager.rs`):**
+   - In `render_tabs_header`, introduced right-to-left layout alignment (`ui.with_layout(Layout::right_to_left, ...)`).
+   - Rendered a 26×26 px button with 6.0 px corner radius, centered 16×12.44 px vector icon (preserving authentic Discord geometry), and URL redirection to `crate::updater::COMPANION_DISCORD_URL`.
+   - Bound bilingual tooltips via `self.t("Join Discord Community", "Присоединиться к Discord-сообществу")`.
+
+### 3. Verification & Definition of Done
+- Added unit tests `test_render_discord_svg_valid` and `test_discord_cache_get_or_load` in `icons.rs`.
+- `cargo fmt --all -- --check` verified clean with 0 differences.
+- `cargo test --workspace -j 1` completed with 100% pass across the workspace.
+- Specialized linters `vector_first_lint_test`, `i18n_lint_test`, and `dev_regulations_lint_test` passed without errors.

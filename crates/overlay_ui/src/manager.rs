@@ -358,6 +358,47 @@ impl PluginManagerApp {
                 }
                 ui.add_space(4.0);
             }
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(4.0);
+                let is_dark = self.current_theme.is_dark();
+                let btn_size = Vec2::splat(26.0);
+                let (rect, response) = ui.allocate_exact_size(btn_size, egui::Sense::click());
+
+                let is_hovered = response.hovered();
+                let bg_color = if is_hovered {
+                    palette.button_secondary_hover
+                } else {
+                    palette.button_secondary
+                };
+
+                ui.painter().rect_filled(rect, 6.0, bg_color);
+
+                if let Some(tex) =
+                    self.store_icon_cache
+                        .get_or_load_discord(ui.ctx(), is_hovered, is_dark)
+                {
+                    let icon_size = Vec2::new(16.0, 12.44);
+                    let icon_rect = egui::Rect::from_center_size(rect.center(), icon_size);
+                    ui.painter().image(
+                        tex.id(),
+                        icon_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                }
+
+                let response = response.on_hover_text(self.t(
+                    "Join Discord Community",
+                    "Присоединиться к Discord-сообществу",
+                ));
+
+                if response.clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(
+                        crate::updater::COMPANION_DISCORD_URL,
+                    ));
+                }
+            });
         });
     }
 
