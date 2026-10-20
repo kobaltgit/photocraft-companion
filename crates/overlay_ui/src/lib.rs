@@ -568,13 +568,13 @@ impl eframe::App for CompanionOverlayApp {
                         window_min + egui::vec2(btn_rect.left(), btn_rect.bottom() + 6.0)
                     };
 
-                    let text_galley = ui.painter().layout_no_wrap(
-                        tt_text.clone(),
-                        egui::FontId::proportional(11.0),
-                        palette.text_primary,
-                    );
-                    let tt_width = (text_galley.size().x + 18.0).clamp(40.0, 320.0);
-                    let tt_height = 24.0;
+                    let font_id = egui::FontId::proportional(11.0);
+                    let galley =
+                        ui.painter()
+                            .layout(tt_text.clone(), font_id, palette.text_primary, 480.0);
+                    let galley_size = galley.size();
+                    let tt_width = (galley_size.x + 20.0).clamp(40.0, 520.0);
+                    let tt_height = (galley_size.y + 10.0).max(24.0);
 
                     let vp = egui::ViewportBuilder::default()
                         .with_decorations(false)

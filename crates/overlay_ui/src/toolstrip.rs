@@ -18,6 +18,7 @@ pub struct ToolstripApp {
     pub open_sub_actions_for: Option<(String, egui::Rect)>,
     pub pointer_down_start: Option<(String, std::time::Instant)>,
     pub suppress_click_for: Option<String>,
+    pub long_press_fired_for: Option<String>,
 }
 
 impl ToolstripApp {
@@ -38,6 +39,7 @@ impl ToolstripApp {
             open_sub_actions_for: None,
             pointer_down_start: None,
             suppress_click_for: None,
+            long_press_fired_for: None,
         }
     }
 
@@ -85,6 +87,7 @@ impl ToolstripApp {
         let active_action = self.active_action.clone();
         let is_dark = palette.is_dark;
 
+        let mut sub_action_open = None;
         let mut sub_action_toggle = None;
         let current_lang = self.language;
         let render_button_items =
@@ -94,7 +97,9 @@ impl ToolstripApp {
              pending: &mut Option<String>,
              hovered_tt: &mut Option<(String, egui::Rect)>,
              pointer_down: &mut Option<(String, std::time::Instant)>,
+             long_press_fired: &mut Option<String>,
              suppress_click: &mut Option<String>,
+             sub_open: &mut Option<(String, egui::Rect)>,
              sub_toggle: &mut Option<(String, egui::Rect)>| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
                 for btn in buttons.iter_mut() {
@@ -123,7 +128,12 @@ impl ToolstripApp {
                     );
 
                     let tooltip = if let Some(sub) = active_sub {
-                        format!("{} ({})", btn.label, sub.name_for_lang(current_lang))
+                        let sub_name = sub.name_for_lang(current_lang);
+                        if btn.label.ends_with(')') {
+                            format!("{}: {}", btn.label, sub_name)
+                        } else {
+                            format!("{} ({})", btn.label, sub_name)
+                        }
                     } else {
                         btn.label.clone()
                     };
@@ -187,23 +197,23 @@ impl ToolstripApp {
                         if resp.secondary_clicked() {
                             *sub_toggle = Some((btn.action.clone(), resp.rect));
                         } else if resp.is_pointer_button_down_on() {
-                            match pointer_down.as_ref() {
-                                Some((act, start)) if act == &btn.action => {
-                                    if start.elapsed().as_millis() >= 300 {
-                                        *sub_toggle = Some((btn.action.clone(), resp.rect));
-                                        *suppress_click = Some(btn.action.clone());
-                                        *pointer_down = None;
-                                        ui.ctx().request_repaint();
+                            if long_press_fired.as_deref() == Some(&btn.action) {
+                                // Already fired long-press: keep sub-actions open steadily, NO flicker!
+                            } else {
+                                match pointer_down.as_ref() {
+                                    Some((act, start)) if act == &btn.action => {
+                                        if start.elapsed().as_millis() >= 250 {
+                                            *sub_open = Some((btn.action.clone(), resp.rect));
+                                            *long_press_fired = Some(btn.action.clone());
+                                            *suppress_click = Some(btn.action.clone());
+                                            ui.ctx().request_repaint();
+                                        }
+                                    }
+                                    _ => {
+                                        *pointer_down =
+                                            Some((btn.action.clone(), std::time::Instant::now()));
                                     }
                                 }
-                                _ => {
-                                    *pointer_down =
-                                        Some((btn.action.clone(), std::time::Instant::now()));
-                                }
-                            }
-                        } else if let Some((act, _)) = pointer_down.as_ref() {
-                            if act == &btn.action {
-                                *pointer_down = None;
                             }
                         }
                     }
@@ -368,7 +378,9 @@ impl ToolstripApp {
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                         &mut self.pointer_down_start,
+                        &mut self.long_press_fired_for,
                         &mut self.suppress_click_for,
+                        &mut sub_action_open,
                         &mut sub_action_toggle,
                     );
                 });
@@ -500,14 +512,18 @@ impl ToolstripApp {
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                         &mut self.pointer_down_start,
+                        &mut self.long_press_fired_for,
                         &mut self.suppress_click_for,
+                        &mut sub_action_open,
                         &mut sub_action_toggle,
                     );
                 });
             });
         }
 
-        if let Some(ref target) = sub_action_toggle {
+        if let Some(ref target) = sub_action_open {
+            self.open_sub_actions_for = Some(target.clone());
+        } else if let Some(ref target) = sub_action_toggle {
             if self
                 .open_sub_actions_for
                 .as_ref()
@@ -520,9 +536,20 @@ impl ToolstripApp {
             }
         }
 
+        // When mouse is released anywhere on screen, reset long-press timer and hold state
+        if !ui.input(|i| i.pointer.any_down()) {
+            self.pointer_down_start = None;
+            self.long_press_fired_for = None;
+        }
+
         // Close sub-actions flyout if clicking anywhere else in the toolstrip window
         if let Some((_, anchor_rect)) = self.open_sub_actions_for {
-            if sub_action_toggle.is_none() && ui.input(|i| i.pointer.any_click()) {
+            if sub_action_open.is_none()
+                && sub_action_toggle.is_none()
+                && self.suppress_click_for.is_none()
+                && self.long_press_fired_for.is_none()
+                && ui.input(|i| i.pointer.any_click())
+            {
                 if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
                     if !anchor_rect.contains(pos) {
                         self.open_sub_actions_for = None;
@@ -847,6 +874,7 @@ mod tests {
         assert!(app.hovered_tooltip.is_none());
         assert!(!app.orientation_changed);
         assert!(app.suppress_click_for.is_none());
+        assert!(app.long_press_fired_for.is_none());
     }
 
     #[test]
