@@ -398,11 +398,13 @@ mod tests {
                     command: "layer.duplicate".to_string(),
                     params: json!({ "name": "Copy" }),
                     description: Some("Duplicate layer".to_string()),
+                    ..Default::default()
                 },
                 PluginCommandStep {
                     command: "filter.blur".to_string(),
                     params: json!({ "radius": 5 }),
                     description: None,
+                    ..Default::default()
                 },
             ],
             models: vec![],
@@ -429,6 +431,7 @@ mod tests {
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
             client: mock_bridge.clone(),
+            sub_action_id: None,
         };
 
         let result = plugin.execute(&ctx).await.unwrap();
@@ -453,6 +456,7 @@ mod tests {
                 command: "fail.cmd".to_string(),
                 params: json!({}),
                 description: None,
+                ..Default::default()
             }],
             models: vec![],
             action_id: None,
@@ -478,6 +482,7 @@ mod tests {
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
             client: mock_bridge,
+            sub_action_id: None,
         };
 
         let result = plugin.execute(&ctx).await;
@@ -553,6 +558,7 @@ mod tests {
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins"),
             client: mock_bridge,
+            sub_action_id: None,
         };
 
         let res = registry.execute("unknown.plugin", &ctx).await;

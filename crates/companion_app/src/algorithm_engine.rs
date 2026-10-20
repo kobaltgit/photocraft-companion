@@ -273,6 +273,7 @@ mod tests {
             models_dir: std::path::PathBuf::from("models"),
             plugin_dir: std::path::PathBuf::from("plugins/vectorize"),
             client: bridge.clone(),
+            sub_action_id: None,
         };
 
         let manifest = PluginManifest {

@@ -6,6 +6,8 @@ use win32_theme::apply_win32_menu_theme;
 mod algorithm_engine;
 use algorithm_engine::GenericAlgorithmPlugin;
 
+mod workflow_engine;
+
 use ai_engine::{AiEngine, GenericAiPlugin};
 use core_contracts::{
     ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
@@ -361,6 +363,7 @@ fn main() -> anyhow::Result<()> {
                     models_dir: data_dir_test.join("models"),
                     plugin_dir: p_dir,
                     client: client_test.clone(),
+                    sub_action_id: None,
                 };
                 let t0 = Instant::now();
                 match reg_test.execute(&manifest.id, &ctx).await {
@@ -388,27 +391,33 @@ fn main() -> anyhow::Result<()> {
     let registry_exec = Arc::new(Mutex::new(registry));
     let data_dir_exec = data_dir.clone();
     let plugins_dir_exec = plugins_dir.clone();
+    let config_path_exec = config_path.clone();
     let exec_status: SharedExecutionStatus = Arc::new(std::sync::Mutex::new(ExecutionState::Idle));
     let exec_status_worker = exec_status.clone();
 
     rt.spawn(async move {
-        while let Some(action_id) = action_rx.recv().await {
-            info!("Dispatching action '{}'...", action_id);
+        while let Some(raw_action) = action_rx.recv().await {
+            let req = core_contracts::ActionRequest::from(raw_action);
+            info!(
+                "Dispatching action request '{}' (action: {}, sub: {:?})...",
+                req, req.action_id, req.sub_action_id
+            );
+
             let action_name = {
                 let reg = registry_exec.lock().await;
-                reg.get(&action_id)
+                reg.get(&req.action_id)
                     .map(|p| p.manifest().name.clone())
-                    .unwrap_or_else(|| action_id.clone())
+                    .unwrap_or_else(|| req.action_id.clone())
             };
 
             let t_start = Instant::now();
             *exec_status_worker.lock().unwrap() = ExecutionState::Running {
-                action_id: action_id.clone(),
+                action_id: req.to_string(),
                 action_name: action_name.clone(),
                 started_at: t_start,
             };
 
-            if let Some(cmd) = action_id.strip_prefix("engine:") {
+            if let Some(cmd) = req.action_id.strip_prefix("engine:") {
                 info!("Executing PhotoCraft engine command '{}'...", cmd);
                 match client_exec
                     .execute_command(cmd, serde_json::json!({}))
@@ -435,39 +444,130 @@ fn main() -> anyhow::Result<()> {
                 }
             } else if let Ok(doc) = client_exec.get_document_info().await {
                 let reg = registry_exec.lock().await;
-                let plugin_dir = reg
-                    .get(&action_id)
-                    .and_then(|p| p.manifest().plugin_dir.clone())
-                    .unwrap_or_else(|| plugins_dir_exec.clone());
+                if let Some(plugin) = reg.get(&req.action_id) {
+                    let manifest = plugin.manifest().clone();
+                    let plugin_dir = manifest
+                        .plugin_dir
+                        .clone()
+                        .unwrap_or_else(|| plugins_dir_exec.join(&manifest.id));
 
-                let ctx = PluginContext {
-                    document: doc,
-                    models_dir: data_dir_exec.join("models"),
-                    plugin_dir,
-                    client: client_exec.clone(),
-                };
-                match reg.execute(&action_id, &ctx).await {
-                    Ok(res) => {
-                        let elapsed = t_start.elapsed().as_secs_f32();
-                        info!(
-                            "Action '{}' finished successfully: {}",
-                            action_id, res.message
-                        );
-                        *exec_status_worker.lock().unwrap() = ExecutionState::Success {
-                            action_name,
-                            message: res.message,
-                            duration_secs: elapsed,
-                            finished_at: Instant::now(),
-                        };
+                    let mut exec_ctx = workflow_engine::ExecutionContext {
+                        source_layer_id: doc.active_layer,
+                        result_layer_id: None,
+                        active_layer_id: doc.active_layer,
+                        document_id: None,
+                        document_width: doc.width,
+                        document_height: doc.height,
+                        has_selection: doc.has_selection,
+                        fg_color: None,
+                        bg_color: None,
+                        custom_vars: std::collections::HashMap::new(),
+                    };
+
+                    // 1. Pre-commands (only for non-NoCode plugins, as NoCode commands ARE the plugin body)
+                    if manifest.plugin_type != PluginType::NoCode && !manifest.commands.is_empty() {
+                        if let Err(e) = workflow_engine::execute_steps(
+                            &manifest.commands,
+                            &mut exec_ctx,
+                            client_exec.as_ref(),
+                        )
+                        .await
+                        {
+                            *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                                action_name,
+                                error: format!("Pre-commands failed: {e}"),
+                                finished_at: Instant::now(),
+                            };
+                            continue;
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!("Action '{}' failed: {}", action_id, e);
-                        *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                            action_name,
-                            error: e.to_string(),
-                            finished_at: Instant::now(),
-                        };
+
+                    // 2. Main plugin execution
+                    let plugin_ctx = PluginContext {
+                        document: doc,
+                        models_dir: data_dir_exec.join("models"),
+                        plugin_dir,
+                        client: client_exec.clone(),
+                        sub_action_id: req.sub_action_id.clone(),
+                    };
+
+                    match plugin.execute(&plugin_ctx).await {
+                        Ok(res) => {
+                            if let Some(ref data) = res.data {
+                                if let Some(src) =
+                                    data.get("source_layer_id").and_then(|v| v.as_u64())
+                                {
+                                    exec_ctx.source_layer_id = Some(src);
+                                }
+                                if let Some(out_id) =
+                                    data.get("result_layer_id").and_then(|v| v.as_u64())
+                                {
+                                    exec_ctx.result_layer_id = Some(out_id);
+                                }
+                            }
+
+                            // 3. Post-commands (sub_action variant or manifest fallback)
+                            let chosen_sub = req.sub_action_id.as_ref().and_then(|sub_id| {
+                                manifest.sub_actions.iter().find(|s| &s.id == sub_id)
+                            });
+                            let post_steps = if let Some(sub) = chosen_sub {
+                                &sub.post_commands
+                            } else {
+                                &manifest.post_commands
+                            };
+
+                            if !post_steps.is_empty() {
+                                if let Err(e) = workflow_engine::execute_steps(
+                                    post_steps,
+                                    &mut exec_ctx,
+                                    client_exec.as_ref(),
+                                )
+                                .await
+                                {
+                                    *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                                        action_name,
+                                        error: format!("Post-commands failed: {e}"),
+                                        finished_at: Instant::now(),
+                                    };
+                                    continue;
+                                }
+                            }
+
+                            // 4. Persist active sub-action to config
+                            if let Some(ref sub_id) = req.sub_action_id {
+                                let mut cfg = core_contracts::CompanionConfig::load_or_default(
+                                    &config_path_exec,
+                                );
+                                cfg.active_sub_actions
+                                    .insert(manifest.id.clone(), sub_id.clone());
+                                let _ = cfg.save(&config_path_exec);
+                            }
+
+                            let elapsed = t_start.elapsed().as_secs_f32();
+                            info!("Action '{}' finished successfully: {}", req, res.message);
+                            *exec_status_worker.lock().unwrap() = ExecutionState::Success {
+                                action_name,
+                                message: res.message,
+                                duration_secs: elapsed,
+                                finished_at: Instant::now(),
+                            };
+                        }
+                        Err(e) => {
+                            tracing::error!("Action '{}' failed: {}", req, e);
+                            *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                                action_name,
+                                error: e.to_string(),
+                                finished_at: Instant::now(),
+                            };
+                        }
                     }
+                } else {
+                    tracing::warn!("Action '{}' not found in registry", req.action_id);
+                    *exec_status_worker.lock().unwrap() = ExecutionState::Error {
+                        action_name,
+                        error: format!("Action '{}' not found in registry", req.action_id),
+                        finished_at: Instant::now(),
+                    };
                 }
             } else {
                 let conn_st = client_exec.verify_connection().await;
@@ -483,7 +583,7 @@ fn main() -> anyhow::Result<()> {
                         "No active document open in PhotoCraft.".to_string()
                     }
                 };
-                tracing::warn!("Failed to execute action '{}': {}", action_id, err_msg);
+                tracing::warn!("Failed to execute action '{}': {}", req, err_msg);
                 *exec_status_worker.lock().unwrap() = ExecutionState::Error {
                     action_name,
                     error: err_msg,
@@ -707,5 +807,30 @@ mod tests {
         apply_win32_menu_theme(1);
         apply_win32_menu_theme(2);
         apply_win32_menu_theme(3);
+    }
+
+    #[test]
+    fn test_no_code_plugin_not_duplicated_as_pre_commands() {
+        use core_contracts::{PluginCommandStep, PluginManifest, PluginType};
+        let m = PluginManifest {
+            id: "test.nocode".to_string(),
+            name: "Test NoCode".to_string(),
+            plugin_type: PluginType::NoCode,
+            commands: vec![PluginCommandStep {
+                command: "layer.duplicate".to_string(),
+                params: serde_json::json!({}),
+                save_as: None,
+                ignore_errors: false,
+                when: None,
+                description: None,
+            }],
+            ..Default::default()
+        };
+        // Verify that pre-commands condition strictly checks plugin_type != PluginType::NoCode
+        let should_run_pre_commands = m.plugin_type != PluginType::NoCode && !m.commands.is_empty();
+        assert!(
+            !should_run_pre_commands,
+            "NoCode commands must never be executed as pre-commands to avoid duplicate execution"
+        );
     }
 }

@@ -72,11 +72,15 @@ impl OverlayBar {
                     }
                     _ => None,
                 };
+                let active_sub_action = m.sub_actions.first().map(|s| s.id.clone());
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
                     icon,
                     icon_path,
+                    plugin_dir: m.plugin_dir.clone(),
+                    sub_actions: m.sub_actions.clone(),
+                    active_sub_action,
                 });
             }
         }
@@ -94,12 +98,18 @@ impl OverlayBar {
                 action: "ai.photocraft.plugins.remove_bg".to_string(),
                 icon: Some("wand".to_string()),
                 icon_path: None,
+                plugin_dir: None,
+                sub_actions: Vec::new(),
+                active_sub_action: None,
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
                 action: "macro.photocraft.plugins.black_and_white".to_string(),
                 icon: Some("bw".to_string()),
                 icon_path: None,
+                plugin_dir: None,
+                sub_actions: Vec::new(),
+                active_sub_action: None,
             },
         ]
     }
@@ -181,7 +191,17 @@ impl CompanionOverlayApp {
             Arc::new(std::sync::RwLock::new(initial))
         });
 
-        let toolstrip = ToolstripApp::new(buttons, current_theme).with_orientation(cfg.is_vertical);
+        let mut toolstrip = ToolstripApp::new(buttons, current_theme)
+            .with_orientation(cfg.is_vertical)
+            .with_language(current_lang);
+
+        for btn in &mut toolstrip.buttons {
+            if let Some(sub_id) = cfg.active_sub_actions.get(&btn.action) {
+                if btn.sub_actions.iter().any(|s| &s.id == sub_id) {
+                    btn.active_sub_action = Some(sub_id.clone());
+                }
+            }
+        }
         let mut manager =
             PluginManagerApp::new(manifests.clone(), &prefs_path, is_connected.clone())
                 .with_connection_state(conn_state_arc.clone());
@@ -487,6 +507,7 @@ impl eframe::App for CompanionOverlayApp {
 
             if connected {
                 self.toolstrip.render(ui, &palette);
+                self.toolstrip.render_sub_actions_flyout(&ctx, &palette);
 
                 // Auto-save orientation changes
                 if self.toolstrip.orientation_changed
@@ -547,13 +568,13 @@ impl eframe::App for CompanionOverlayApp {
                         window_min + egui::vec2(btn_rect.left(), btn_rect.bottom() + 6.0)
                     };
 
-                    let text_galley = ui.painter().layout_no_wrap(
-                        tt_text.clone(),
-                        egui::FontId::proportional(11.0),
-                        palette.text_primary,
-                    );
-                    let tt_width = (text_galley.size().x + 18.0).clamp(40.0, 320.0);
-                    let tt_height = 24.0;
+                    let font_id = egui::FontId::proportional(11.0);
+                    let galley =
+                        ui.painter()
+                            .layout(tt_text.clone(), font_id, palette.text_primary, 480.0);
+                    let galley_size = galley.size();
+                    let tt_width = (galley_size.x + 20.0).clamp(40.0, 520.0);
+                    let tt_height = (galley_size.y + 10.0).max(24.0);
 
                     let vp = egui::ViewportBuilder::default()
                         .with_decorations(false)
@@ -1010,6 +1031,9 @@ mod tests {
             action: "custom.action".to_string(),
             icon: Some("custom".to_string()),
             icon_path: None,
+            plugin_dir: None,
+            sub_actions: Vec::new(),
+            active_sub_action: None,
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 

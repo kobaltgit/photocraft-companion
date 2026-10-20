@@ -799,5 +799,39 @@
     - `cargo test --workspace -j 1` пройден (100% зеленых тестов).
     - Линтеры регламентов `dev_regulations_lint_test` и каталога плагинов подтверждены.
 
+- [x] **Фаза 70: Универсальный модуль исполнения (Workflow Engine) и суб-инструменты PhotoCraft (Sub-Tools & RMBG-1.4)**
+  - [x] **Контракты ядра (`crates/core_contracts`)**:
+    - Добавлена декларативная модель суб-инструментов `SubAction` (`id`, `name`, `name_ru`, `icon`, `post_commands`, `script`, метод `name_for_lang`).
+    - Поле `sub_actions: Vec<SubAction>` внедрено в `PluginManifest` и поддержано во всех конструкторах.
+    - Структура `PluginCommandStep` расширена полями динамического контекста: `save_as`, `when`, `ignore_errors`, `description`.
+    - Добавлен транспортный DTO `ActionRequest` (`action_id`, `sub_action_id`, парсинг `action#sub_action`).
+    - В `CompanionConfig` добавлено поле персистентности выбранных суб-инструментов `active_sub_actions: HashMap<String, String>`.
+  - [x] **Универсальный модуль исполнения (`crates/companion_app/src/workflow_engine`)**:
+    - Модуль `resolver.rs`: динамический резолвинг контекста (`$source_layer`, `$result_layer`, `$active_layer`, `$document.id`, `$document.width`, `$document.height`, `$has_selection`, `$session.fg_color`, `$session.bg_color`, переменные шагов из `save_as`) как для точных типов, так и для интерполяции строк.
+    - Модуль `runner.rs`: последовательное исполнение шагов `execute_steps` с вычислением условий `when`, сохранением возвращаемых ID слоев и безопасной обработкой `ignore_errors`.
+    - Модуль `rhai_bridge.rs`: песочница двусторонней автоматизации Rhai с лимитами глубины стека и операций.
+    - Воркер выполнения действий в `main.rs`: поддержка `ActionRequest`, pre-commands, вызов плагина с получением ID слоев и последующий запуск post-commands для выбранного суб-действия.
+  - [x] **Изоляция ИИ-движка (`crates/ai_engine`)**:
+    - `GenericAiPlugin` возвращает чистый `PluginResult` с метаданными `source_layer_id` и `result_layer_id` в `res.data`, передавая оркестрацию шагов в `workflow_engine`.
+  - [x] **Photoshop-style суб-инструменты в UI (`crates/overlay_ui`)**:
+    - Отрисовка векторного треугольного шеврона в нижнем правом углу кнопки исключительно через `egui::Shape::convex_polygon` (0% Unicode-глифов, абсолютная защита от тофу по Правилу 6).
+    - Разделение короткого клика (<350 мс, запуск текущего суб-инструмента) и долгого нажатия (>350 мс) / правого клика ПКМ (раскрытие всплывающего аккордеона подкатегорий).
+    - Всплывающее меню суб-инструментов с левой акцентной синей полосой активного режима и динамической локализацией названий `sub.name_for_lang(lang)`.
+    - 100% чистота файла `toolstrip.rs` от кириллических строковых литералов (пройдена проверка `i18n_lint_test`).
+  - [x] **Плагин Remove Background v1.1.0 (`plugins/remove_bg`)**:
+    - Декларативное разделение режимов: «Cutout» (быстрое удаление фона со скрытием исходника) и «Layer Mask» (неразрушающая маска слоя на базе выделения альфа-канала с авто-выбором исходного слоя).
+    - Добавлен векторный ассет `icon_mask.svg`.
+    - Обновлен двуязычный `README.md` с описанием сценариев Cutout и Layer Mask по стандарту DoD 3.1.
+  - [x] **Валидатор и релизные пакеты (`crates/plugin_validator`)**:
+    - Добавлена валидация полей `sub_actions` и связанных векторных SVG-иконок.
+    - Валидатор успешно проверил все 7 плагинов, пересобрал `.pcpl` пакеты в `dist/` и обновил таблицы в `README.md` и `README.ru.md`.
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - `cargo fmt --all -- --check` пройден (0 расхождений).
+    - `cargo test --workspace -j 1` пройден (100% зеленых тестов, все 124+ теста воркспейса).
+    - Линтеры `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test` пройдены без единого замечания.
+    - [x] Ликвидация тройного дублирования слоев No-Code плагинов (B&W Film Pop) в `main.rs` (BUG-074).
+    - [x] Устранение многоминутного зависания и экстремальное ускорение тайлинга апскейла через переиспользование ONNX-сессии (BUG-075).
+
+
 
 

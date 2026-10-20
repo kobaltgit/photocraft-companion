@@ -23,6 +23,8 @@ pub struct PluginManifest {
     #[serde(default)]
     pub post_commands: Vec<PluginCommandStep>,
     #[serde(default)]
+    pub sub_actions: Vec<SubAction>,
+    #[serde(default)]
     pub input: PluginInputSource,
     #[serde(default)]
     pub output_mode: PluginOutputMode,
@@ -197,6 +199,7 @@ impl Default for PluginManifest {
             icon: None,
             commands: Vec::new(),
             post_commands: Vec::new(),
+            sub_actions: Vec::new(),
             input: PluginInputSource::default(),
             output_mode: PluginOutputMode::default(),
             models: Vec::new(),
@@ -449,14 +452,121 @@ pub struct AlgorithmConfig {
     pub export_file: bool,
 }
 
-/// A step in a declarative No-Code pipeline
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A step in a declarative No-Code pipeline or workflow execution
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PluginCommandStep {
     pub command: String,
     #[serde(default)]
     pub params: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_as: Option<String>,
     #[serde(default)]
+    pub ignore_errors: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+impl PluginCommandStep {
+    pub fn new(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            params: serde_json::Value::Null,
+            save_as: None,
+            ignore_errors: false,
+            when: None,
+            description: None,
+        }
+    }
+}
+
+impl Default for PluginCommandStep {
+    fn default() -> Self {
+        Self {
+            command: String::new(),
+            params: serde_json::Value::Null,
+            save_as: None,
+            ignore_errors: false,
+            when: None,
+            description: None,
+        }
+    }
+}
+
+/// Sub-action variation declared within a plugin (e.g. Cutout vs Layer Mask)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubAction {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_ru: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub post_commands: Vec<PluginCommandStep>,
+    #[serde(default)]
+    pub script: Option<String>,
+}
+
+impl SubAction {
+    pub fn name_for_lang(&self, lang: crate::Language) -> &str {
+        if matches!(lang, crate::Language::Ru) {
+            self.name_ru.as_deref().unwrap_or(&self.name)
+        } else {
+            &self.name
+        }
+    }
+}
+
+/// Request DTO for executing a plugin action, optionally targeting a specific sub-action variant.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub struct ActionRequest {
+    pub action_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_action_id: Option<String>,
+}
+
+impl ActionRequest {
+    pub fn new(action_id: impl Into<String>) -> Self {
+        Self {
+            action_id: action_id.into(),
+            sub_action_id: None,
+        }
+    }
+
+    pub fn with_sub_action(action_id: impl Into<String>, sub_action_id: impl Into<String>) -> Self {
+        Self {
+            action_id: action_id.into(),
+            sub_action_id: Some(sub_action_id.into()),
+        }
+    }
+}
+
+impl std::fmt::Display for ActionRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(ref sub) = self.sub_action_id {
+            write!(f, "{}#{}", self.action_id, sub)
+        } else {
+            write!(f, "{}", self.action_id)
+        }
+    }
+}
+
+impl From<String> for ActionRequest {
+    fn from(s: String) -> Self {
+        if let Some((act, sub)) = s.split_once('#') {
+            Self::with_sub_action(act, sub)
+        } else {
+            Self::new(s)
+        }
+    }
+}
+
+impl From<&str> for ActionRequest {
+    fn from(s: &str) -> Self {
+        s.to_string().into()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -502,6 +612,29 @@ pub struct PluginContext {
     pub models_dir: PathBuf,
     pub plugin_dir: PathBuf,
     pub client: Arc<dyn BridgeOperations + Send + Sync>,
+    pub sub_action_id: Option<String>,
+}
+
+impl PluginContext {
+    pub fn new(
+        document: DocumentInfo,
+        models_dir: PathBuf,
+        plugin_dir: PathBuf,
+        client: Arc<dyn BridgeOperations + Send + Sync>,
+    ) -> Self {
+        Self {
+            document,
+            models_dir,
+            plugin_dir,
+            client,
+            sub_action_id: None,
+        }
+    }
+
+    pub fn with_sub_action(mut self, sub_action_id: Option<String>) -> Self {
+        self.sub_action_id = sub_action_id;
+        self
+    }
 }
 
 /// Abstraction over PhotoCraft bridge operations for plugin isolation
@@ -1162,5 +1295,34 @@ mod tests {
             }
             other => panic!("Expected Row, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_sub_action_and_action_request() {
+        let sub = SubAction {
+            id: "mask".to_string(),
+            name: "Layer Mask".to_string(),
+            name_ru: Some("Маска слоя".to_string()),
+            icon: Some("mask.svg".to_string()),
+            post_commands: vec![PluginCommandStep::new("layer.mask")],
+            script: None,
+        };
+
+        assert_eq!(sub.name_for_lang(crate::Language::En), "Layer Mask");
+        assert_eq!(sub.name_for_lang(crate::Language::Ru), "Маска слоя");
+
+        let req1 = ActionRequest::new("plugin:remove_bg");
+        assert_eq!(req1.to_string(), "plugin:remove_bg");
+        assert_eq!(req1.sub_action_id, None);
+
+        let req2 = ActionRequest::with_sub_action("plugin:remove_bg", "mask");
+        assert_eq!(req2.to_string(), "plugin:remove_bg#mask");
+        assert_eq!(req2.sub_action_id.as_deref(), Some("mask"));
+
+        let req3 = ActionRequest::from("plugin:remove_bg#mask".to_string());
+        assert_eq!(req3, req2);
+
+        let req4 = ActionRequest::from("plugin:remove_bg");
+        assert_eq!(req4, req1);
     }
 }

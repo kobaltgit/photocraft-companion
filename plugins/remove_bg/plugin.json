@@ -1,7 +1,7 @@
 {
   "id": "ai.photocraft.plugins.remove_bg",
   "name": "AI Remove Background (RMBG-1.4)",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
   "author": "kobaltGIT",
   "plugin_type": "native_ai",
@@ -10,6 +10,66 @@
   "input": "active_layer",
   "output_mode": "new_layer",
   "post_commands": [],
+  "sub_actions": [
+    {
+      "id": "cutout",
+      "name": "Remove Background (Cutout)",
+      "name_ru": "Удаление фона (Вырезка)",
+      "icon": "icon.svg",
+      "post_commands": [
+        {
+          "command": "layer.setProps",
+          "params": {
+            "layer": "$source_layer",
+            "visible": false
+          },
+          "description": "Hide source layer to avoid visual duplicate"
+        }
+      ]
+    },
+    {
+      "id": "mask",
+      "name": "Create Layer Mask",
+      "name_ru": "Создать маску слоя",
+      "icon": "icon_mask.svg",
+      "post_commands": [
+        {
+          "command": "select.loadSelection",
+          "params": {
+            "channel": "transparency",
+            "layer": "$result_layer"
+          },
+          "description": "Load alpha channel of AI result into active selection"
+        },
+        {
+          "command": "layer.delete",
+          "params": {
+            "layer": "$result_layer"
+          },
+          "description": "Clean up temporary AI result layer"
+        },
+        {
+          "command": "layer.select",
+          "params": {
+            "layer": "$source_layer"
+          },
+          "description": "Guarantee source layer is active before mask generation"
+        },
+        {
+          "command": "layer.layerMask.revealSelection",
+          "params": {
+            "layer": "$source_layer"
+          },
+          "description": "Apply non-destructive layer mask on original source layer"
+        },
+        {
+          "command": "select.deselect",
+          "params": {},
+          "description": "Clear active selection marching ants"
+        }
+      ]
+    }
+  ],
   "ai": {
     "task": "segmentation_mask"
   },
