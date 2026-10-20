@@ -78,6 +78,7 @@ impl OverlayBar {
                     action: m.id.clone(),
                     icon,
                     icon_path,
+                    plugin_dir: m.plugin_dir.clone(),
                     sub_actions: m.sub_actions.clone(),
                     active_sub_action,
                 });
@@ -97,6 +98,7 @@ impl OverlayBar {
                 action: "ai.photocraft.plugins.remove_bg".to_string(),
                 icon: Some("wand".to_string()),
                 icon_path: None,
+                plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
             },
@@ -105,6 +107,7 @@ impl OverlayBar {
                 action: "macro.photocraft.plugins.black_and_white".to_string(),
                 icon: Some("bw".to_string()),
                 icon_path: None,
+                plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
             },
@@ -504,6 +507,7 @@ impl eframe::App for CompanionOverlayApp {
 
             if connected {
                 self.toolstrip.render(ui, &palette);
+                self.toolstrip.render_sub_actions_flyout(&ctx, &palette);
 
                 // Auto-save orientation changes
                 if self.toolstrip.orientation_changed
@@ -1027,6 +1031,7 @@ mod tests {
             action: "custom.action".to_string(),
             icon: Some("custom".to_string()),
             icon_path: None,
+            plugin_dir: None,
             sub_actions: Vec::new(),
             active_sub_action: None,
         }];

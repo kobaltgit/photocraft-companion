@@ -34,9 +34,34 @@ pub struct ButtonConfig {
     #[serde(default)]
     pub icon_path: Option<PathBuf>,
     #[serde(default)]
+    pub plugin_dir: Option<PathBuf>,
+    #[serde(default)]
     pub sub_actions: Vec<SubAction>,
     #[serde(default)]
     pub active_sub_action: Option<String>,
+}
+
+impl ButtonConfig {
+    pub fn sub_action_icon_path(&self, sub: &SubAction) -> Option<PathBuf> {
+        if let (Some(dir), Some(icon_name)) = (&self.plugin_dir, &sub.icon) {
+            let p = dir.join(icon_name);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        self.icon_path.clone()
+    }
+
+    pub fn effective_icon_path(&self) -> Option<PathBuf> {
+        if let Some(ref active_id) = self.active_sub_action {
+            if let Some(sub) = self.sub_actions.iter().find(|s| &s.id == active_id) {
+                if let Some(p) = self.sub_action_icon_path(sub) {
+                    return Some(p);
+                }
+            }
+        }
+        self.icon_path.clone()
+    }
 }
 
 pub mod i18n;

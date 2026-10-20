@@ -17,6 +17,7 @@ pub struct ToolstripApp {
     pub icon_cache: crate::icons::SvgIconCache,
     pub open_sub_actions_for: Option<(String, egui::Rect)>,
     pub pointer_down_start: Option<(String, std::time::Instant)>,
+    pub suppress_click_for: Option<String>,
 }
 
 impl ToolstripApp {
@@ -36,6 +37,7 @@ impl ToolstripApp {
             icon_cache: crate::icons::SvgIconCache::new(),
             open_sub_actions_for: None,
             pointer_down_start: None,
+            suppress_click_for: None,
         }
     }
 
@@ -84,6 +86,7 @@ impl ToolstripApp {
         let is_dark = palette.is_dark;
 
         let mut sub_action_toggle = None;
+        let current_lang = self.language;
         let render_button_items =
             |ui: &mut Ui,
              buttons: &mut [ButtonConfig],
@@ -91,6 +94,7 @@ impl ToolstripApp {
              pending: &mut Option<String>,
              hovered_tt: &mut Option<(String, egui::Rect)>,
              pointer_down: &mut Option<(String, std::time::Instant)>,
+             suppress_click: &mut Option<String>,
              sub_toggle: &mut Option<(String, egui::Rect)>| {
                 ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
                 for btn in buttons.iter_mut() {
@@ -101,31 +105,25 @@ impl ToolstripApp {
 
                     let has_sub_actions = !btn.sub_actions.is_empty();
 
-                    let mut effective_icon_path = btn.icon_path.as_deref();
+                    let effective_icon_path = btn.effective_icon_path();
                     let active_sub = btn
                         .active_sub_action
                         .as_ref()
                         .and_then(|sub_id| btn.sub_actions.iter().find(|s| &s.id == sub_id));
-                    let sub_icon_path;
-                    if let Some(sub) = active_sub {
-                        if let Some(ref icon_file) = sub.icon {
-                            if let Some(ref base_path) = btn.icon_path {
-                                if let Some(parent) = base_path.parent() {
-                                    let candidate = parent.join(icon_file);
-                                    if candidate.exists() {
-                                        sub_icon_path = Some(candidate);
-                                        effective_icon_path = sub_icon_path.as_deref();
-                                    }
-                                }
-                            }
-                        }
-                    }
 
-                    let maybe_texture =
-                        icon_cache.get_or_load(ui.ctx(), &btn.action, effective_icon_path, is_dark);
+                    let cache_key = match active_sub {
+                        Some(sub) => format!("{}:{}", btn.action, sub.id),
+                        None => btn.action.clone(),
+                    };
+                    let maybe_texture = icon_cache.get_or_load(
+                        ui.ctx(),
+                        &cache_key,
+                        effective_icon_path.as_deref(),
+                        is_dark,
+                    );
 
                     let tooltip = if let Some(sub) = active_sub {
-                        format!("{} ({})", btn.label, sub.name)
+                        format!("{} ({})", btn.label, sub.name_for_lang(current_lang))
                     } else {
                         btn.label.clone()
                     };
@@ -191,9 +189,11 @@ impl ToolstripApp {
                         } else if resp.is_pointer_button_down_on() {
                             match pointer_down.as_ref() {
                                 Some((act, start)) if act == &btn.action => {
-                                    if start.elapsed().as_millis() >= 350 {
+                                    if start.elapsed().as_millis() >= 300 {
                                         *sub_toggle = Some((btn.action.clone(), resp.rect));
+                                        *suppress_click = Some(btn.action.clone());
                                         *pointer_down = None;
+                                        ui.ctx().request_repaint();
                                     }
                                 }
                                 _ => {
@@ -209,7 +209,20 @@ impl ToolstripApp {
                     }
 
                     if resp.clicked() && !is_busy {
-                        if has_sub_actions {
+                        let is_chevron_click = has_sub_actions
+                            && ui
+                                .input(|i| i.pointer.interact_pos())
+                                .map(|pos| {
+                                    pos.x >= resp.rect.right() - 10.0
+                                        && pos.y >= resp.rect.bottom() - 10.0
+                                })
+                                .unwrap_or(false);
+
+                        if is_chevron_click {
+                            *sub_toggle = Some((btn.action.clone(), resp.rect));
+                        } else if suppress_click.as_deref() == Some(&btn.action) {
+                            *suppress_click = None;
+                        } else if has_sub_actions {
                             if let Some(ref sub_id) = btn.active_sub_action {
                                 *pending = Some(format!("{}#{}", btn.action, sub_id));
                             } else {
@@ -355,6 +368,7 @@ impl ToolstripApp {
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                         &mut self.pointer_down_start,
+                        &mut self.suppress_click_for,
                         &mut sub_action_toggle,
                     );
                 });
@@ -486,13 +500,14 @@ impl ToolstripApp {
                         &mut self.pending_action,
                         &mut self.hovered_tooltip,
                         &mut self.pointer_down_start,
+                        &mut self.suppress_click_for,
                         &mut sub_action_toggle,
                     );
                 });
             });
         }
 
-        if let Some(target) = sub_action_toggle {
+        if let Some(ref target) = sub_action_toggle {
             if self
                 .open_sub_actions_for
                 .as_ref()
@@ -501,92 +516,186 @@ impl ToolstripApp {
             {
                 self.open_sub_actions_for = None;
             } else {
-                self.open_sub_actions_for = Some(target);
+                self.open_sub_actions_for = Some(target.clone());
             }
         }
 
-        if let Some((ref open_act, anchor_rect)) = self.open_sub_actions_for.clone() {
-            if let Some(btn) = self.buttons.iter_mut().find(|b| &b.action == open_act) {
-                let popup_pos = if self.is_vertical {
-                    anchor_rect.right_top() + Vec2::new(4.0, 0.0)
-                } else {
-                    anchor_rect.left_bottom() + Vec2::new(0.0, 4.0)
-                };
-
-                let mut chosen_sub = None;
-                let current_lang = self.language;
-
-                let popup_rect = egui::Area::new(egui::Id::new("sub_actions_popup"))
-                    .fixed_pos(popup_pos)
-                    .order(egui::Order::Foreground)
-                    .show(ui.ctx(), |ui| {
-                        egui::Frame::new()
-                            .fill(palette.panel_fill)
-                            .stroke(Stroke::new(1.0, palette.border_stroke))
-                            .corner_radius(3.0)
-                            .inner_margin(egui::Margin::same(4))
-                            .show(ui, |ui| {
-                                ui.set_min_width(140.0);
-                                ui.spacing_mut().item_spacing = Vec2::new(2.0, 2.0);
-                                for sub in &btn.sub_actions {
-                                    let is_active =
-                                        btn.active_sub_action.as_deref() == Some(&sub.id);
-                                    let label_text = sub.name_for_lang(current_lang);
-                                    let (row_rect, row_resp) = ui.allocate_exact_size(
-                                        Vec2::new(140.0, 24.0),
-                                        Sense::click(),
-                                    );
-                                    if row_resp.hovered() {
-                                        ui.painter().rect_filled(
-                                            row_rect,
-                                            2.0,
-                                            palette.button_secondary_hover,
-                                        );
-                                    }
-                                    if is_active {
-                                        let bar_rect = egui::Rect::from_min_size(
-                                            row_rect.left_top() + Vec2::new(1.0, 2.0),
-                                            Vec2::new(3.0, row_rect.height() - 4.0),
-                                        );
-                                        ui.painter().rect_filled(
-                                            bar_rect,
-                                            1.0,
-                                            palette.accent_blue,
-                                        );
-                                    }
-                                    let text_color = if is_active {
-                                        palette.accent_blue
-                                    } else {
-                                        palette.text_primary
-                                    };
-                                    ui.painter().text(
-                                        row_rect.left_center() + Vec2::new(8.0, 0.0),
-                                        egui::Align2::LEFT_CENTER,
-                                        label_text,
-                                        egui::FontId::proportional(12.0),
-                                        text_color,
-                                    );
-                                    if row_resp.clicked() {
-                                        chosen_sub = Some(sub.id.clone());
-                                    }
-                                }
-                            })
-                    })
-                    .response
-                    .rect;
-
-                if let Some(sub_id) = chosen_sub {
-                    btn.active_sub_action = Some(sub_id.clone());
-                    self.pending_action = Some(format!("{}#{}", btn.action, sub_id));
-                    self.open_sub_actions_for = None;
-                } else if ui.input(|i| i.pointer.any_click()) {
-                    if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
-                        if !popup_rect.contains(pos) && !anchor_rect.contains(pos) {
-                            self.open_sub_actions_for = None;
-                        }
+        // Close sub-actions flyout if clicking anywhere else in the toolstrip window
+        if let Some((_, anchor_rect)) = self.open_sub_actions_for {
+            if sub_action_toggle.is_none() && ui.input(|i| i.pointer.any_click()) {
+                if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                    if !anchor_rect.contains(pos) {
+                        self.open_sub_actions_for = None;
                     }
                 }
             }
+        }
+    }
+
+    pub fn render_sub_actions_flyout(&mut self, ctx: &egui::Context, palette: &ThemePalette) {
+        let (action_id, anchor_rect) = match self.open_sub_actions_for.clone() {
+            Some(pair) => pair,
+            None => return,
+        };
+
+        let btn_idx = match self.buttons.iter().position(|b| b.action == action_id) {
+            Some(idx) => idx,
+            None => {
+                self.open_sub_actions_for = None;
+                return;
+            }
+        };
+
+        if self.buttons[btn_idx].sub_actions.is_empty() {
+            self.open_sub_actions_for = None;
+            return;
+        }
+
+        let window_min = ctx
+            .input(|i| i.viewport().outer_rect)
+            .map(|r| r.min)
+            .unwrap_or(egui::pos2(0.0, 0.0));
+
+        let sub_count = self.buttons[btn_idx].sub_actions.len() as f32;
+        let flyout_w = 230.0_f32;
+        let flyout_h = (sub_count * 34.0 + 8.0).max(42.0);
+
+        let mut flyout_pos = if self.is_vertical {
+            window_min + egui::vec2(anchor_rect.right() + 4.0, anchor_rect.top())
+        } else {
+            window_min + egui::vec2(anchor_rect.left(), anchor_rect.bottom() + 4.0)
+        };
+
+        if let Some(mon_size) = ctx.input(|i| i.viewport().monitor_size) {
+            if flyout_pos.x + flyout_w > mon_size.x {
+                flyout_pos.x = (window_min.x + anchor_rect.left() - flyout_w - 4.0).max(0.0);
+            }
+        }
+
+        let vp = egui::ViewportBuilder::default()
+            .with_decorations(false)
+            .with_transparent(true)
+            .with_always_on_top()
+            .with_resizable(false)
+            .with_taskbar(false)
+            .with_position(flyout_pos)
+            .with_inner_size(egui::vec2(flyout_w, flyout_h));
+
+        let mut chosen_sub = None;
+        let mut should_close = false;
+        let current_lang = self.language;
+        let is_dark = palette.is_dark;
+        let btn = &self.buttons[btn_idx];
+
+        ctx.show_viewport_immediate(
+            egui::ViewportId::from_hash_of("toolstrip_sub_actions_flyout"),
+            vp,
+            |sub_ctx, _class| {
+                if sub_ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    should_close = true;
+                }
+                if sub_ctx.input(|i| i.viewport().close_requested()) {
+                    should_close = true;
+                }
+
+                sub_ctx.set_visuals(palette.to_egui_visuals());
+
+                egui::CentralPanel::default()
+                    .frame(
+                        egui::Frame::new()
+                            .fill(palette.card_inner)
+                            .stroke(Stroke::new(1.0, palette.border_stroke))
+                            .corner_radius(4.0)
+                            .inner_margin(egui::Margin::same(4)),
+                    )
+                    .show(sub_ctx, |ui| {
+                        ui.set_min_width(flyout_w - 8.0);
+                        ui.spacing_mut().item_spacing = Vec2::new(0.0, 2.0);
+
+                        for sub in &btn.sub_actions {
+                            let is_active = btn.active_sub_action.as_deref() == Some(&sub.id);
+                            let sub_label = sub.name_for_lang(current_lang);
+                            let sub_icon_path = btn.sub_action_icon_path(sub);
+
+                            let (row_rect, row_resp) = ui.allocate_exact_size(
+                                Vec2::new(ui.available_width(), 32.0),
+                                Sense::click(),
+                            );
+
+                            if row_resp.hovered() {
+                                ui.painter().rect_filled(
+                                    row_rect,
+                                    3.0,
+                                    palette.button_secondary_hover,
+                                );
+                            } else if is_active {
+                                ui.painter().rect_filled(row_rect, 3.0, palette.panel_fill);
+                            }
+
+                            if is_active {
+                                let bar_rect = egui::Rect::from_min_size(
+                                    row_rect.left_top() + Vec2::new(1.0, 3.0),
+                                    Vec2::new(3.0, row_rect.height() - 6.0),
+                                );
+                                ui.painter().rect_filled(bar_rect, 1.0, palette.accent_blue);
+                            }
+
+                            let icon_rect = egui::Rect::from_center_size(
+                                row_rect.left_center() + Vec2::new(16.0, 0.0),
+                                Vec2::splat(20.0),
+                            );
+                            let cache_key = format!("{}#{}", btn.action, sub.id);
+                            let maybe_tex = self.icon_cache.get_or_load(
+                                ui.ctx(),
+                                &cache_key,
+                                sub_icon_path.as_deref(),
+                                is_dark,
+                            );
+
+                            if let Some(tex) = maybe_tex {
+                                let img =
+                                    egui::Image::new(&tex).fit_to_exact_size(Vec2::splat(20.0));
+                                img.paint_at(ui, icon_rect);
+                            } else {
+                                ui.painter().rect_stroke(
+                                    icon_rect.shrink(3.0),
+                                    2.0,
+                                    Stroke::new(1.0, palette.text_muted),
+                                    egui::StrokeKind::Inside,
+                                );
+                            }
+
+                            let text_color = if is_active {
+                                palette.accent_blue
+                            } else if row_resp.hovered() {
+                                palette.text_primary
+                            } else {
+                                palette.text_muted
+                            };
+
+                            ui.painter().text(
+                                row_rect.left_center() + Vec2::new(34.0, 0.0),
+                                egui::Align2::LEFT_CENTER,
+                                sub_label,
+                                egui::FontId::proportional(12.0),
+                                text_color,
+                            );
+
+                            if row_resp.clicked() {
+                                chosen_sub = Some(sub.id.clone());
+                            }
+                        }
+                    });
+            },
+        );
+
+        if let Some(sub_id) = chosen_sub {
+            let btn = &mut self.buttons[btn_idx];
+            btn.active_sub_action = Some(sub_id.clone());
+            self.pending_action = Some(format!("{}#{}", btn.action, sub_id));
+            self.open_sub_actions_for = None;
+        } else if should_close {
+            self.open_sub_actions_for = None;
         }
     }
 }
@@ -606,6 +715,7 @@ mod tests {
                     Some("bw".to_string())
                 },
                 icon_path: None,
+                plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
             })
@@ -736,6 +846,7 @@ mod tests {
         assert!(!app.hide_requested);
         assert!(app.hovered_tooltip.is_none());
         assert!(!app.orientation_changed);
+        assert!(app.suppress_click_for.is_none());
     }
 
     #[test]
@@ -773,6 +884,7 @@ mod tests {
             action: "ai.photocraft.plugins.remove_bg".to_string(),
             icon: Some("wand".to_string()),
             icon_path: None,
+            plugin_dir: None,
             sub_actions: vec![sub1, sub2],
             active_sub_action: Some("mask".to_string()),
         };
@@ -780,5 +892,43 @@ mod tests {
         let app = ToolstripApp::new(vec![btn], ThemeMode::Dark);
         assert_eq!(app.buttons[0].sub_actions.len(), 2);
         assert_eq!(app.buttons[0].active_sub_action.as_deref(), Some("mask"));
+    }
+
+    #[test]
+    fn test_sub_action_icon_path_resolution() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "sub_icon_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let mask_svg = temp_dir.join("mask.svg");
+        std::fs::write(&mask_svg, "<svg></svg>").unwrap();
+
+        let sub = core_contracts::SubAction {
+            id: "mask".to_string(),
+            name: "Layer Mask".to_string(),
+            name_ru: None,
+            icon: Some("mask.svg".to_string()),
+            post_commands: vec![],
+            script: None,
+        };
+
+        let btn = ButtonConfig {
+            label: "Remove BG".to_string(),
+            action: "ai.photocraft.plugins.remove_bg".to_string(),
+            icon: Some("wand".to_string()),
+            icon_path: None,
+            plugin_dir: Some(temp_dir.clone()),
+            sub_actions: vec![sub],
+            active_sub_action: Some("mask".to_string()),
+        };
+
+        let resolved = btn.effective_icon_path();
+        assert_eq!(resolved, Some(mask_svg));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
