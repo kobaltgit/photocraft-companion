@@ -33,6 +33,10 @@ pub struct ButtonConfig {
     pub icon: Option<String>,
     #[serde(default)]
     pub icon_path: Option<PathBuf>,
+    #[serde(default)]
+    pub sub_actions: Vec<SubAction>,
+    #[serde(default)]
+    pub active_sub_action: Option<String>,
 }
 
 pub mod i18n;
@@ -40,10 +44,10 @@ pub use i18n::Language;
 
 pub mod plugin;
 pub use plugin::{
-    AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle, BridgeOperations,
-    ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode, Plugin,
-    PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginManifest,
-    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, WidgetNode,
+    ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
+    BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode,
+    Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginManifest,
+    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, SubAction, WidgetNode,
     IPC_SUB_SESSION_COLORS,
 };
 

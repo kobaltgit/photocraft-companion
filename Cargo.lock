@@ -676,6 +676,7 @@ dependencies = [
  "photocraft_bridge",
  "resvg",
  "rfd",
+ "rhai",
  "serde_json",
  "tokio",
  "tracing",

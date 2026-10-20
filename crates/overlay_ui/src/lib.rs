@@ -72,11 +72,14 @@ impl OverlayBar {
                     }
                     _ => None,
                 };
+                let active_sub_action = m.sub_actions.first().map(|s| s.id.clone());
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
                     icon,
                     icon_path,
+                    sub_actions: m.sub_actions.clone(),
+                    active_sub_action,
                 });
             }
         }
@@ -94,12 +97,16 @@ impl OverlayBar {
                 action: "ai.photocraft.plugins.remove_bg".to_string(),
                 icon: Some("wand".to_string()),
                 icon_path: None,
+                sub_actions: Vec::new(),
+                active_sub_action: None,
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
                 action: "macro.photocraft.plugins.black_and_white".to_string(),
                 icon: Some("bw".to_string()),
                 icon_path: None,
+                sub_actions: Vec::new(),
+                active_sub_action: None,
             },
         ]
     }
@@ -181,7 +188,17 @@ impl CompanionOverlayApp {
             Arc::new(std::sync::RwLock::new(initial))
         });
 
-        let toolstrip = ToolstripApp::new(buttons, current_theme).with_orientation(cfg.is_vertical);
+        let mut toolstrip = ToolstripApp::new(buttons, current_theme)
+            .with_orientation(cfg.is_vertical)
+            .with_language(current_lang);
+
+        for btn in &mut toolstrip.buttons {
+            if let Some(sub_id) = cfg.active_sub_actions.get(&btn.action) {
+                if btn.sub_actions.iter().any(|s| &s.id == sub_id) {
+                    btn.active_sub_action = Some(sub_id.clone());
+                }
+            }
+        }
         let mut manager =
             PluginManagerApp::new(manifests.clone(), &prefs_path, is_connected.clone())
                 .with_connection_state(conn_state_arc.clone());
@@ -1010,6 +1027,8 @@ mod tests {
             action: "custom.action".to_string(),
             icon: Some("custom".to_string()),
             icon_path: None,
+            sub_actions: Vec::new(),
+            active_sub_action: None,
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 

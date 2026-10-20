@@ -2456,3 +2456,49 @@ We synchronously updated the documentation in both English and Russian (`PLUGIN_
 
 
 
+
+---
+
+## [2026-10-20 16:15] Chapter 74: Universal Workflow Engine & Photoshop-Style Sub-Tools (BUG-073 / TASK-015)
+
+*Time: October 20, 2026, 16:15 (~45 minutes)*
+
+### 1. Challenge: Single-Action Limitations and Monolithic Post-Pipelines
+Until now, each plugin in PhotoCraft Companion functioned as an indivisible button executing a fixed, monolithic sequence:
+- For instance, the RMBG-1.4 background removal plugin extracted the foreground and created a new pixel layer with alpha transparency, hiding the source layer or duplicating pixels.
+- Professional artists and retouchers in PhotoCraft routinely require alternative workflows: some need a quick, isolated cut-out layer (Cutout) for rapid collage work, while others require a non-destructive layer mask (Layer Mask) to retain original pixel data and paint details back in with a soft brush.
+- Previously, supporting this would have meant either publishing duplicate plugins with duplicate multi-megabyte ONNX weights or writing ad-hoc branching in the companion core.
+- Furthermore, plugin post-commands executed blindly — without awareness of newly generated layer IDs or source layer IDs, unable to evaluate conditions (e.g. active selections), and lacking dynamic argument interpolation.
+
+### 2. Architectural Solution: Workflow Engine & Sub-Tools
+We architected and implemented an extensible declarative Workflow Engine alongside Photoshop-style sub-tools:
+1. **Sub-Tool Contracts in `core_contracts`:**
+   - Introduced `SubAction` model (`id`, `name`, `name_ru`, `icon`, `post_commands`, `script`, `name_for_lang` helper).
+   - Added `sub_actions: Vec<SubAction>` to `PluginManifest` — declaratively configurable in any plugin's `plugin.json`.
+   - Expanded `PluginCommandStep` with `save_as`, `when`, `ignore_errors`, and `description`.
+   - Created `ActionRequest` transport DTO (`action_id`, `sub_action_id`, string format `action#sub_action`).
+   - Persisted user sub-tool selection in `CompanionConfig::active_sub_actions`.
+2. **Universal Workflow Engine (`crates/companion_app/src/workflow_engine`):**
+   - **`resolver.rs`:** `ExecutionContext` with context variable resolution (`$source_layer`, `$result_layer`, `$active_layer`, `$document.id`, `$document.width`, `$document.height`, `$has_selection`, `$session.fg_color`, `$session.bg_color`, step variables from `save_as`). Supports exact type replacement (numbers, booleans) and string interpolation.
+   - **`runner.rs`:** Sequential step execution `execute_steps` with `when` condition gating, safe error tolerance (`ignore_errors`), and step result capturing.
+   - **`rhai_bridge.rs`:** Sandboxed Rhai execution environment with strict recursion and operation limits.
+3. **Pure Inference Engine (`ai_engine`):**
+   - Refactored `GenericAiPlugin::execute` away from monolithic post-command execution. It returns a clean `PluginResult` with `source_layer_id` and `result_layer_id` captured in `res.data`.
+   - Full lifecycle orchestration (pre-commands -> plugin execute -> active sub-action post-commands) is delegated to `companion_app`.
+4. **Photoshop-Style Toolstrip UI (`overlay_ui`):**
+   - Buttons with sub-actions render a vector triangular chevron in the lower-right corner via `Shape::convex_polygon` (100% Vector-First, 0% tofu, strict Rule 6 compliance).
+   - Short clicks (<350ms) trigger the remembered active sub-action.
+   - Long presses (>350ms) or secondary clicks (RMB) open a floating accordion flyout for mode selection.
+   - Active sub-actions feature a vertical accent bar `palette.accent_blue`. Labels are dynamically localized on the fly (`sub.name_for_lang`).
+   - Maintained 100% Cyrillic-free string literals in `toolstrip.rs` (`i18n_lint_test` passed).
+5. **Remove Background Plugin v1.1.0 (`plugins/remove_bg`):**
+   - Declared two sub-tools: "Remove Background (Cutout)" and "Create Layer Mask" (non-destructive layer mask via `select.loadSelection`, `layer.delete`, `layer.select`, `layer.layerMask.revealSelection`, `select.deselect`).
+   - Added vector asset `icon_mask.svg` and updated bilingual `README.md`.
+
+### 3. Personal Code Audit and Definition of Done (DoD)
+In strict adherence to the project engineering charter:
+- **Zero-Core Hardcoding:** Core production crates contain zero plugin references or keyword sniffing. All workflow mechanisms are 100% generic and accessible to third-party developers.
+- **Resource Guard:** All compilation and test cycles executed strictly with `-j 1`.
+- **Full Workspace Pass:** `cargo test --workspace -j 1` — 100% green tests (0 failures).
+- **Specialized Linters:** Passed `cargo fmt --all -- --check`, `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`.
+- **Plugin Packaging:** 7/7 plugins verified by `plugin_validator`, `.pcpl` archives compiled into `dist/`, README catalog tables updated.

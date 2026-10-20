@@ -2877,6 +2877,7 @@ mod tests {
             models: Vec::new(),
             commands: Vec::new(),
             post_commands: Vec::new(),
+            sub_actions: Vec::new(),
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             action_id: None,

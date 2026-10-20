@@ -1135,33 +1135,29 @@ impl Plugin for GenericAiPlugin {
         .map_err(|e| CompanionError::Plugin(format!("AI worker join error: {e}")))?
         .map_err(|e| CompanionError::Plugin(format!("AI inference error: {e}")))?;
 
+        let source_layer_id = ctx.document.active_layer;
+
         // 4. Output Integration according to output_mode
         let paste_res = ctx.client.paste_image_in_place(&processed_img).await?;
-        if let Some(new_layer_id) = paste_res.get("layer").and_then(|l| l.as_u64()) {
+        let result_layer_id = paste_res
+            .get("layer")
+            .or_else(|| paste_res.get("layer_id"))
+            .or_else(|| paste_res.get("id"))
+            .and_then(|l| l.as_u64());
+
+        if let Some(new_layer_id) = result_layer_id {
             let _ = ctx.client.rename_layer(new_layer_id, &target_name).await;
         }
 
-        // 5. Execute post_commands sequentially
-        for (idx, step) in self.manifest.post_commands.iter().enumerate() {
-            debug!(
-                "Executing post-command [{}/{}]: {}",
-                idx + 1,
-                self.manifest.post_commands.len(),
-                step.command
-            );
-            if let Err(e) = ctx
-                .client
-                .execute_command(&step.command, step.params.clone())
-                .await
-            {
-                warn!("Post-command '{}' warning: {}", step.command, e);
-            }
-        }
-
-        Ok(PluginResult::ok(format!(
+        let mut res = PluginResult::ok(format!(
             "Plugin '{}' processed '{}' successfully",
             self.manifest.name, target_name
-        )))
+        ));
+        res.data = Some(serde_json::json!({
+            "source_layer_id": source_layer_id,
+            "result_layer_id": result_layer_id,
+        }));
+        Ok(res)
     }
 }
 
@@ -1292,6 +1288,7 @@ mod tests {
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/unknown"),
             client: Arc::new(MockBridgeGeneric),
+            sub_action_id: None,
         };
 
         let res = plugin.execute(&ctx).await;

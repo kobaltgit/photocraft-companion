@@ -13,6 +13,7 @@ fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
         models: Vec::new(),
         commands: Vec::new(),
         post_commands: Vec::new(),
+        sub_actions: Vec::new(),
         input: Default::default(),
         output_mode: Default::default(),
         action_id: None,

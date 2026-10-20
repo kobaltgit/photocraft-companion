@@ -22,6 +22,7 @@ vtracer = { workspace = true }
 arboard = { workspace = true }
 async-trait = { workspace = true }
 rfd = { workspace = true }
+rhai = { workspace = true }
 
 [[bin]]
 name = "photocraft-companion"

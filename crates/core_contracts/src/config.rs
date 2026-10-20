@@ -22,6 +22,8 @@ pub struct CompanionConfig {
     #[serde(default)]
     pub enabled_plugins: Vec<String>,
     #[serde(default)]
+    pub active_sub_actions: std::collections::HashMap<String, String>,
+    #[serde(default)]
     pub photocraft_path: Option<PathBuf>,
 }
 
@@ -52,6 +54,7 @@ impl Default for CompanionConfig {
             is_vertical: false, // Per spec: default is horizontal
             window_position: None,
             enabled_plugins: Vec::new(),
+            active_sub_actions: std::collections::HashMap::new(),
             photocraft_path: None,
         }
     }

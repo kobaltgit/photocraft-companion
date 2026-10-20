@@ -401,6 +401,30 @@ fn validate_single_plugin(dir: &Path, skip_network: bool) -> Result<ValidatedPlu
         }
     }
 
+    // Validate SubActions
+    for sub in &manifest.sub_actions {
+        if sub.id.trim().is_empty() {
+            bail!("Sub-action has empty 'id' in plugin '{}'", manifest.id);
+        }
+        if sub.name.trim().is_empty() {
+            bail!("Sub-action '{}' has empty 'name'", sub.id);
+        }
+        if let Some(ref icon_file) = sub.icon {
+            let sub_icon_path = dir.join(icon_file);
+            if sub_icon_path.exists() {
+                validate_svg_icon(&sub_icon_path)
+                    .with_context(|| format!("Sub-action '{}' icon validation failed", sub.id))?;
+            } else {
+                bail!(
+                    "Sub-action '{}' icon '{}' not found in {}",
+                    sub.id,
+                    icon_file,
+                    dir.display()
+                );
+            }
+        }
+    }
+
     // Validate Mandatory README.md Documentation (including model weights links for NativeAi)
     validate_plugin_readme(dir, Some(&manifest))
         .with_context(|| format!("Documentation validation failed for {}", dir.display()))?;
@@ -854,6 +878,7 @@ mod tests {
             icon: Some("icon.svg".to_string()),
             commands: vec![],
             post_commands: vec![],
+            sub_actions: vec![],
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             models: vec![],
@@ -975,6 +1000,7 @@ Awesome AI plugin description for tests.
             icon: None,
             commands: vec![],
             post_commands: vec![],
+            sub_actions: vec![],
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             models: vec![core_contracts::ModelRequirement {
@@ -1038,6 +1064,7 @@ Awesome AI plugin description for tests.
             icon: None,
             commands: vec![],
             post_commands: vec![],
+            sub_actions: vec![],
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             models: vec![core_contracts::ModelRequirement {
@@ -1101,6 +1128,7 @@ Awesome AI plugin description for tests.
             icon: None,
             commands: vec![],
             post_commands: vec![],
+            sub_actions: vec![],
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             models: vec![core_contracts::ModelRequirement {
@@ -1253,6 +1281,39 @@ Awesome AI plugin description for tests.
             .unwrap_err()
             .to_string()
             .contains("is missing a download 'url'. Every plugin must be self-contained"));
+
+        let _ = fs::remove_dir_all(tmp_dir);
+    }
+
+    #[test]
+    fn test_validate_sub_actions_success_and_invalid() {
+        let tmp_dir = std::env::temp_dir().join("test_plugin_sub_actions");
+        let _ = fs::remove_dir_all(&tmp_dir);
+        fs::create_dir_all(&tmp_dir).unwrap();
+
+        let readme_content = "# Test\n**English:** Test desc\n### Use Cases:\n- C1\n**Русский:** Тест\n### Практическое применение:\n- С1\n";
+        fs::write(tmp_dir.join("README.md"), readme_content).unwrap();
+
+        let manifest_invalid = r#"{
+            "id": "test.sub.invalid",
+            "name": "Sub Plugin",
+            "version": "1.0.0",
+            "description": "Testing sub-actions",
+            "plugin_type": "no_code",
+            "sub_actions": [
+                {
+                    "id": "",
+                    "name": "Invalid"
+                }
+            ]
+        }"#;
+        fs::write(tmp_dir.join("plugin.json"), manifest_invalid).unwrap();
+        let res = validate_single_plugin(&tmp_dir, true);
+        assert!(res.is_err());
+        assert!(res
+            .unwrap_err()
+            .to_string()
+            .contains("Sub-action has empty 'id'"));
 
         let _ = fs::remove_dir_all(tmp_dir);
     }
