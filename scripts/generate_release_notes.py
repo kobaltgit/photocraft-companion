@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 #!/usr/bin/env python3
 """
 PhotoCraft Companion - Automated Release Notes Generator
@@ -11,51 +12,39 @@ import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate bilingual release notes for PhotoCraft Companion")
-    parser.add_argument("--version", required=True, help="Release version string, e.g. 1.0.3")
+    parser.add_argument("--version", required=True, help="Release version string, e.g. 1.2.0")
     parser.add_argument("--output", default="release_notes.md", help="Output Markdown file path")
     return parser.parse_args()
-
-def extract_latest_chronicle_chapter(chronicle_path):
-    if not os.path.exists(chronicle_path):
-        return ""
-    with open(chronicle_path, "r", encoding="utf-8") as f:
-        content = f.read()
-
-    # Find chapters starting with ## [YYYY-MM-DD
-    chapters = re.split(r'\n(?=## \[\d{4}-\d{2}-\d{2})', content)
-    if len(chapters) > 1:
-        # Latest chapter is usually at the bottom in chronicle
-        return chapters[-1].strip()
-    return ""
 
 def generate_release_notes(version):
     return f"""# PhotoCraft Companion v{version}
 
 [![GitHub Release](https://img.shields.io/badge/Release-v{version}-007acc.svg?style=flat-square)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v{version})
 [![License](https://img.shields.io/badge/License-MIT%20%2F%20Apache--2.0-blue.svg?style=flat-square)](LICENSE)
-[![PhotoCraft](https://img.shields.io/badge/Companion%20For-PhotoCraft-orange.svg?style=flat-square)](https://github.com/kobaltgit/photocraft-companion)
+[![Companion For](https://img.shields.io/badge/Companion%20For-PhotoCraft-orange.svg?style=flat-square)](https://github.com/kobaltgit/photocraft-companion)
+[![Discord](https://img.shields.io/badge/Discord-Companion_Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
 
 ---
 
 ## 🌟 What's New in v{version} / Что нового в версии {version}
 
 ### 🇬🇧 English
-* **🎨 Interactive UI Plugin System (`interactive_ui`)**: Introduced a 4th major plugin architecture class allowing community developers to create rich, standalone floating tools and windows. Layouts are configured declaratively in `plugin.json` via `WidgetNode` (`color_slot`, `slider`, `dropdown`, `toggle`, `button`, `hue_wheel`, `banner`, `label`, `row`, `separator`) with native bilingual support (`label_ru`, `title_ru`, `options_ru`).
-* **⚡ Embedded Rhai Script Engine (`logic.rhai`)**: Pure-Rust embedded scripting engine providing zero-overhead, sandbox-safe plugin interactivity. Supports user interaction hooks `on_state_changed`, system socket events `on_session_colors`, native IPC commands `execute_command`, brush setting `set_colors`, internationalization `t(en, ru)`, format conversions `rgb_to_hex` / `hex_to_rgb`, and perceptual color routines.
-* **🔄 Bidirectional Real-Time Color Synchronization (BUG-072 / TASK-014)**: Live two-way communication between PhotoCraft editor and companion tools via declarative socket subscriptions (`ipc_subscriptions: ["session.colors"]`). Automatic sync when using Eyedropper (`I`), default colors (`D`), or color swap (`X`). Features two-tier **Echo Guard** suppression preventing infinite network feedback loops, coupled with an adaptive idle-aware socket poller.
-* **👁️ Full W3C WCAG 2.1 & Brettel LMS Color Vision Standards (BUG-071)**: Implemented mathematically rigorous color contrast calculations adhering to W3C WCAG 2.1 relative luminance specifications with strict AA (≥ 3.0:1) and AAA (≥ 4.5:1) pass criteria. Integrates the Brettel/Viénot/Mollon LMS simulation algorithm for deuteranopia, protanopia, tritanopia, and achromatopsia.
-* **🧩 ChromaSense A11y Plugin (`ui.photocraft.plugins.chromasense`)**: New official interactive companion tool providing real-time color blindness diagnostics, interactive Hue Wheel, RGB channel sliders, contrast validation, color swap, and instant one-click export into the active PhotoCraft brush.
-* **🪟 Multi-Viewport Architecture & Window Independence (BUG-066)**: Interactive plugin windows now run as native first-class desktop viewports via `ctx.show_viewport_immediate`, enabling independent movement, dragging, and minimizing outside the main toolstrip bounds.
-* **📖 Plugin Development Guide v2.0**: Exhaustive bilingual documentation (`PLUGIN_DEVELOPMENT_GUIDE.md` and `.en.md`) and updated DevKit skills covering all 4 plugin architectures, manifest specifications, Rhai hooks, and `plugin_validator` workflow.
+* **⚡ Universal Declarative Workflow Engine (`workflow_engine`)**: Major architectural advancement enabling multi-step, complex image manipulation pipelines without compiling Rust code. Features dynamic context variable resolution (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color`, and string interpolation `{{...}}`), conditional branching (`when`), variable capture (`save_as`), error tolerance (`ignore_errors`), and sandboxed Rhai scripting.
+* **📐 Photoshop-Style Sub-Tools & Flyout Viewports (`sub_actions`)**: Tool buttons in the Toolstrip can now declare multiple functional variations (e.g. Cutout to new layer vs Non-destructive Layer Mask). Buttons render a subtle vector corner chevron; clicking the chevron or long-pressing (>350ms) opens a dedicated floating flyout window (`egui::ViewportBuilder`), persisting user choices in settings.
+* **✂️ AI Remove Background v1.1.0 with Sub-Tools**: Upgraded RMBG-1.4 to offer two native operational modes: instant subject isolation onto a clean transparent layer (**Cutout**) and non-destructive native layer mask creation (**Create Layer Mask**) via seamless selection inversion and temporary layer cleanup.
+* **🚀 Up to 25x Faster AI Upscaling via Warm DirectML Session Tiling (BUG-075)**: Resolved severe tile inference bottleneck in `run_tiled_rgb_inference`. The DirectML/CPU session is initialized strictly once before tiling begins and reused across all tile iterations, eliminating redundant model reads and HLSL shader recompilations in VRAM. Per-tile inference dropped from 16s down to ~1.9s.
+* **🛡️ No-Code Duplicate Layer Execution Guard (BUG-074)**: Fixed an execution dispatch flaw where No-Code macros executed both as pre-commands and plugin body, producing triple identical layers. No-Code pipelines now run strictly once.
+* **📖 Plugin Developer Guide v2.1 & DevKit Update**: Comprehensive bilingual documentation and Antigravity DevKit skills updated to cover the Workflow Engine, context variables, and Sub-Actions schema.
+* **💬 Dedicated Companion Discord Community**: Prominent community server invitations and badges added for live developer and artist collaboration.
 
 ### 🇷🇺 Русский
-* **🎨 Декларативная система интерактивных UI-плагинов (`interactive_ui`)**: Внедрен 4-й фундаментальный класс плагинов, позволяющий создавать полноценные плавающие панели инструментов без модификации ядра. Разметка верстается декларативно в манифесте через `WidgetNode` (`color_slot`, `slider`, `dropdown`, `toggle`, `button`, `hue_wheel`, `banner`, `label`, `row`, `separator`) с полной поддержкой мультиязычности (`label_ru`, `title_ru`, `options_ru`).
-* **⚡ Встроенный скриптовый движок Rhai (`logic.rhai`)**: Безопасный и сверхбыстрый скриптовый рантайм на чистом Rust. Предоставляет хук действий пользователя `on_state_changed`, хук системных событий сокета `on_session_colors`, системные вызовы команд PhotoCraft `execute_command`, установку цветов кисти `set_colors`, функции локализации `t(en, ru)`, конвертацию `rgb_to_hex` / `hex_to_rgb` и колориметрическую математику.
-* **🔄 Декларативная двунаправленная синхронизация цветов в реальном времени (BUG-072 / TASK-014)**: Бесшовный двусторонний обмен цветами между PhotoCraft и инструментами компаньона через подписку `ipc_subscriptions: ["session.colors"]`. Автоматический подхват цветов при использовании Пипетки (`I`), сбросе палитры (`D`) или инверсии (`X`). Оснащен двухэшелонной защитой **Echo Guard**, физически исключающей сетевые эхо-петли, и адаптивным поллером сокета с нулевой нагрузкой при закрытых окнах.
-* **👁️ Соответствие международному стандарту W3C WCAG 2.1 и модели Brettel LMS (BUG-071)**: Математически строгий расчет контрастности по формуле относительной яркости W3C WCAG 2.1 с нормативными порогами AA (≥ 3.0:1) и AAA (≥ 4.5:1). Интегрирована колориметрическая модель Бреттеля/LMS для симуляции дейтеранопии, протанопии, тританопии и монохромазии.
-* **🧩 Официальный плагин ChromaSense A11y (`ui.photocraft.plugins.chromasense`)**: Новый интерактивный инструмент экосистемы: диагностика доступности для дальтоников, интерактивный цветовой круг Hue Wheel, раздельные RGB-слайдеры, кнопка Swap и экспорт цвета в активную кисть PhotoCraft в 1 клик.
-* **🪟 Мульти-вьюпорт архитектура окон инструментов (BUG-066)**: Окна интерактивных плагинов открываются как независимые нативные окна ОС через `ctx.show_viewport_immediate`, свободно перемещаются по экрану и не зависят от положения тулбара.
-* **📖 Руководство разработчика плагинов v2.0**: Комплексная двуязычная документация (`PLUGIN_DEVELOPMENT_GUIDE.md` и `.en.md`) с исчерпывающим описанием всех 4 типов плагинов, API скриптов Rhai и цикла дистрибуции через `plugin_validator`.
+* **⚡ Универсальный декларативный движок рабочих процессов Workflow Engine (`workflow_engine`)**: Фундаментальное расширение возможностей рантайма, позволяющее строить сложные многошаговые пайплайны обработки без компиляции кода. Включает автоматическую интерполяцию контекстных переменных (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color` и строковый синтаксис `{{...}}`), условное ветвление (`when`), сохранение промежуточных слоев (`save_as`), безопасный пропуск ошибок (`ignore_errors`) и скриптовые шаги Rhai.
+* **📐 Суб-инструменты в стиле Photoshop и плавающие меню Flyout (`sub_actions`)**: Кнопки тулбара теперь могут объявлять несколько функциональных режимов работы. Кнопки с суб-действиями снабжены векторным индикатором-шевроном; клик по шеврону или долгое нажатие (>350 мс) открывает отдельное плавающее окно выбора (`egui::ViewportBuilder`), а выбранный режим надёжно сохраняется в конфигурации пользователя.
+* **✂️ Обновление плагина AI Remove Background v1.1.0**: В инструмент RMBG-1.4 внедрены два официальных суб-инструмента: быстрая вырезка объекта на чистый прозрачный слой (**Удаление фона / Вырезка**) и создание неразрушающей маски слоя (**Создать маску слоя**) с автоматическим переносом альфа-контура в выделение и очисткой временных слоев.
+* **🚀 Ускорение ИИ-апскейла до 25 раз благодаря кэшированию сессий DirectML (BUG-075)**: Устранено узкое горлышко производительности в тайлинге апскейла `run_tiled_rgb_inference`. Сессия DirectML/CPU теперь инициализируется ровно 1 раз на весь холст и остаётся горячей в VRAM GPU на всех тайлах без повторного вычитывания 71 МБ весов с диска. Время обработки тайла снижено с 16с до ~1.9с.
+* **🛡️ Защита от дублирования слоев в No-Code макросах (BUG-074)**: Исправлен дефект, при котором No-Code плагины дублировали шаги как pre-команды и тело плагина, создавая тройные слои. Команды макроса теперь выполняются строго один раз.
+* **📖 Руководство разработчика плагинов v2.1 и обновление DevKit**: Полная двуязычная документация по созданию плагинов с Workflow Engine, спецификацией шагов и суб-инструментов.
+* **💬 Официальный Discord-сервер PhotoCraft Companion**: Прямые ссылки на сервер сообщества для оперативной поддержки и обмена плагинами.
 
 ---
 
@@ -75,13 +64,13 @@ def generate_release_notes(version):
 ## 🧩 Community Plugins Marketplace / Каталог плагинов
 
 Все официальные плагины (`.pcpl`) автоматически доступны для установки в один клик через вкладку **«Магазин плагинов»** в менеджере:
+* **Background Removal** (`remove_bg`): Качественное удаление фона на базе нейросети RMBG-1.4 с выбором режимов Cutout и Layer Mask.
 * **ChromaSense A11y** (`chromasense`): Интерактивная палитра, проверка контраста WCAG 2.1 и симуляция дальтонизма (Brettel LMS).
-* **Background Removal** (`remove_bg`): Качественное удаление фона на базе нейросети RMBG-1.4.
 * **Depth Map** (`depth_map`): Оценка глубины сцены на базе Depth Anything v2.
-* **Image Upscale** (`upscale`): 4x супер-разрешение на базе Real-ESRGAN с бесшовным тайлингом.
+* **Image Upscale** (`upscale`): 2x супер-разрешение на базе Real-ESRGAN с ускоренным кэшированным тайлингом.
 * **Generative Inpaint** (`inpaint`): Умное заполнение выделенных областей текстурой окружающего фона (LaMa).
 * **Vector Tracing** (`vectorize`): Алгоритмическая векторизация силуэтов и штриховых рисунков.
-* **Black & White Pro** (`black_and_white`): Высококонтрастная черно-белая конвертация.
+* **Black & White Pro** (`black_and_white`): Высококонтрастная черно-белая конвертация No-Code.
 
 ---
 """

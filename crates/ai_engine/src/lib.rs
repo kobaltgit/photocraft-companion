@@ -233,6 +233,28 @@ impl AiEngine {
         let out_w = w * scale;
         let out_h = h * scale;
 
+        let is_cpu = self
+            .cpu_fallback_models
+            .lock()
+            .unwrap()
+            .contains(&model_path.to_path_buf());
+
+        let mut session = if !is_cpu {
+            match self.create_session(model_path, false) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("DirectML session setup failed ({e}), falling back to CPU");
+                    self.cpu_fallback_models
+                        .lock()
+                        .unwrap()
+                        .push(model_path.to_path_buf());
+                    self.create_session(model_path, true)?
+                }
+            }
+        } else {
+            self.create_session(model_path, true)?
+        };
+
         // If image fits within a single tile, pad to exact tile_size x tile_size, run, and crop back
         if w <= tile_size && h <= tile_size {
             let mut padded = RgbaImage::new(tile_size, tile_size);
@@ -254,7 +276,8 @@ impl AiEngine {
                 }
             }
 
-            let full_out = self.run_single_rgb_patch(model_path, &padded, scale, normalize)?;
+            let full_out =
+                self.run_single_rgb_patch_session(&mut session, &padded, scale, normalize)?;
             let cropped = image::imageops::crop_imm(&full_out, 0, 0, out_w, out_h).to_image();
             return Ok(cropped);
         }
@@ -295,7 +318,8 @@ impl AiEngine {
                     }
                 }
 
-                let patch_out = self.run_single_rgb_patch(model_path, &patch, scale, normalize)?;
+                let patch_out =
+                    self.run_single_rgb_patch_session(&mut session, &patch, scale, normalize)?;
 
                 let out_patch_w = patch_out.width();
                 let out_patch_h = patch_out.height();
@@ -425,10 +449,10 @@ impl AiEngine {
         Ok(slice.to_vec())
     }
 
-    /// Single patch inference for models accepting [1, 3, H, W] RGB tensor
-    fn run_single_rgb_patch(
+    /// Single patch inference using an already instantiated/warmed Session (fast path for tiled inference)
+    fn run_single_rgb_patch_session(
         &self,
-        model_path: &Path,
+        session: &mut Session,
         img: &RgbaImage,
         scale: u32,
         normalize: &NormalizationMode,
@@ -472,8 +496,16 @@ impl AiEngine {
         let out_h = (h as u32) * scale;
         let out_stride = (out_w * out_h) as usize;
 
-        let out_slice =
-            self.run_single_inference_vector(model_path, input_data, [1usize, 3, h, w])?;
+        let tensor = Tensor::from_array(([1usize, 3, h, w], input_data))
+            .map_err(|e| CompanionError::AiEngine(format!("Failed to build input tensor: {e}")))?;
+
+        let outputs = session
+            .run(inputs![tensor])
+            .map_err(|e| CompanionError::AiEngine(format!("Inference run failed: {e}")))?;
+
+        let (_s, out_slice) = outputs[0].try_extract_tensor::<f32>().map_err(|e| {
+            CompanionError::AiEngine(format!("Failed to extract tensor from output: {e}"))
+        })?;
 
         let mut result = RgbaImage::new(out_w, out_h);
         for y in 0..out_h {
@@ -505,6 +537,40 @@ impl AiEngine {
         }
 
         Ok(result)
+    }
+
+    /// Single patch inference for models accepting [1, 3, H, W] RGB tensor
+    #[allow(dead_code)]
+    fn run_single_rgb_patch(
+        &self,
+        model_path: &Path,
+        img: &RgbaImage,
+        scale: u32,
+        normalize: &NormalizationMode,
+    ) -> Result<RgbaImage> {
+        let is_cpu = self
+            .cpu_fallback_models
+            .lock()
+            .unwrap()
+            .contains(&model_path.to_path_buf());
+
+        let mut session = if !is_cpu {
+            match self.create_session(model_path, false) {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!("DirectML session setup failed ({e}), falling back to CPU");
+                    self.cpu_fallback_models
+                        .lock()
+                        .unwrap()
+                        .push(model_path.to_path_buf());
+                    self.create_session(model_path, true)?
+                }
+            }
+        } else {
+            self.create_session(model_path, true)?
+        };
+
+        self.run_single_rgb_patch_session(&mut session, img, scale, normalize)
     }
 
     /// Computes bounding box [min_x, min_y, max_x, max_y] of nonzero mask pixels

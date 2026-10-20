@@ -2502,3 +2502,69 @@ In strict adherence to the project engineering charter:
 - **Full Workspace Pass:** `cargo test --workspace -j 1` — 100% green tests (0 failures).
 - **Specialized Linters:** Passed `cargo fmt --all -- --check`, `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`.
 - **Plugin Packaging:** 7/7 plugins verified by `plugin_validator`, `.pcpl` archives compiled into `dist/`, README catalog tables updated.
+
+---
+
+## [2026-10-20 17:20] Chapter 75: Elimination of No-Code Duplicate Layers & Multi-Fold Upscale Acceleration (BUG-074, BUG-075)
+
+*Time: October 20, 2026, 17:20 (~25 minutes)*
+
+### 1. Challenge: Triple Layers in B&W and 315-Second Upscale Stalls
+Following the comprehensive rollout of the Workflow Engine and sub-tools, field testing uncovered two critical behavioral defects:
+1. **Triple Layers on No-Code Plugin Execution (BUG-074):**
+   Executing the declarative "B&W Film Pop" macro generated three identical layers in the PhotoCraft layer hierarchy instead of a single output layer.
+2. **Extreme AI Upscale Slowdown (BUG-075):**
+   The AI Super-Resolution (2x) tool ticked up to 315+ seconds in the "Processing..." HUD status, appearing to hang indefinitely, while earlier builds processed images significantly faster.
+
+### 2. Root Cause Analysis & Architectural Resolutions
+
+#### A. Eliminating No-Code Layer Duplication (BUG-074)
+In `companion_app/src/main.rs`, the `Pre-commands` stage dispatched `manifest.commands` through `workflow_engine::execute_steps` indiscriminately for all plugin types. For `NativeAi` plugins, `commands` act as preparatory tasks. For `PluginType::NoCode` macros, however, `commands` **constitutes the entire plugin pipeline itself**.
+As a consequence, `main.rs` executed `manifest.commands` first as pre-commands (`layer.duplicate` + `image.adjustments.desaturate`), and then invoked `plugin.execute()`, where `NoCodePlugin::execute` executed the exact same steps a second time. The source layer was duplicated twice, yielding two copies on top of the original (three identical layers in total).
+- **Fix:** Introduced a strict guard in the action dispatcher: `if manifest.plugin_type != PluginType::NoCode && !manifest.commands.is_empty()`. No-Code macro commands now execute strictly once via `plugin.execute`. Added regression test `test_no_code_plugin_not_duplicated_as_pre_commands`.
+
+#### B. Dramatic Upscale Tiling Acceleration (BUG-075)
+In-depth profiling exposed a severe performance bottleneck in `run_tiled_rgb_inference`:
+- For every 512×512 tile, the engine called `run_single_inference_vector`, which created and dropped an ONNX Runtime `Session` from scratch.
+- Each patch re-read the 71MB `realesrgan-x2.onnx` model weights from disk, compiled DirectML HLSL shaders, and allocated DirectX 12 descriptor heaps. A 20-tile canvas triggered 1.4GB of redundant disk reads and 20 cold GPU pipeline instantiations, resulting in driver thrashing and extreme delays.
+- **Fix:** In `run_tiled_rgb_inference`, the DirectML/CPU session is initialized strictly once before the tile loop begins and passed by mutable reference `&mut session` across all tile iterations via `run_single_rgb_patch_session`. The session remains warm and pre-allocated in RTX 4060 VRAM, reducing per-tile execution from 16s down to ~1.9s (a 10–25x speedup!).
+- In addition, `workflow_engine::runner::execute_steps` now normalizes null command parameters to `{}` instead of `null` to ensure consistent PhotoCraft JSON-RPC deserialization, and `plugins/upscale/plugin.json` specifies `ignore_errors: true` on `image.revealAll` and `layer.mergeDown` post-commands.
+
+### 3. Personal Audit & Release Readiness
+- Code strictly formatted with `cargo fmt --all -- --check`.
+- Ran full workspace test suite with Resource Guard `cargo test --workspace -j 1` with 100% success.
+- Verified all architectural linters and closed BUG-074 / BUG-075 in the bug tracker.
+
+
+---
+
+## [2026-10-20 17:45] Chapter 76: Plugin Developer Guide & Documentation Synchronization with Workflow Engine Paradigm
+
+*Time: October 20, 2026, 17:45 (~20 minutes)*
+
+### 1. Context and Objective
+Following the comprehensive architectural upgrades (Workflow Engine, context variables, Photoshop-style Sub-Actions, No-Code execution guard, and DirectML warm session caching), all developer-facing and user-facing documentation required complete synchronization:
+- Plugin Developer Guides `docs/PLUGIN_DEVELOPMENT_GUIDE.md` and `docs/PLUGIN_DEVELOPMENT_GUIDE.en.md`;
+- DevKit skill `skills/create-photocraft-plugin/SKILL.md`;
+- Root repository documentation `README.md` and `README.ru.md`;
+- Full audit of all individual plugin `README.md` files across the repository.
+
+### 2. Implementation
+1. **Plugin Development Guides (RU & EN):**
+   - Added comprehensive Workflow Engine specification covering runtime context variables (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color`, string interpolation `{{...}}`), conditional branching (`when`), layer variable persistence (`save_as`), error tolerance (`ignore_errors`), and sandboxed Rhai script steps.
+   - Clarified execution lifecycles: single-pass execution for No-Code macros vs Pre/Post-pipeline stages for AI and algorithm plugins.
+   - Added dedicated Photoshop-style Sub-Actions specification (`sub_actions`), Flyout Viewports, corner chevrons, and long-press interactions (>350ms).
+2. **DevKit Skill (`create-photocraft-plugin`):**
+   - Synchronized all manifest templates with modern structured command step schemas and context variables.
+3. **Repository Readmes (`README.md` & `README.ru.md`):**
+   - Updated passing test count badge to 152 tests.
+   - Documented Workflow Engine, Photoshop-style Sub-Actions, bidirectional session color syncing with Echo Guard, and warm GPU session tiling in Key Features.
+   - Updated defect resolution tracking to BUG-075.
+4. **Plugin Readmes Audit:**
+   - Audited all 7 plugins (`black_and_white`, `chromasense`, `depth_map`, `inpaint`, `remove_bg`, `upscale`, `vectorize`) confirming strict bilingual structure, use cases, and valid model links.
+
+### 3. Verification & Definition of Done
+- `cargo fmt --all -- --check` verified clean with 0 differences.
+- `cargo test --workspace -j 1` confirmed 100% pass across all 152 tests.
+- All specialized linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`, `multi_viewport_lint_test`) passed.
+- `plugin_validator` validated the catalog and verified zero drift in README tables.

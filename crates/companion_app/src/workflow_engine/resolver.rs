@@ -143,11 +143,13 @@ mod tests {
 
     #[test]
     fn test_exact_variable_resolution() {
-        let mut ctx = ExecutionContext::default();
-        ctx.source_layer_id = Some(42);
-        ctx.result_layer_id = Some(108);
-        ctx.document_width = 1920;
-        ctx.has_selection = true;
+        let ctx = ExecutionContext {
+            source_layer_id: Some(42),
+            result_layer_id: Some(108),
+            document_width: 1920,
+            has_selection: true,
+            ..Default::default()
+        };
 
         assert_eq!(resolve_value(&json!("$source_layer"), &ctx), json!(42));
         assert_eq!(resolve_value(&json!("$result_layer"), &ctx), json!(108));
@@ -158,10 +160,13 @@ mod tests {
 
     #[test]
     fn test_string_interpolation() {
-        let mut ctx = ExecutionContext::default();
-        ctx.source_layer_id = Some(5);
-        ctx.custom_vars
-            .insert("suffix".to_string(), json!("backup"));
+        let mut custom_vars = std::collections::HashMap::new();
+        custom_vars.insert("suffix".to_string(), json!("backup"));
+        let ctx = ExecutionContext {
+            source_layer_id: Some(5),
+            custom_vars,
+            ..Default::default()
+        };
 
         let input = json!({
             "name": "Layer_$source_layer_$suffix",
@@ -175,8 +180,10 @@ mod tests {
 
     #[test]
     fn test_nested_objects_and_arrays() {
-        let mut ctx = ExecutionContext::default();
-        ctx.result_layer_id = Some(99);
+        let ctx = ExecutionContext {
+            result_layer_id: Some(99),
+            ..Default::default()
+        };
 
         let input = json!({
             "ops": [

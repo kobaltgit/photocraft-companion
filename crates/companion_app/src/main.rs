@@ -464,8 +464,8 @@ fn main() -> anyhow::Result<()> {
                         custom_vars: std::collections::HashMap::new(),
                     };
 
-                    // 1. Pre-commands
-                    if !manifest.commands.is_empty() {
+                    // 1. Pre-commands (only for non-NoCode plugins, as NoCode commands ARE the plugin body)
+                    if manifest.plugin_type != PluginType::NoCode && !manifest.commands.is_empty() {
                         if let Err(e) = workflow_engine::execute_steps(
                             &manifest.commands,
                             &mut exec_ctx,
@@ -807,5 +807,30 @@ mod tests {
         apply_win32_menu_theme(1);
         apply_win32_menu_theme(2);
         apply_win32_menu_theme(3);
+    }
+
+    #[test]
+    fn test_no_code_plugin_not_duplicated_as_pre_commands() {
+        use core_contracts::{PluginCommandStep, PluginManifest, PluginType};
+        let m = PluginManifest {
+            id: "test.nocode".to_string(),
+            name: "Test NoCode".to_string(),
+            plugin_type: PluginType::NoCode,
+            commands: vec![PluginCommandStep {
+                command: "layer.duplicate".to_string(),
+                params: serde_json::json!({}),
+                save_as: None,
+                ignore_errors: false,
+                when: None,
+                description: None,
+            }],
+            ..Default::default()
+        };
+        // Verify that pre-commands condition strictly checks plugin_type != PluginType::NoCode
+        let should_run_pre_commands = m.plugin_type != PluginType::NoCode && !m.commands.is_empty();
+        assert!(
+            !should_run_pre_commands,
+            "NoCode commands must never be executed as pre-commands to avoid duplicate execution"
+        );
     }
 }

@@ -6,15 +6,16 @@ description: Пошаговое создание нового автономно
 # Создание нового плагина для PhotoCraft Companion
 
 Используйте этот сценарий при добавлении нового плагина или инструмента для PhotoCraft.
+Ядро PhotoCraft Companion работает по принципу **Zero-Core Hardcoding**: любой плагин подхватывается автоматически на лету без изменения кода и пересборки программы.
 
 ## Шаг 1. Создание папки плагина
-Создайте директорию в `plugins/<id_плагина>/`.
+Создайте директорию в `plugins/<id_плагина>/` (например, `plugins/my_tool/`).
 
 ## Шаг 2. Создание манифеста `plugin.json`
 В зависимости от типа инструмента выберите подходящий `plugin_type`:
 
 ### Вариант А: ИИ-плагин (`native_ai`)
-Создайте `plugins/<id_плагина>/plugin.json`:
+Создайте `plugins/<id_плагина>/plugin.json`. Поддерживаются `sub_actions` (Photoshop-style выпадающие вариации), предварительные `commands` и завершающие `post_commands`:
 ```json
 {
   "id": "ai.photocraft.plugins.my_tool",
@@ -30,6 +31,24 @@ description: Пошаговое создание нового автономно
   "input": "active_layer",
   "output_mode": "new_layer",
   "post_commands": [],
+  "sub_actions": [
+    {
+      "id": "cutout",
+      "name": "Cutout to Layer",
+      "name_ru": "Вырезка на слой",
+      "icon": "icon.svg",
+      "post_commands": [
+        {
+          "command": "layer.setProps",
+          "params": {
+            "layer": "$source_layer",
+            "visible": false
+          },
+          "description": "Hide source layer"
+        }
+      ]
+    }
+  ],
   "ai": {
     "task": "segmentation_mask",
     "input_size": 1024,
@@ -51,7 +70,7 @@ description: Пошаговое создание нового автономно
 ### Вариант Б: Алгоритмический плагин (`native_algorithm`)
 ```json
 {
-  "id": "ai.photocraft.plugins.vector_tracer",
+  "id": "algorithm.photocraft.plugins.vector_tracer",
   "name": "Vector Tracer",
   "name_ru": "Векторизация",
   "version": "1.0.0",
@@ -62,38 +81,53 @@ description: Пошаговое создание нового автономно
   "action_id": "plugin:vector_tracer",
   "icon": "icon.svg",
   "input": "active_layer",
-  "output_mode": "in_place",
+  "output_mode": "new_layer",
   "algorithm": {
-    "task": "vector_trace"
+    "task": "vector_trace",
+    "mode": "spline",
+    "color_mode": "color",
+    "copy_clipboard": true,
+    "export_file": true
   }
 }
 ```
 
-### Вариант В: Макрос / No-Code плагин (`no_code`)
+### Вариант В: Макрос / No-Code плагин с Workflow Engine (`no_code`)
+Поддерживает динамические контекстные переменные (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$has_selection`, `$fg_color`, `$bg_color`), условия (`when`), сохранение промежуточных слоев (`save_as`) и обработку ошибок (`ignore_errors`):
 ```json
 {
-  "id": "ai.photocraft.plugins.quick_flatten",
+  "id": "macro.photocraft.plugins.quick_flatten",
   "name": "Quick Flatten",
   "name_ru": "Быстрое сведение",
   "version": "1.0.0",
   "author": "kobaltGIT",
   "description": "Цепочка команд PhotoCraft без ИИ",
-  "description_ru": "Объединяет слои и подгоняет холст",
+  "description_ru": "Дублирует слой и подгоняет холст",
   "plugin_type": "no_code",
   "action_id": "plugin:quick_flatten",
   "icon": "icon.svg",
   "commands": [
-    "image.revealAll",
-    "layer.mergeDown"
+    {
+      "command": "layer.duplicate",
+      "params": {},
+      "save_as": "dup_layer",
+      "description": "Duplicate source layer"
+    },
+    {
+      "command": "image.revealAll",
+      "params": {},
+      "ignore_errors": true,
+      "description": "Reveal canvas bounds"
+    }
   ]
 }
 ```
 
 ### Вариант Г: Интерактивный UI-виджет / Панель (`interactive_ui`)
-Манифест `plugin.json` задает декларативную верстку окна (`WidgetNode`), подписки на события IPC и имя скрипта:
+Манифест `plugin.json` задает декларативную верстку окна (`widgets`), подписки на события IPC (`session.colors`) и имя скрипта Rhai:
 ```json
 {
-  "id": "ai.photocraft.plugins.color_helper",
+  "id": "ui.photocraft.plugins.color_helper",
   "name": "Color Helper",
   "name_ru": "Цветовой помощник",
   "version": "1.0.0",
@@ -104,36 +138,43 @@ description: Пошаговое создание нового автономно
   "action_id": "plugin:color_helper",
   "icon": "icon.svg",
   "interactive_ui": {
-    "title": "Color Helper",
-    "title_ru": "Цветовой помощник",
-    "width": 320.0,
-    "height": 420.0,
-    "resizable": false,
+    "window_title": "Color Helper",
+    "window_title_ru": "Цветовой помощник",
+    "default_width": 320.0,
+    "default_height": 420.0,
     "script": "logic.rhai",
     "ipc_subscriptions": [
       "session.colors"
     ],
-    "root": {
-      "type": "row",
-      "children": [
-        {
-          "type": "color_slot",
-          "id": "slot_fg",
-          "label": "FG Color",
-          "label_ru": "Основной цвет",
-          "color_key": "color_fg",
-          "action": "open_fg"
-        }
-      ]
-    }
+    "widgets": [
+      {
+        "type": "color_slot",
+        "id": "slot_fg",
+        "label": "FG Color",
+        "label_ru": "Основной цвет",
+        "default_hex": "#2563eb",
+        "selectable": true,
+        "target_binding": "edit_target"
+      },
+      {
+        "type": "slider",
+        "id": "red",
+        "label": "Red",
+        "label_ru": "Красный",
+        "min": 0.0,
+        "max": 255.0,
+        "step": 1.0,
+        "default": 37.0
+      }
+    ]
   }
 }
 ```
-Рядом создается скрипт `plugins/<id_плагина>/logic.rhai` с хуками `on_state_changed(id, action, state)` и `on_session_colors(fg_hex, bg_hex, state)`.
+Рядом создается скрипт `plugins/<id_плагина>/logic.rhai` с хуками `on_state_changed(state)` и `on_session_colors(fg_hex, bg_hex, state)`.
 
 ## Шаг 3. Векторная иконка и веса модели
 1. Создайте адаптивную векторную иконку `icon.svg` (`viewBox="0 0 24 24"`, `stroke="currentColor"`).
-2. Веса модели `.onnx` никогда не коммитятся в Git (строго в `.gitignore`). Проверьте доступность ссылки `download_url`.
+2. Веса модели `.onnx` никогда не коммитятся в Git (строго в `.gitignore`). Проверьте доступность ссылки `url` в `models`.
 
 ## Шаг 4. Обязательное создание `README.md` плагина (Mandatory)
 Каждый плагин **обязан** содержать `plugins/<id_плагина>/README.md` со следующей структурой:

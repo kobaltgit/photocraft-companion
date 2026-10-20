@@ -3,10 +3,10 @@
 Добро пожаловать в экосистему расширений графического редактора **PhotoCraft**!
 
 PhotoCraft Companion предоставляет мощный механизм создания и распространения плагинов четырёх основных категорий:
-1. **No-Code Macro (`no_code`)**: цепочки декларативных команд PhotoCraft без написания кода;
-2. **Native AI (`native_ai`)**: локальный инференс нейросетей ONNX (DirectML / CPU fallback) с автоматическим тайлингом;
-3. **Native Algorithm (`native_algorithm`)**: скомпилированные высокопроизводительные алгоритмы (векторизация, геометрия);
-4. **Interactive UI (`interactive_ui`)**: плавающие панели инструментов, палитры и ассистенты на базе декларативных виджетов и безопасного скриптового рантайма Rhai с двунаправленной синхронизацией с холстом PhotoCraft.
+1. **No-Code Macro (`no_code`)**: декларативные цепочки команд PhotoCraft с поддержкой движка рабочих процессов (**Workflow Engine**), переменных контекста и условий без компиляции;
+2. **Native AI (`native_ai`)**: локальный инференс нейросетей ONNX (DirectML с автоматическим CPU fallback, кэшированием сессий GPU и адаптивным тайлингом), поддержкой предварительных и пост-команд, а также суб-инструментов (**Sub-Actions**);
+3. **Native Algorithm (`native_algorithm`)**: скомпилированные высокопроизводительные алгоритмы (векторизация, геометрия) с прямым возвратом результата в холст, буфер обмена и экспортные файлы;
+4. **Interactive UI (`interactive_ui`)**: плавающие панели инструментов, палитры и ассистенты в отдельных окнах (Multi-Viewport) на базе декларативных виджетов и безопасного скриптового рантайма Rhai с двунаправленной синхронизацией с PhotoCraft (`session.colors`) и защитой от эхо.
 
 Ядро компаньона построено по принципу **Zero-Core Hardcoding**: рантайм полностью нейтрален к логике плагинов и декларативно интерпретирует манифесты `plugin.json`.
 
@@ -62,15 +62,16 @@ my_plugin/
 
 ## 3. Манифест плагина (`plugin.json`)
 
-Манифест определяет тип плагина, его метаданные, входные данные, шаги инференса или макрокоманд, а также способ возврата результата в холст PhotoCraft.
+Манифест определяет тип плагина, его метаданные, входные данные, цепочки команд, конфигурацию ИИ или алгоритмов, суб-инструменты и способ возврата результата в холст PhotoCraft.
 
 ### 3.1. No-Code Macro плагин (`plugin_type: "no_code"`)
-Чисто декларативная цепочка команд PhotoCraft. Выполняется через сокет управления без компиляции:
+Декларативная цепочка команд PhotoCraft с поддержкой движка рабочих процессов (**Workflow Engine**). Для плагинов типа `no_code` массив `commands` является телом плагина и исполняется ровно один раз:
 
 ```json
 {
   "id": "macro.photocraft.plugins.black_and_white",
   "name": "B&W Film Pop (No-Code)",
+  "name_ru": "Черно-белое кино (No-Code)",
   "version": "1.0.0",
   "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
   "author": "kobaltGIT",
@@ -80,6 +81,7 @@ my_plugin/
     {
       "command": "layer.duplicate",
       "params": {},
+      "save_as": "monochrome_layer",
       "description": "Duplicate source layer"
     },
     {
@@ -92,13 +94,14 @@ my_plugin/
 ```
 
 ### 3.2. Native AI плагин (`plugin_type: "native_ai"`)
-Локальный запуск нейросетей через встроенный в ядро ONNX Runtime (DirectML с автоматическим fallback на CPU и тайлингом):
+Локальный запуск нейросетей через встроенный в ядро ONNX Runtime (DirectML с автоматическим fallback на CPU, кэшированием сессий GPU и адаптивным тайлингом). Поддерживает предварительные команды (`commands`), суб-инструменты в стиле Photoshop (`sub_actions`) и завершающие команды (`post_commands`):
 
 ```json
 {
   "id": "ai.photocraft.plugins.remove_bg",
   "name": "AI Remove Background (RMBG-1.4)",
-  "version": "1.0.0",
+  "name_ru": "Удаление фона ИИ (RMBG-1.4)",
+  "version": "1.1.0",
   "description": "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
   "author": "kobaltGIT",
   "plugin_type": "native_ai",
@@ -107,6 +110,59 @@ my_plugin/
   "input": "active_layer",
   "output_mode": "new_layer",
   "post_commands": [],
+  "sub_actions": [
+    {
+      "id": "cutout",
+      "name": "Remove Background (Cutout)",
+      "name_ru": "Удаление фона (Вырезка)",
+      "icon": "icon.svg",
+      "post_commands": [
+        {
+          "command": "layer.setProps",
+          "params": {
+            "layer": "$source_layer",
+            "visible": false
+          },
+          "description": "Hide source layer to avoid visual duplicate"
+        }
+      ]
+    },
+    {
+      "id": "mask",
+      "name": "Create Layer Mask",
+      "name_ru": "Создать маску слоя",
+      "icon": "icon_mask.svg",
+      "post_commands": [
+        {
+          "command": "select.loadSelection",
+          "params": {
+            "channel": "transparency",
+            "layer": "$result_layer"
+          },
+          "description": "Load alpha channel of AI result into active selection"
+        },
+        {
+          "command": "layer.delete",
+          "params": {
+            "layer": "$result_layer"
+          },
+          "description": "Clean up temporary AI result layer"
+        },
+        {
+          "command": "layer.select",
+          "params": {
+            "layer": "$source_layer"
+          },
+          "description": "Switch focus back to original layer"
+        },
+        {
+          "command": "layer.layerMask.revealSelection",
+          "params": {},
+          "description": "Create non-destructive layer mask on source layer"
+        }
+      ]
+    }
+  ],
   "ai": {
     "task": "segmentation_mask",
     "input_size": 1024,
@@ -132,6 +188,7 @@ my_plugin/
 {
   "id": "algorithm.photocraft.plugins.vectorize",
   "name": "Smart Vectorizer / SVG Trace",
+  "name_ru": "Умная векторизация / SVG",
   "version": "1.0.0",
   "description": "High-fidelity vectorization and SVG tracing of raster layers with Bezier curve fitting.",
   "author": "kobaltGIT",
@@ -154,12 +211,13 @@ my_plugin/
 ```
 
 ### 3.4. Interactive UI плагин (`plugin_type: "interactive_ui"`)
-Интерактивные окна, ассистенты, палитры и диагностические инструменты. Позволяют строить богатый пользовательский интерфейс из декларативных виджетов и программировать реактивную логику на языке Rhai:
+Интерактивные окна, ассистенты, палитры и диагностические инструменты. Позволяют строить богатый пользовательский интерфейс из декларативных виджетов в изолированных окнах Viewport и программировать реактивную логику на языке Rhai:
 
 ```json
 {
   "id": "ui.photocraft.plugins.chromasense",
   "name": "ChromaSense",
+  "name_ru": "ChromaSense",
   "version": "1.0.0",
   "description": "Accessibility Color Assistant for artists with color vision deficiencies",
   "author": "PhotoCraft Community",
@@ -257,9 +315,131 @@ my_plugin/
 
 ---
 
-## 4. Спецификация декларативных виджетов (`widgets`)
+## 4. Движок рабочих процессов (Workflow Engine)
 
-Все элементы окна объявляются в массиве `"widgets"`. Каждый виджет имеет обязательное поле `"type"`:
+PhotoCraft Companion оснащен декларативным движком рабочих процессов (**Workflow Engine**), который позволяет создавать сложные многошаговые сценарии без компиляции Rust-кода.
+
+### 4.1. Контекстные переменные рантайма
+
+При выполнении шагов в `commands` и `post_commands` движок автоматически интерполирует системные и пользовательские переменные:
+
+| Переменная | Тип | Описание |
+| :--- | :--- | :--- |
+| **`$source_layer`** | целое число (`u64`) | ID исходного слоя, на котором был запущен плагин. |
+| **`$result_layer`** | целое число (`u64`) | ID нового созданного слоя (слой с результатом работы ИИ или алгоритма). |
+| **`$active_layer`** | целое число (`u64`) | ID текущего активного слоя в документе PhotoCraft. |
+| **`$doc_width`** | целое число (`u32`) | Ширина активного холста в пикселях. |
+| **`$doc_height`** | целое число (`u32`) | Высота активного холста в пикселях. |
+| **`$has_selection`** | булево (`bool`) | Флаг наличия активного выделения (`true` / `false`). |
+| **`$fg_color`** | строка | Текущий шестнадцатеричный цвет переднего плана (например, `"#2563eb"`). |
+| **`$bg_color`** | строка | Текущий шестнадцатеричный цвет фона (например, `"#ffffff"`). |
+| **`$имя_переменной`** | произвольный | Пользовательская переменная, сохраненная шагом с параметром `save_as`. |
+
+Переменные можно подставлять как отдельные значения в JSON:
+```json
+"params": {
+  "layer": "$source_layer",
+  "visible": false
+}
+```
+А также интерполировать внутрь текстовых строк с помощью шаблона `{{...}}`:
+```json
+"params": {
+  "name": "Layer copy of {{$source_layer}} ({{$doc_width}}x{{$doc_height}})"
+}
+```
+
+### 4.2. Спецификация шага команды (`PluginCommandStep`)
+
+Каждый шаг в массиве `commands` или `post_commands` описывается объектом:
+
+```json
+{
+  "command": "layer.setProps",
+  "params": {
+    "layer": "$source_layer",
+    "visible": false
+  },
+  "save_as": "updated_layer",
+  "when": "$has_selection == true",
+  "ignore_errors": true,
+  "description": "Hide source layer non-destructively"
+}
+```
+
+* **`command`** (обязательно): идентификатор команды PhotoCraft (например, `layer.duplicate`, `layer.select`, `layer.delete`, `layer.setProps`, `image.adjustments.desaturate`, `select.loadSelection`, `layer.layerMask.revealSelection`).
+* **`params`** (опционально): объект аргументов, передаваемый команде. Автоматически нормализуется до `{}` при пустом значении.
+* **`save_as`** (опционально): имя переменной, в которую будет сохранен ID созданного или возвращенного слоя для использования в последующих шагах (`$updated_layer`).
+* **`when`** (опционально): строковое логическое условие выполнения шага. Если условие ложно, шаг безопасно пропускается.
+* **`ignore_errors`** (опционально, по умолчанию `false`): если `true`, ошибка выполнения команды не прерывает пайплайн (полезно для шагов вроде `image.revealAll` или `layer.mergeDown`, если холст уже расширен или слоев для слияния нет).
+* **`script`** (опционально): строка встроенного скрипта Rhai для сложных математических вычислений на данном шаге.
+* **`description`** (опционально): поясняющий текст для системного лога и отладки.
+
+### 4.3. Разделение жизненного цикла (Pre vs Post vs No-Code)
+
+1. **Плагины `no_code`:**
+   Массив `commands` является **телом самого плагина** и выполняется ровно один раз через `plugin.execute()`. Диспетчер ядра гарантирует защиту от дублирования слоев (BUG-074).
+2. **Плагины `native_ai` и `native_algorithm`:**
+   * Шаги в `commands` выполняются **до** запуска вычислений (Pre-commands) для подготовки холста или слоев.
+   * Ядро выполняет инференс нейросети или алгоритм, вставляет результат на холст и определяет `$source_layer` и `$result_layer`.
+   * Шаги в `post_commands` выполняются **после** возврата результата для недеструктивного монтажа, маскирования или очистки временных слоев.
+
+---
+
+## 5. Вариативные суб-инструменты в стиле Photoshop (`sub_actions`)
+
+Плагины могут предоставлять несколько альтернативных вариантов выполнения одной и той же задачи (например, как в Photoshop: вырезка на новый слой vs создание маски слоя, или различные пресеты апскейла).
+
+### 5.1. Декларация суб-инструментов в `plugin.json`
+
+```json
+"sub_actions": [
+  {
+    "id": "cutout",
+    "name": "Remove Background (Cutout)",
+    "name_ru": "Удаление фона (Вырезка)",
+    "icon": "icon.svg",
+    "post_commands": [
+      {
+        "command": "layer.setProps",
+        "params": { "layer": "$source_layer", "visible": false },
+        "description": "Hide source layer"
+      }
+    ]
+  },
+  {
+    "id": "mask",
+    "name": "Create Layer Mask",
+    "name_ru": "Создать маску слоя",
+    "icon": "icon_mask.svg",
+    "post_commands": [
+      {
+        "command": "select.loadSelection",
+        "params": { "channel": "transparency", "layer": "$result_layer" }
+      },
+      { "command": "layer.delete", "params": { "layer": "$result_layer" } },
+      { "command": "layer.select", "params": { "layer": "$source_layer" } },
+      { "command": "layer.layerMask.revealSelection", "params": {} }
+    ]
+  }
+]
+```
+
+### 5.2. Интерактивное поведение в UI
+
+1. **Индикатор-шеврон:** Если плагин декларирует массив `sub_actions`, в правом нижнем углу кнопки инструмента в Toolstrip автоматически рисуется векторный шеврон.
+2. **Выпадающее меню (Flyout Viewport):**
+   * Клик по шеврону или **долгое удержание кнопки мыши (Long-Press > 350 мс)** открывает отдельное плавающее выпадающее окно со списком всех поддействий.
+   * Клик по варианту мгновенно делает его активным и сохраняет выбор в пользовательский конфиг (`active_sub_actions`).
+3. **Исполнение выбранного варианта:**
+   * При обычном клике по кнопке инструмента запускается именно активный суб-инструмент.
+   * Диспетчер ядра подставляет в пайплайн специализированные `post_commands` выбранного суб-инструмента.
+
+---
+
+## 6. Спецификация декларативных виджетов (`widgets`)
+
+Все элементы окна в `interactive_ui` объявляются в массиве `"widgets"`. Каждый виджет имеет обязательное поле `"type"`:
 
 | Тип (`type`) | Параметры манифеста | Описание |
 | :--- | :--- | :--- |
@@ -276,28 +456,25 @@ my_plugin/
 
 ---
 
-## 5. Скриптовая логика Rhai (`logic.rhai`)
+## 7. Скриптовая логика Rhai (`logic.rhai`)
 
 Плагины типа `interactive_ui` управляются легковесным, безопасным скриптом на языке **Rhai** (песочница без доступа к произвольным файлам ОС).
 
-### 5.1. Хуки жизненного цикла
+### 7.1. Хуки жизненного цикла
 
 #### 1. `on_state_changed(state) -> state`
 Вызывается ядром при любом взаимодействии пользователя с виджетами (передвижение слайдера, клик по кнопке, переключение слота, выбор пункта меню):
 ```rhai
 fn on_state_changed(state) {
-    // 1. Проверяем, была ли нажата кнопка swap_colors
     if state["action_swap_colors"] == true {
-        state["action_swap_colors"] = false; // сбрасываем флаг действия
+        state["action_swap_colors"] = false;
         let temp = state["color_fg"];
         state["color_fg"] = state["color_bg"];
         state["color_bg"] = temp;
     }
 
-    // 2. Выполняем пересчет логики
     state = recalculate_diagnostics(state);
 
-    // 3. Отправляем обновленный цвет кисти в PhotoCraft
     execute_command("tools.setColors", #{
         foreground: state["color_fg"],
         background: state["color_bg"]
@@ -314,7 +491,6 @@ fn on_session_colors(fg_hex, bg_hex, state) {
     state["color_fg"] = fg_hex;
     state["color_bg"] = bg_hex;
 
-    // Синхронизируем слайдеры активного слота
     let active_hex = state[state["edit_target"]];
     let rgb = hex_to_rgb(active_hex);
     state["red"] = rgb["r"];
@@ -322,16 +498,11 @@ fn on_session_colors(fg_hex, bg_hex, state) {
     state["blue"] = rgb["b"];
 
     state = recalculate_diagnostics(state);
-
-    // ВНИМАНИЕ: Внутри этого хука СТРОГО ЗАПРЕЩЕНО вызывать set_colors или tools.setColors,
-    // так как эти цвета уже пришли из PhotoCraft!
     return state;
 }
 ```
 
-### 5.2. Встроенные нативные функции Rhai
-
-В рантайм Rhai встроены быстрые скомпилированные функции:
+### 7.2. Встроенные нативные функции Rhai
 
 * **Управление редактором:**
   - `execute_command(command, params_map)` — отправить команду в сокет PhotoCraft;
@@ -343,13 +514,13 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 * **Работа с цветом и математика:**
   - `rgb_to_hex(r, g, b) -> String` — конвертирует числа $0..255$ в `#rrggbb`;
   - `hex_to_rgb(hex) -> Map` — возвращает ассоциативный массив `#{ r: 255, g: 0, b: 0 }`;
-  - `get_named_color(r, g, b) -> String` — возвращает художественное название оттенка из базы 152 цветов (CSS3 + классические пигменты) на активном языке;
-  - `simulate_cvd(r, g, b, profile_idx) -> String` — колориметрическая симуляция восприятия цвета дальтоником по матрицам Бреттла (0: Normal, 1: Deuteranopia, 2: Protanopia, 3: Tritanopia);
-  - `calculate_contrast(r1, g1, b1, r2, g2, b2) -> Float` — вычисляет строгий коэффициент контрастности по международному стандарту W3C WCAG 2.1. Контраст 100% симметричен.
+  - `get_named_color(r, g, b) -> String` — возвращает художественное название оттенка из базы 152 цветов на активном языке;
+  - `simulate_cvd(r, g, b, profile_idx) -> String` — колориметрическая симуляция восприятия цвета дальтоником по матрицам Бреттла-Вьено;
+  - `calculate_contrast(r1, g1, b1, r2, g2, b2) -> Float` — вычисляет строгий симметричный коэффициент контрастности по стандарту W3C WCAG 2.1.
 
 ---
 
-## 6. Двунаправленная синхронизация и защита от эхо (`ipc_subscriptions`)
+## 8. Двунаправленная синхронизация и защита от эхо (`ipc_subscriptions`)
 
 Если плагин подписан на топик `"session.colors"`:
 ```json
@@ -363,7 +534,7 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 
 ---
 
-## 7. Спецификация секции ИИ (`ai` / `AiPipelineConfig`)
+## 9. Спецификация секции ИИ (`ai` / `AiPipelineConfig`)
 
 Для плагинов типа `native_ai`:
 
@@ -382,11 +553,11 @@ fn on_session_colors(fg_hex, bg_hex, state) {
   - `"alpha_cutout"` (по умолчанию): наложение вырезанного объекта с прозрачным альфа-каналом;
   - `"grayscale_layer"`: вывод результата в виде 8-битного полутонового слоя `Rgba([d, d, d, 255])` (для карт глубины, салиентности, карт нормалей).
 * **`scale`** (опционально): коэффициент увеличения для `super_resolution` (например, `2` или `4`).
-* **`tile_size`** и **`tile_pad`** (опционально): параметры тайлинга для обработки гигантских холстов без исчерпания видеопамяти GPU (например, размер тайла `512` и нахлест `32` для бесшовного блендинга).
+* **`tile_size`** и **`tile_pad`** (опционально): параметры тайлинга для обработки гигантских холстов без исчерпания видеопамяти GPU. Движок автоматически кэширует сессию DirectML/CPU на всё время обработки холста, обеспечивая максимальное ускорение вычислений (до 10–25x по сравнению с пересозданием сессий).
 
 ---
 
-## 8. Спецификация секции алгоритмов (`algorithm` / `AlgorithmConfig`)
+## 10. Спецификация секции алгоритмов (`algorithm` / `AlgorithmConfig`)
 
 Для плагинов типа `native_algorithm`:
 
@@ -400,7 +571,7 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 
 ---
 
-## 9. Обязательная документация плагина (`README.md`)
+## 11. Обязательная документация плагина (`README.md`)
 
 Каждый плагин в каталоге `plugins/<id>/` **обязан содержать файл `README.md`**. Без качественной документации плагин не принимается в экосистему и отклоняется автоматическим валидатором Definition of Done (`plugin_validator`).
 
@@ -415,7 +586,7 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 
 ---
 
-## 10. Валидация и упаковка плагина (`.pcpl`)
+## 12. Валидация и упаковка плагина (`.pcpl`)
 
 Для проверки плагина на соответствие стандартам экосистемы, компиляции каталога и генерации пакетов `.pcpl` запустите системный валидатор:
 

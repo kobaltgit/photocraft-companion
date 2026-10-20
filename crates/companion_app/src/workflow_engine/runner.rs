@@ -46,7 +46,10 @@ pub async fn execute_steps(
             }
         }
 
-        let resolved_params = resolve_value(&step.params, ctx);
+        let mut resolved_params = resolve_value(&step.params, ctx);
+        if resolved_params.is_null() {
+            resolved_params = serde_json::json!({});
+        }
         if let Some(ref desc) = step.description {
             info!(
                 "Running step [{}/{}]: {} ({}) with params: {}",
@@ -178,8 +181,10 @@ mod tests {
             },
         ];
 
-        let mut ctx = ExecutionContext::default();
-        ctx.source_layer_id = Some(10);
+        let mut ctx = ExecutionContext {
+            source_layer_id: Some(10),
+            ..Default::default()
+        };
 
         execute_steps(&steps, &mut ctx, &bridge).await.unwrap();
 
@@ -206,8 +211,10 @@ mod tests {
             description: None,
         }];
 
-        let mut ctx = ExecutionContext::default();
-        ctx.has_selection = false;
+        let mut ctx = ExecutionContext {
+            has_selection: false,
+            ..Default::default()
+        };
 
         execute_steps(&steps, &mut ctx, &bridge).await.unwrap();
         assert_eq!(bridge.calls.lock().unwrap().len(), 0);

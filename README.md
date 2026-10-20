@@ -11,22 +11,25 @@
 ---
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
-[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
-[![Release: v1.0.7](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.0.7)
+[![Discord](https://img.shields.io/badge/Discord-Companion_Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
+[![Release: v1.2.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.2.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
 [![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
 [![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
-[![Tests: 117 Passing](https://img.shields.io/badge/Tests-117_Passing-success.svg)](crates/)
+[![Tests: 152 Passing](https://img.shields.io/badge/Tests-152_Passing-success.svg)](crates/)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
-[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [First-Launch Guide](#-first-launch--onboarding-guide) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [License](#-license)
+[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [First-Launch Guide](#-first-launch--onboarding-guide) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [Discord](#-community--discord) • [License](#-license)
 
 
 </div>
+
+> [!TIP]
+> 💬 **Join the PhotoCraft Companion Discord:** Have questions about plugins, ideas for new tools, or need developer assistance? **[Join our Discord Server](https://discord.gg/2gzn4Un4Bw)** to connect directly with the author and community developers!
 
 ---
 
@@ -63,7 +66,24 @@ Here is how **PhotoCraft Companion** elevates the editing experience:
   - **AI Generative Fill (LaMa):** Context-aware zero-prompt object removal and texture inpainting with lasso contour synthesis.
   - **AI Super-Resolution (2x):** Real-ESRGAN Compact with seam-blended tiling to upscale arbitrarily large canvases without VRAM overflow.
   - **Resilient AI Runtime:** Hardware-accelerated **DirectML (DirectX 12 GPU)** with automatic transparent fallback to CPU on unsupported operators.
+  - **Ultra-Fast Cached GPU Tiling:** Single-session GPU pipeline caching reducing large canvas inference times up to 25x.
   - **Zero-Core Standard:** Zero plugin-specific logic hardcoded into the companion core; every workflow is strictly declarative via `plugin.json`.
+
+- 📐 **Photoshop-Style Tool Variations (Sub-Actions & Flyouts):**
+  - Tools can declare multiple sub-actions (e.g. Cutout to new layer vs Non-destructive Layer Mask).
+  - Buttons render a subtle vector corner chevron; long-pressing (>350ms) or clicking the chevron opens a dedicated floating flyout window (`egui::ViewportBuilder`) with sub-tools.
+  - Active sub-action selection is remembered in persistent user settings.
+
+- ⚡ **Declarative Workflow Engine & Context Variables:**
+  - Multi-step pipelines with variable interpolation (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color`, and string interpolation `{{...}}`).
+  - Conditional branching (`when: "$has_selection == true"`), layer variable saving (`save_as`), error tolerance (`ignore_errors`), and sandboxed Rhai scripting.
+
+- 🔄 **Bidirectional Session Color Sync & Echo Guard:**
+  - Two-way real-time color syncing between PhotoCraft tools (Eyedropper `I`, default `D`, swap `X`) and interactive plugins.
+  - Zero-waste polling (180ms only when windows are open) with smart echo prevention (`echo_guard`).
+
+- 🎛️ **Interactive Multi-Viewport UI:**
+  - Dedicated floating windows with customizable reactive widgets (sliders, color swatches, hue wheel, contrast diagnostics, dropdowns, toggles) running on Rhai scripting.
 
 - 🏪 **In-App Community Plugin Marketplace:**
   - Integrated 4th tab inside the Plugin Manager to discover and install community plugins directly from GitHub Releases.
@@ -102,9 +122,9 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 
 | Platform                          | Installer (Setup)                             | Portable Archive                                           | Notes                                                              |
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.0.7-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.0.7-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.0.7-linux-amd64.deb` | `PhotoCraft-Companion-v1.0.7-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.2.0-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.2.0-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
+| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.2.0-linux-amd64.deb` | `PhotoCraft-Companion-v1.2.0-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
 
 > [!TIP]
 > All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
@@ -201,7 +221,7 @@ To maintain uncompromising reliability and ensure the Zero-Core architecture rem
 # 1. Code Formatting (Zero-tolerance style check)
 cargo fmt --all -- --check
 
-# 2. Complete Workspace Test Suite (117 unit & integration tests)
+# 2. Complete Workspace Test Suite (152 unit & integration tests)
 cargo test --workspace -j 1
 
 # 3. Core Architecture Integrity Linter (Strict Zero-Core & anti-sniffing barrier)
@@ -233,12 +253,13 @@ photocraft-plugins/
 │   ├── ai_engine/                 # DirectML GPU ONNX runtime inference (RMBG, Real-ESRGAN, LaMa)
 │   ├── overlay_ui/                # Floating Toolstrip, In-App Store, Plugin Manager (egui 0.36)
 │   ├── plugin_validator/          # Ecosystem CLI: validation, packaging, marketplace generator
-│   └── companion_app/             # Main binary (system tray, lifecycle, DI container)
+│   └── companion_app/             # Main binary (system tray, lifecycle, DI container, workflow engine)
 ├── plugins/                       # Installed plugin directory
 │   ├── black_and_white/          # Declarative No-Code macro plugin
+│   ├── chromasense/              # Interactive UI A11y color panel (Rhai, WCAG 2.1, CVD simulation)
 │   ├── depth_map/                 # Autonomous AI 3D depth estimation plugin (Depth Anything V2)
 │   ├── inpaint/                   # Autonomous AI generative fill plugin (LaMa)
-│   ├── remove_bg/                 # Autonomous AI background removal plugin (RMBG-1.4)
+│   ├── remove_bg/                 # Autonomous AI background removal plugin (RMBG-1.4, Sub-Actions)
 │   ├── upscale/                   # Autonomous AI 2x super-resolution plugin (Real-ESRGAN)
 │   └── vectorize/                 # Autonomous Smart Vectorizer / SVG Trace algorithm plugin
 ├── scripts/
@@ -298,13 +319,26 @@ Detailed specifications and development history can be found in [`docs/`](docs/)
 - 🎯 [`docs/PLAN.md`](docs/PLAN.md) — Implementation blueprint for floating UI and autonomous plugins.
 - 🗺️ [`docs/ROADMAP.md`](docs/ROADMAP.md) — Project roadmap and milestones.
 - ✅ [`docs/CHECKLIST.md`](docs/CHECKLIST.md) — Interactive phase-by-phase checklist.
-- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Defect tracking log (BUG-001 through BUG-065).
+- 🐛 [`docs/BUGS_AND_ISSUES.md`](docs/BUGS_AND_ISSUES.md) — Defect tracking log (BUG-001 through BUG-075).
 - 📜 [`docs/CHRONICLE.md`](docs/CHRONICLE.md) / [`docs/CHRONICLE.en.md`](docs/CHRONICLE.en.md) — Chronological developer devlog in Russian and English.
 - 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.en.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) / [`RU`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) — Plugin Developer Guide (No-Code macros, AI inference, workflows).
 - 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) / [`RU`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) — Complete Catalog of all **851** PhotoCraft Engine Commands.
 - 📐 [`docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md`](docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md) — Universal Core specification (Rhai, CLI runner, C-ABI dynamic libs).
 
+---
 
+## 💬 Community & Discord
+
+Have questions, suggestions, or want to share your custom plugins with fellow digital artists?
+Join the official **PhotoCraft Companion Discord Server**:
+
+<div align="center">
+
+[![Join Discord](https://img.shields.io/badge/Discord-PhotoCraft%20Companion-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
+
+**👉 [https://discord.gg/2gzn4Un4Bw](https://discord.gg/2gzn4Un4Bw)**
+
+</div>
 
 ---
 
@@ -317,5 +351,3 @@ Detailed specifications and development history can be found in [`docs/`](docs/)
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
-
-
