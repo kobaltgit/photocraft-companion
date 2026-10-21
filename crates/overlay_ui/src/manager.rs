@@ -579,6 +579,9 @@ impl PluginManagerApp {
                         )
                         .clicked()
                     {
+                        if let Err(e) = self.save_settings() {
+                            tracing::error!("Failed to auto-save settings before launch: {e}");
+                        }
                         self.launch_requested = true;
                     }
                 });

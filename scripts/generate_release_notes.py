@@ -1,22 +1,41 @@
-#!/usr/bin/env bash
 #!/usr/bin/env python3
 """
 PhotoCraft Companion - Automated Release Notes Generator
 Generates clean, bilingual (English & Russian) GitHub Release Notes with download tables and features list.
+Prioritizes dedicated docs/RELEASE_NOTES_v{version}.md if present.
 """
 
 import argparse
 import os
-import re
 import sys
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Generate bilingual release notes for PhotoCraft Companion")
-    parser.add_argument("--version", required=True, help="Release version string, e.g. 1.2.0")
+    parser.add_argument("--version", required=True, help="Release version string, e.g. 1.2.2")
     parser.add_argument("--output", default="release_notes.md", help="Output Markdown file path")
     return parser.parse_args()
 
+def find_dedicated_release_notes(version):
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.abspath(os.path.join(script_dir, ".."))
+    
+    candidates = [
+        os.path.join(repo_root, "docs", f"RELEASE_NOTES_v{version}.md"),
+        os.path.join(os.getcwd(), "docs", f"RELEASE_NOTES_v{version}.md"),
+        os.path.join(os.getcwd(), f"RELEASE_NOTES_v{version}.md"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return None
+
 def generate_release_notes(version):
+    dedicated = find_dedicated_release_notes(version)
+    if dedicated:
+        print(f"Using dedicated release notes from: {dedicated}")
+        with open(dedicated, "r", encoding="utf-8") as f:
+            return f.read().strip() + "\n"
+
     return f"""# PhotoCraft Companion v{version}
 
 [![GitHub Release](https://img.shields.io/badge/Release-v{version}-007acc.svg?style=flat-square)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v{version})
@@ -29,22 +48,18 @@ def generate_release_notes(version):
 ## 🌟 What's New in v{version} / Что нового в версии {version}
 
 ### 🇬🇧 English
-* **⚡ Universal Declarative Workflow Engine (`workflow_engine`)**: Major architectural advancement enabling multi-step, complex image manipulation pipelines without compiling Rust code. Features dynamic context variable resolution (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color`, and string interpolation `{{...}}`), conditional branching (`when`), variable capture (`save_as`), error tolerance (`ignore_errors`), and sandboxed Rhai scripting.
-* **📐 Photoshop-Style Sub-Tools & Flyout Viewports (`sub_actions`)**: Tool buttons in the Toolstrip can now declare multiple functional variations (e.g. Cutout to new layer vs Non-destructive Layer Mask). Buttons render a subtle vector corner chevron; clicking the chevron or long-pressing (>350ms) opens a dedicated floating flyout window (`egui::ViewportBuilder`), persisting user choices in settings.
-* **✂️ AI Remove Background v1.1.0 with Sub-Tools**: Upgraded RMBG-1.4 to offer two native operational modes: instant subject isolation onto a clean transparent layer (**Cutout**) and non-destructive native layer mask creation (**Create Layer Mask**) via seamless selection inversion and temporary layer cleanup.
-* **🚀 Up to 25x Faster AI Upscaling via Warm DirectML Session Tiling (BUG-075)**: Resolved severe tile inference bottleneck in `run_tiled_rgb_inference`. The DirectML/CPU session is initialized strictly once before tiling begins and reused across all tile iterations, eliminating redundant model reads and HLSL shader recompilations in VRAM. Per-tile inference dropped from 16s down to ~1.9s.
-* **🛡️ No-Code Duplicate Layer Execution Guard (BUG-074)**: Fixed an execution dispatch flaw where No-Code macros executed both as pre-commands and plugin body, producing triple identical layers. No-Code pipelines now run strictly once.
-* **📖 Plugin Developer Guide v2.1 & DevKit Update**: Comprehensive bilingual documentation and Antigravity DevKit skills updated to cover the Workflow Engine, context variables, and Sub-Actions schema.
-* **💬 Dedicated Companion Discord Community**: Prominent community server invitations and badges added for live developer and artist collaboration.
+* **🍏 Native macOS Bundle Execution & CodeSeal Protection (BUG-076)**: Routed `.app` bundle execution through Apple LaunchServices (`/usr/bin/open -n -a "<bundle.app>" --args ...`), solving WindowServer initialization issues and Gatekeeper terminations (`Killed: 9`). Added semantic CodeSeal protection in `is_token_dir_writable` to avoid saving `control.token` inside `.app` bundles, which invalidates code signatures.
+* **🪟 Win32 Process Identification & Zero Handle Leaks (BUG-077)**: Upgraded host process detection to verified Win32 PID query via `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)` and `QueryFullProcessImageNameW`, guaranteeing `CloseHandle(h_process)` and zero descriptor leaks.
+* **🖥️ DPI-Aware Screen Centering & Boundary Guard (BUG-077)**: Introduced `calculate_primary_screen_center(w, h)` factoring `(GetDpiForSystem() / 96.0)` for centered placement on 125%/150% DPI screens. Added active display boundary check via `MonitorFromRect` to automatically snap off-screen windows back to the primary display.
+* **📐 Persistent Plugin Manager Geometry (BUG-077)**: Persisted `manager_window_position` and `manager_window_size` in `CompanionConfig`. Window dimensions track strictly through `inner_rect.size()`, eliminating progressive window expansion on each reopen.
+* **💡 Enhanced First-Run UX & Offline Onboarding (BUG-076, BUG-077)**: Expanded offline modal to 300×280 px without clipping, added contextual hints for macOS Gatekeeper and Windows SmartScreen, clear status when `photocraft.exe` is detected without socket, and settings auto-saving on launch.
 
 ### 🇷🇺 Русский
-* **⚡ Универсальный декларативный движок рабочих процессов Workflow Engine (`workflow_engine`)**: Фундаментальное расширение возможностей рантайма, позволяющее строить сложные многошаговые пайплайны обработки без компиляции кода. Включает автоматическую интерполяцию контекстных переменных (`$source_layer`, `$result_layer`, `$active_layer`, `$doc_width`, `$doc_height`, `$has_selection`, `$fg_color`, `$bg_color` и строковый синтаксис `{{...}}`), условное ветвление (`when`), сохранение промежуточных слоев (`save_as`), безопасный пропуск ошибок (`ignore_errors`) и скриптовые шаги Rhai.
-* **📐 Суб-инструменты в стиле Photoshop и плавающие меню Flyout (`sub_actions`)**: Кнопки тулбара теперь могут объявлять несколько функциональных режимов работы. Кнопки с суб-действиями снабжены векторным индикатором-шевроном; клик по шеврону или долгое нажатие (>350 мс) открывает отдельное плавающее окно выбора (`egui::ViewportBuilder`), а выбранный режим надёжно сохраняется в конфигурации пользователя.
-* **✂️ Обновление плагина AI Remove Background v1.1.0**: В инструмент RMBG-1.4 внедрены два официальных суб-инструмента: быстрая вырезка объекта на чистый прозрачный слой (**Удаление фона / Вырезка**) и создание неразрушающей маски слоя (**Создать маску слоя**) с автоматическим переносом альфа-контура в выделение и очисткой временных слоев.
-* **🚀 Ускорение ИИ-апскейла до 25 раз благодаря кэшированию сессий DirectML (BUG-075)**: Устранено узкое горлышко производительности в тайлинге апскейла `run_tiled_rgb_inference`. Сессия DirectML/CPU теперь инициализируется ровно 1 раз на весь холст и остаётся горячей в VRAM GPU на всех тайлах без повторного вычитывания 71 МБ весов с диска. Время обработки тайла снижено с 16с до ~1.9с.
-* **🛡️ Защита от дублирования слоев в No-Code макросах (BUG-074)**: Исправлен дефект, при котором No-Code плагины дублировали шаги как pre-команды и тело плагина, создавая тройные слои. Команды макроса теперь выполняются строго один раз.
-* **📖 Руководство разработчика плагинов v2.1 и обновление DevKit**: Полная двуязычная документация по созданию плагинов с Workflow Engine, спецификацией шагов и суб-инструментов.
-* **💬 Официальный Discord-сервер PhotoCraft Companion**: Прямые ссылки на сервер сообщества для оперативной поддержки и обмена плагинами.
+* **🍏 Нативный запуск бандлов macOS и защита CodeSeal (BUG-076)**: Запуск бандлов `.app` переведён на системный сервис `/usr/bin/open -n -a "<bundle.app>" --args ...`, что устранило сбои WindowServer и аварийные завершения Gatekeeper (`Killed: 9`). Внедрена семантическая защита `is_token_dir_writable`, исключающая запись токена внутрь бандлов и повреждение подписи.
+* **🪟 Строгая Win32-идентификация и предотвращение утечек дескрипторов (BUG-077)**: Отказ от ненадежного перебора заголовков: внедрена строгая верификация PID, исполняемого файла через `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)` и гарантированное закрытие `CloseHandle(h_process)`, устраняющее утечку дескрипторов Windows.
+* **🖥️ DPI-Aware центрирование и защита от улета окон (BUG-077)**: Реализована функция `calculate_primary_screen_center(w, h)` с учетом системного масштаба `(GetDpiForSystem() / 96.0)`. Добавлен валидатор границ `MonitorFromRect`, возвращающий окна в центр при отключении внешних мониторов.
+* **📐 Персистентность геометрии Plugin Manager с защитой от раздувания (BUG-077)**: Сохранение позиции и размеров окна менеджера в `CompanionConfig` с отслеживанием размеров строго по клиентской области `inner_rect.size()`, исключая прогрессирующее увеличение окна.
+* **💡 Улучшение оффлайн-онбординга и подсказки первого запуска (BUG-076, BUG-077)**: Размер оффлайн-окна увеличен до 300×280 px во всех точках входа, внедрены платформенные инструкции первого запуска (Gatekeeper, SmartScreen), отображение статуса запущенного редактора и автосохранение настроек при запуске.
 
 ---
 

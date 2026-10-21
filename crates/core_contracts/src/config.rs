@@ -20,6 +20,10 @@ pub struct CompanionConfig {
     #[serde(default)]
     pub window_position: Option<[f32; 2]>,
     #[serde(default)]
+    pub manager_window_position: Option<[f32; 2]>,
+    #[serde(default)]
+    pub manager_window_size: Option<[f32; 2]>,
+    #[serde(default)]
     pub enabled_plugins: Vec<String>,
     #[serde(default)]
     pub active_sub_actions: std::collections::HashMap<String, String>,
@@ -53,6 +57,8 @@ impl Default for CompanionConfig {
             language: default_language(),
             is_vertical: false, // Per spec: default is horizontal
             window_position: None,
+            manager_window_position: None,
+            manager_window_size: None,
             enabled_plugins: Vec::new(),
             active_sub_actions: std::collections::HashMap::new(),
             photocraft_path: None,
@@ -333,6 +339,8 @@ mod tests {
         assert!(!cfg.is_vertical);
         assert!(cfg.token.is_none());
         assert!(cfg.window_position.is_none());
+        assert!(cfg.manager_window_position.is_none());
+        assert!(cfg.manager_window_size.is_none());
         assert!(cfg.enabled_plugins.is_empty());
         assert!(cfg.photocraft_path.is_none());
     }

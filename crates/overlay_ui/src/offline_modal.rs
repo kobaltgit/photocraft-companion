@@ -9,6 +9,7 @@ pub struct OfflineModalApp {
     pub open_manager_requested: bool,
     pub launch_requested: bool,
     pub retry_seconds: f32,
+    pub is_process_detected: bool,
 }
 
 impl OfflineModalApp {
@@ -20,6 +21,7 @@ impl OfflineModalApp {
             open_manager_requested: false,
             launch_requested: false,
             retry_seconds: 1.5,
+            is_process_detected: false,
         }
     }
 
@@ -43,6 +45,8 @@ impl OfflineModalApp {
         let is_auth_req = self.connection_state == ConnectionState::AuthRequired;
         let indicator_color = if is_auth_req {
             Color32::from_rgb(0xea, 0x86, 0x00)
+        } else if self.is_process_detected {
+            Color32::from_rgb(0x28, 0xa7, 0x45)
         } else {
             palette.accent_blue
         };
@@ -63,6 +67,8 @@ impl OfflineModalApp {
             // Title
             let title = if is_auth_req {
                 self.t("PhotoCraft Auth Required", "Требуется авторизация")
+            } else if self.is_process_detected {
+                self.t("PhotoCraft Socket Offline", "PhotoCraft запущен без сокета")
             } else {
                 self.t("PhotoCraft Not Detected", "PhotoCraft не обнаружен")
             };
@@ -81,10 +87,15 @@ impl OfflineModalApp {
                     "PhotoCraft is running, but requires authentication. Click below to enter your control token.",
                     "PhotoCraft запущен, но требует авторизации. Нажмите ниже, чтобы ввести токен управления.",
                 )
+            } else if self.is_process_detected {
+                self.t(
+                    "PhotoCraft is running, but the control socket is not reachable. Relaunch via the button below or check Settings.",
+                    "PhotoCraft запущен, но сокет управления недоступен. Перезапустите редактор кнопкой ниже или проверьте настройки.",
+                )
             } else {
                 self.t(
-                    "Please launch PhotoCraft to activate the floating toolstrip and plugins.",
-                    "Пожалуйста, запустите PhotoCraft, чтобы панель инструментов и плагины активировались.",
+                    "Launch PhotoCraft via the button below to automatically connect the toolbar and plugins.",
+                    "Запустите PhotoCraft кнопкой ниже для автоматического подключения панели и плагинов.",
                 )
             };
             ui.label(
@@ -138,6 +149,31 @@ impl OfflineModalApp {
                 self.open_manager_requested = true;
             }
 
+            if !is_auth_req {
+                ui.add_space(8.0);
+                let tip_text = if cfg!(target_os = "macos") {
+                    self.t(
+                        "If launching PhotoCraft for the first time, allow it in System Settings -> Privacy & Security, or open once via Right Click -> Open in Finder.",
+                        "Если вы запускаете PhotoCraft впервые, разрешите его в «Системных настройках -> Конфиденциальность», либо откройте один раз через Правый клик -> «Открыть» в Finder.",
+                    )
+                } else if cfg!(target_os = "windows") {
+                    self.t(
+                        "If PhotoCraft is blocked on first run, click \"More info\" -> \"Run anyway\" in Windows SmartScreen, or launch PhotoCraft manually.",
+                        "Если Windows SmartScreen блокирует первый запуск, нажмите «Подробнее» -> «Выполнить в любом случае», либо запустите PhotoCraft вручную.",
+                    )
+                } else {
+                    self.t(
+                        "Ensure PhotoCraft or AppImage has execute permissions (chmod +x), or launch it from terminal.",
+                        "Убедитесь, что у файла PhotoCraft или AppImage есть права на выполнение (chmod +x), либо запустите его из терминала.",
+                    )
+                };
+                ui.label(
+                    RichText::new(tip_text)
+                        .size(9.5)
+                        .color(palette.text_muted),
+                );
+            }
+
             ui.add_space(10.0);
         });
     }
@@ -155,6 +191,7 @@ mod tests {
         assert!(!app.open_manager_requested);
         assert!(!app.launch_requested);
         assert_eq!(app.retry_seconds, 1.5);
+        assert!(!app.is_process_detected);
     }
 
     #[test]
@@ -167,5 +204,50 @@ mod tests {
 
         let app_auto = OfflineModalApp::new(Language::Auto, ThemeMode::Dark);
         assert_eq!(app_auto.t("English", "Russian"), "English");
+    }
+
+    #[test]
+    fn test_offline_modal_first_run_tip() {
+        let app_en = OfflineModalApp::new(Language::En, ThemeMode::Dark);
+        let tip_en = if cfg!(target_os = "macos") {
+            app_en.t(
+                "If launching PhotoCraft for the first time, allow it in System Settings -> Privacy & Security, or open once via Right Click -> Open in Finder.",
+                "Если вы запускаете PhotoCraft впервые, разрешите его в «Системных настройках -> Конфиденциальность», либо откройте один раз через Правый клик -> «Открыть» в Finder.",
+            )
+        } else if cfg!(target_os = "windows") {
+            app_en.t(
+                "If PhotoCraft is blocked on first run, click \"More info\" -> \"Run anyway\" in Windows SmartScreen, or launch PhotoCraft manually.",
+                "Если Windows SmartScreen блокирует первый запуск, нажмите «Подробнее» -> «Выполнить в любом случае», либо запустите PhotoCraft вручную.",
+            )
+        } else {
+            app_en.t(
+                "Ensure PhotoCraft or AppImage has execute permissions (chmod +x), or launch it from terminal.",
+                "Убедитесь, что у файла PhotoCraft или AppImage есть права на выполнение (chmod +x), либо запустите его из терминала.",
+            )
+        };
+        assert!(!tip_en.is_empty());
+        assert!(tip_en.chars().any(|c| c.is_ascii_alphabetic()));
+
+        let app_ru = OfflineModalApp::new(Language::Ru, ThemeMode::Dark);
+        let tip_ru = if cfg!(target_os = "macos") {
+            app_ru.t(
+                "If launching PhotoCraft for the first time, allow it in System Settings -> Privacy & Security, or open once via Right Click -> Open in Finder.",
+                "Если вы запускаете PhotoCraft впервые, разрешите его в «Системных настройках -> Конфиденциальность», либо откройте один раз через Правый клик -> «Открыть» в Finder.",
+            )
+        } else if cfg!(target_os = "windows") {
+            app_ru.t(
+                "If PhotoCraft is blocked on first run, click \"More info\" -> \"Run anyway\" in Windows SmartScreen, or launch PhotoCraft manually.",
+                "Если Windows SmartScreen блокирует первый запуск, нажмите «Подробнее» -> «Выполнить в любом случае», либо запустите PhotoCraft вручную.",
+            )
+        } else {
+            app_ru.t(
+                "Ensure PhotoCraft or AppImage has execute permissions (chmod +x), or launch it from terminal.",
+                "Убедитесь, что у файла PhotoCraft или AppImage есть права на выполнение (chmod +x), либо запустите его из терминала.",
+            )
+        };
+        assert!(!tip_ru.is_empty());
+        assert!(tip_ru
+            .chars()
+            .any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)));
     }
 }

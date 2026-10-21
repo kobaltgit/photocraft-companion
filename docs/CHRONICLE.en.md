@@ -2599,3 +2599,71 @@ Key design principles were agreed upon:
 - `cargo fmt --all -- --check` verified clean with 0 differences.
 - `cargo test --workspace -j 1` completed with 100% pass across the workspace.
 - Specialized linters `vector_first_lint_test`, `i18n_lint_test`, and `dev_regulations_lint_test` passed without errors.
+
+## [2026-10-21 05:20] Chapter 78: Native macOS Bundle Launch, CodeSeal Token Protection, Settings Auto-Save & Contextual First-Run Guidance (BUG-076)
+
+*Time: October 21, 2026, 05:20 (~25 minutes)*
+
+### 1. Problem Statement & Context
+During end-to-end testing of PhotoCraft Companion interactions with the PhotoCraft host editor on macOS, critical platform-specific issues were identified:
+1. **Direct macOS `.app` Execution Crashes:** Invoking Mach-O binaries inside `.app` bundles directly via `std::process::Command` bypassed Apple LaunchServices, leading to WindowServer initialization failures or Gatekeeper process termination (`Killed: 9`).
+2. **False Self-Detection:** macOS lacked a specialized process detector in `find_running_photocraft_dir`, creating risks of detecting `photocraft-companion` itself as the host editor.
+3. **Code Signature Invalidation Risk (CodeSeal):** For `.app` bundles located in writable user directories (e.g., `~/Downloads/PhotoCraft.app`), `is_token_dir_writable` previously treated the directory inside the bundle as writable and created `PhotoCraftData/control.token` directly within the bundle payload, invalidating macOS digital signatures and triggering Gatekeeper rejection.
+4. **Settings Loss on Launch:** Modifying the executable path in General Settings and clicking `> Launch` set the launch flag without persisting configuration to disk via `save_settings()`.
+5. **UI Clipping & Missing First-Run Guidance:** Offline modal lacked OS-specific instructions for users encountering Gatekeeper/SmartScreen warnings, and adding text caused button clipping due to the fixed 210 px window height.
+
+### 2. Implementation Details
+1. **Native macOS Bundle Launch & Candidate Resolution (`crates/photocraft_bridge/src/lib.rs`):**
+   - Routed `.app` bundle execution through Apple LaunchServices: `/usr/bin/open -n -a "<bundle.app>" --args --control <port> --control-token-file <token>`. This ensures clean WindowServer initialization and seamless execution.
+   - Target path validation updated: for `.app` bundles, existing directories are recognized as valid launch targets (`actual_exe.is_file() || actual_exe.is_dir()`).
+   - Extended candidate search in `find_photocraft_executable` with standard and user bundle paths in `/Applications` and `~/Downloads`.
+   - Added Darwin process scanner in `find_running_photocraft_dir` using `/bin/ps -A -o comm` with strict filtering: `!file_lower.contains("companion") && file_lower == "photocraft"`.
+2. **Semantic Bundle Protection against Token Pollution (`is_token_dir_writable`):**
+   - Added ancestor traversal: `parent.ancestors().any(|p| p.extension() == Some("app"))`.
+   - Any token file candidate located inside a `.app` bundle is rejected, redirecting persistence to `~/Library/Application Support/PhotoCraft/control.token`.
+3. **Auto-Save & UI Geometry (`crates/overlay_ui`):**
+   - In `crates/overlay_ui/src/manager.rs`, clicking `> Launch` triggers `self.save_settings()` prior to dispatching `launch_requested = true`.
+   - In `crates/overlay_ui/src/lib.rs`, increased offline modal height from 210.0 to 250.0 px across all 3 initialization points (`280.0 x 250.0`), eliminating clipping.
+   - In `crates/overlay_ui/src/offline_modal.rs`, integrated OS-targeted first-run hints (macOS Gatekeeper "Right Click -> Open", Windows SmartScreen "More info -> Run anyway", Linux `chmod +x`), rendered strictly during offline state (`!is_auth_req`).
+
+### 3. Verification & Definition of Done
+- Added unit tests: `test_is_token_dir_writable_app_bundle`, `test_launch_photocraft_non_existent_target` in `photocraft_bridge` and `test_offline_modal_first_run_tip` in `overlay_ui`.
+- `cargo fmt --all -- --check` verified clean with 0 differences.
+- `cargo test --workspace -j 1` completed with 100% pass across all workspace crates.
+- Specialized linters `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test` passed without warnings.
+- Plugin catalog validated with `plugin_validator`.
+
+
+## [2026-10-21 07:05] Chapter 79: Safe Window Centering, Manager Geometry Persistence & Win32 Handle Leak Guard (BUG-077)
+
+*Time: October 21, 2026, 07:05 (~30 minutes)*
+
+### 1. Problem Statement & Context
+During validation on Windows 11 running PhotoCraft with non-standard display scaling (125% and 150% DPI) and multi-monitor setups, several critical window management defects emerged:
+1. **Floating Toolbar Off-Screen Drifting:** Legacy heuristics blindly offset `320px` from the right edge of the editor window. Due to discrepancies between physical display pixels and logical egui points under DPI scaling, the toolbar frequently drifted off-screen or became inaccessible.
+2. **False Process Detection & Win32 Handle Leak:** The previous `enum_windows_callback` matched windows via exclusion logic on titles, misidentifying arbitrary explorer or browser windows as PhotoCraft. Additionally, calling `OpenProcess` without releasing handles caused steady descriptor leaks.
+3. **Missing Plugin Manager Persistence & Window Bloat Effect:** Closing the Plugin Manager discarded custom positions and sizes. Furthermore, capturing window bounds naively caused the window to progressively bloat on each reopen by the thickness of Windows frames and title bars.
+4. **Offline Modal Clipping:** Under localized first-run hints and socket status notifications, the previous 280×250 px dimensions caused scrollbars and layout clipping.
+
+### 2. Implementation Details
+1. **Strict Win32 Process Identification (`crates/overlay_ui/src/win32_window.rs`):**
+   - Replaced fragile title scanning with PID verification (`pid != GetCurrentProcessId()`), querying the executable path via `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)` and `QueryFullProcessImageNameW`.
+   - **Guaranteed `CloseHandle(h_process)` Execution:** Completely eliminates Windows descriptor/handle leaks during window polling.
+   - Executable path verification: ends with `photocraft.exe` and does not contain `companion`.
+   - Window title check: contains `PhotoCraft` while excluding companion utility windows.
+2. **DPI-Aware Centering & Screen Boundary Validation:**
+   - Implemented `calculate_primary_screen_center(w, h)`: divides physical `GetSystemMetrics` dimensions by the DPI scale `(GetDpiForSystem() / 96.0).clamp(0.5, 4.0)` to position windows safely in egui logical points.
+   - Implemented `is_position_visible_on_screen(pos, size)`: verifies bounding rectangle intersection with active monitors via `MonitorFromRect(..., MONITOR_DEFAULTTONULL)`. Automatically recovers off-screen windows back to the primary screen center when displays are disconnected.
+   - `calculate_toolstrip_spawn_pos` transformed into a clean facade over safe centering.
+3. **Bidirectional Plugin Manager Geometry Persistence (`crates/core_contracts`, `crates/overlay_ui`):**
+   - Added `manager_window_position` and `manager_window_size` to `CompanionConfig` with `#[serde(default)]`.
+   - Eliminated progressive window bloat: position is tracked via `outer_rect.min`, while dimensions are tracked strictly from the client area via `inner_rect.size()`.
+4. **Enhanced Offline Onboarding:**
+   - Increased offline modal dimensions to `300.0 x 280.0` px across all initialization call sites.
+   - Added detection and guidance for when `photocraft.exe` is running but the control socket is closed or unreachable.
+
+### 3. Verification & Definition of Done
+- Added unit tests: `test_manager_geometry_persistence` and `test_screen_boundary_and_centering` in `crates/overlay_ui/src/lib.rs`.
+- Verified code formatting with `cargo fmt --all -- --check` (0 diffs).
+- Successfully passed all workspace tests: `cargo test --workspace -j 1`.
+- Verified all architectural linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`) and plugin validator.

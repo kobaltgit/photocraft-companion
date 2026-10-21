@@ -2,7 +2,7 @@
 ; Produces: PhotoCraft-Companion-Setup-Windows-x64.exe
 
 #define MyAppName "PhotoCraft Companion"
-#define MyAppVersion "1.2.1"
+#define MyAppVersion "1.2.2"
 #define MyAppPublisher "kobaltGIT"
 #define MyAppURL "https://github.com/kobaltgit/photocraft-companion"
 #define MyAppExeName "photocraft-companion.exe"

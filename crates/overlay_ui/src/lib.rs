@@ -155,6 +155,9 @@ pub struct CompanionOverlayApp {
     pub config_path: std::path::PathBuf,
     pub last_saved_vertical: bool,
     pub last_saved_pos: Option<[f32; 2]>,
+    pub last_saved_manager_pos: Option<[f32; 2]>,
+    pub last_saved_manager_size: Option<[f32; 2]>,
+    pub manager_just_opened: bool,
     pub on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
     pub dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
 }
@@ -238,6 +241,9 @@ impl CompanionOverlayApp {
             config_path,
             last_saved_vertical: cfg.is_vertical,
             last_saved_pos: cfg.window_position,
+            last_saved_manager_pos: cfg.manager_window_position,
+            last_saved_manager_size: cfg.manager_window_size,
+            manager_just_opened: true,
             on_launch_requested: None,
             dynamic_engine,
         }
@@ -252,6 +258,8 @@ impl CompanionOverlayApp {
         let mut cfg = core_contracts::CompanionConfig::load_or_default(&self.config_path);
         cfg.is_vertical = self.last_saved_vertical;
         cfg.window_position = self.last_saved_pos;
+        cfg.manager_window_position = self.last_saved_manager_pos;
+        cfg.manager_window_size = self.last_saved_manager_size;
         if let Err(e) = cfg.save(&self.config_path) {
             tracing::warn!("Failed to save toolstrip layout config: {}", e);
         }
@@ -278,31 +286,31 @@ impl CompanionOverlayApp {
         if connected {
             let size = self.toolstrip.calculate_size();
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-            if let Some(pos) = self.last_saved_pos {
-                if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0
-                {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                        pos[0], pos[1],
-                    )));
-                } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                        pos[0], pos[1],
-                    )));
+            let target_pos = if let Some(pos) = self.last_saved_pos {
+                if crate::win32_window::is_position_visible_on_screen(pos, [size.x, size.y]) {
+                    Some(pos)
+                } else {
+                    Some(crate::win32_window::calculate_primary_screen_center(
+                        size.x, size.y,
+                    ))
                 }
-            } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+            } else {
+                Some(crate::win32_window::calculate_primary_screen_center(
+                    size.x, size.y,
+                ))
+            };
+            if let Some(pos) = target_pos {
                 ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                     pos[0], pos[1],
                 )));
             }
         } else {
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                280.0, 210.0,
+            let size = egui::Vec2::new(300.0, 280.0);
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            let pos = crate::win32_window::calculate_primary_screen_center(size.x, size.y);
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                pos[0], pos[1],
             )));
-            if let Some(pos) = calculate_toolstrip_spawn_pos(280.0) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
-                    pos[0], pos[1],
-                )));
-            }
         }
 
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -318,6 +326,7 @@ impl CompanionOverlayApp {
             // preventing the eframe `new_events` panic on secondary viewports (BUG-042).
             self.restore_toolbar_from_tray(ctx);
             self.show_manager = true;
+            self.manager_just_opened = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
     }
@@ -398,32 +407,34 @@ impl eframe::App for CompanionOverlayApp {
                     let size = self.toolstrip.calculate_size();
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-                    if let Some(pos) = self.last_saved_pos {
-                        if pos[0].is_finite()
-                            && pos[1].is_finite()
-                            && pos[0] >= -100.0
-                            && pos[1] >= -100.0
+                    let target_pos = if let Some(pos) = self.last_saved_pos {
+                        if crate::win32_window::is_position_visible_on_screen(pos, [size.x, size.y])
                         {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::OuterPosition(
-                                    egui::pos2(pos[0], pos[1]),
-                                ));
-                        } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::OuterPosition(
-                                    egui::pos2(pos[0], pos[1]),
-                                ));
+                            Some(pos)
+                        } else {
+                            Some(crate::win32_window::calculate_primary_screen_center(
+                                size.x, size.y,
+                            ))
                         }
-                    } else if let Some(pos) = calculate_toolstrip_spawn_pos(size.x) {
+                    } else {
+                        Some(crate::win32_window::calculate_primary_screen_center(
+                            size.x, size.y,
+                        ))
+                    };
+                    if let Some(pos) = target_pos {
                         ui.ctx()
                             .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                                 pos[0], pos[1],
                             )));
                     }
                 } else {
+                    let size = egui::Vec2::new(300.0, 280.0);
                     ui.ctx()
-                        .send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::new(
-                            280.0, 210.0,
+                        .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                    let pos = crate::win32_window::calculate_primary_screen_center(size.x, size.y);
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                            pos[0], pos[1],
                         )));
                 }
             }
@@ -548,6 +559,7 @@ impl eframe::App for CompanionOverlayApp {
                 if self.toolstrip.open_manager_requested {
                     self.toolstrip.open_manager_requested = false;
                     self.show_manager = true;
+                    self.manager_just_opened = true;
                 }
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
@@ -761,11 +773,14 @@ impl eframe::App for CompanionOverlayApp {
                     }
                 }
             } else {
+                self.offline_modal.is_process_detected =
+                    crate::win32_window::find_photocraft_window_rect().is_some();
                 self.offline_modal.connection_state = *self.connection_state.read().unwrap();
                 self.offline_modal.render(ui, &palette);
                 if self.offline_modal.open_manager_requested {
                     self.offline_modal.open_manager_requested = false;
                     self.show_manager = true;
+                    self.manager_just_opened = true;
                 }
                 if self.offline_modal.launch_requested {
                     self.offline_modal.launch_requested = false;
@@ -779,12 +794,36 @@ impl eframe::App for CompanionOverlayApp {
         // Render Plugin Manager in a separate window viewport
         if self.show_manager {
             let is_dark = self.toolstrip.current_theme.is_dark();
+            let default_size = [740.0, 480.0];
+            let manager_size = self.last_saved_manager_size.unwrap_or(default_size);
+
+            let manager_pos = if let Some(pos) = self.last_saved_manager_pos {
+                if crate::win32_window::is_position_visible_on_screen(pos, manager_size) {
+                    pos
+                } else {
+                    crate::win32_window::calculate_primary_screen_center(
+                        manager_size[0],
+                        manager_size[1],
+                    )
+                }
+            } else {
+                crate::win32_window::calculate_primary_screen_center(
+                    manager_size[0],
+                    manager_size[1],
+                )
+            };
+
             let mut vp = egui::ViewportBuilder::default()
                 .with_title("PhotoCraft - Plugins Manager")
-                .with_inner_size([740.0, 480.0])
+                .with_inner_size(manager_size)
                 .with_min_inner_size([600.0, 380.0])
                 .with_resizable(true)
                 .with_taskbar(true);
+
+            if self.manager_just_opened {
+                vp = vp.with_position(egui::pos2(manager_pos[0], manager_pos[1]));
+            }
+
             if let Some(icon) = get_egui_icon_data(is_dark, 64) {
                 vp = vp.with_icon(icon);
             }
@@ -793,9 +832,54 @@ impl eframe::App for CompanionOverlayApp {
                 egui::ViewportId::from_hash_of("plugin_manager_window"),
                 vp,
                 |ctx, _class| {
+                    if self.manager_just_opened {
+                        self.manager_just_opened = false;
+                    }
+
                     if ctx.input(|i| i.viewport().close_requested()) {
                         self.show_manager = false;
+                        self.save_layout_state();
                     }
+
+                    // Dynamically capture position & client inner size when user finishes interaction
+                    let pointer_down = ctx.input(|i| i.pointer.any_down());
+                    if !pointer_down {
+                        let outer_pos =
+                            ctx.input(|i| i.viewport().outer_rect.map(|r| [r.min.x, r.min.y]));
+                        let inner_sz =
+                            ctx.input(|i| i.viewport().inner_rect.map(|r| [r.width(), r.height()]));
+
+                        if let (Some(pos), Some(size)) = (outer_pos, inner_sz) {
+                            if pos[0].is_finite()
+                                && pos[1].is_finite()
+                                && size[0] >= 400.0
+                                && size[1] >= 300.0
+                                && (pos[0].abs() > 0.001 || pos[1].abs() > 0.001)
+                            {
+                                let pos_changed = match self.last_saved_manager_pos {
+                                    Some(last) => {
+                                        (last[0] - pos[0]).abs() > 1.0
+                                            || (last[1] - pos[1]).abs() > 1.0
+                                    }
+                                    None => true,
+                                };
+                                let size_changed = match self.last_saved_manager_size {
+                                    Some(last) => {
+                                        (last[0] - size[0]).abs() > 1.0
+                                            || (last[1] - size[1]).abs() > 1.0
+                                    }
+                                    None => true,
+                                };
+
+                                if pos_changed || size_changed {
+                                    self.last_saved_manager_pos = Some(pos);
+                                    self.last_saved_manager_size = Some(size);
+                                    self.save_layout_state();
+                                }
+                            }
+                        }
+                    }
+
                     if let Some(icon) = get_egui_icon_data(is_dark, 64) {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(
                             std::sync::Arc::new(icon),
@@ -858,6 +942,7 @@ pub fn launch_companion_overlay(
     }
     if start_with_manager {
         app.show_manager = true;
+        app.manager_just_opened = true;
     }
     let is_dark = app.toolstrip.current_theme.is_dark();
     let connected = app.is_connected.load(Ordering::Relaxed);
@@ -865,7 +950,7 @@ pub fn launch_companion_overlay(
     let initial_size = if connected {
         app.toolstrip.calculate_size()
     } else {
-        egui::Vec2::new(280.0, 210.0)
+        egui::Vec2::new(300.0, 280.0)
     };
 
     let mut viewport = egui::ViewportBuilder::default()
@@ -879,14 +964,29 @@ pub fn launch_companion_overlay(
 
     if connected {
         if let Some(pos) = app.last_saved_pos {
-            if pos[0].is_finite() && pos[1].is_finite() && pos[0] >= -100.0 && pos[1] >= -100.0 {
+            if crate::win32_window::is_position_visible_on_screen(
+                pos,
+                [initial_size.x, initial_size.y],
+            ) {
                 viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
-            } else if let Some(pos) = calculate_toolstrip_spawn_pos(initial_size.x) {
-                viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
+            } else {
+                let center = crate::win32_window::calculate_primary_screen_center(
+                    initial_size.x,
+                    initial_size.y,
+                );
+                viewport = viewport.with_position(egui::Pos2::new(center[0], center[1]));
             }
-        } else if let Some(pos) = calculate_toolstrip_spawn_pos(initial_size.x) {
-            viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
+        } else {
+            let center = crate::win32_window::calculate_primary_screen_center(
+                initial_size.x,
+                initial_size.y,
+            );
+            viewport = viewport.with_position(egui::Pos2::new(center[0], center[1]));
         }
+    } else {
+        let center =
+            crate::win32_window::calculate_primary_screen_center(initial_size.x, initial_size.y);
+        viewport = viewport.with_position(egui::Pos2::new(center[0], center[1]));
     }
 
     if let Some(icon) = get_egui_icon_data(is_dark, 32) {
@@ -918,8 +1018,25 @@ pub fn launch_plugin_manager(
     connection_state: Option<Arc<std::sync::RwLock<core_contracts::ConnectionState>>>,
     on_token_saved: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 ) -> anyhow::Result<()> {
+    let prefs_buf: std::path::PathBuf = prefs_path.into();
+    let data_dir = prefs_buf.parent().unwrap_or(&prefs_buf).to_path_buf();
+    let config_path = core_contracts::CompanionConfig::resolve_config_path(&data_dir);
+    let cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+    let default_size = [740.0, 480.0];
+    let manager_size = cfg.manager_window_size.unwrap_or(default_size);
+    let manager_pos = if let Some(pos) = cfg.manager_window_position {
+        if crate::win32_window::is_position_visible_on_screen(pos, manager_size) {
+            pos
+        } else {
+            crate::win32_window::calculate_primary_screen_center(manager_size[0], manager_size[1])
+        }
+    } else {
+        crate::win32_window::calculate_primary_screen_center(manager_size[0], manager_size[1])
+    };
+
     let is_connected = Arc::new(AtomicBool::new(false));
-    let mut app = PluginManagerApp::new(manifests, prefs_path, is_connected);
+    let mut app = PluginManagerApp::new(manifests, prefs_buf, is_connected);
+    app.config_path = config_path;
     if let Some(cs) = connection_state {
         app = app.with_connection_state(cs);
     }
@@ -929,7 +1046,8 @@ pub fn launch_plugin_manager(
     let is_dark = app.current_theme.is_dark();
 
     let mut viewport = eframe::egui::ViewportBuilder::default()
-        .with_inner_size([740.0, 480.0])
+        .with_inner_size(manager_size)
+        .with_position(egui::pos2(manager_pos[0], manager_pos[1]))
         .with_min_inner_size([600.0, 380.0])
         .with_taskbar(true)
         .with_title("PhotoCraft - Plugins Manager");
@@ -1180,5 +1298,88 @@ mod tests {
         assert_eq!(app.last_saved_pos, Some([300.0, 200.0]));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_manager_geometry_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "manager_persist_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_file = temp_dir.join("preferences.json");
+        std::fs::write(&prefs_file, "{}").unwrap();
+
+        let is_connected = Arc::new(AtomicBool::new(false));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
+        let mut app = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected.clone(),
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+            None,
+            dynamic_engine.clone(),
+        );
+
+        assert!(app.last_saved_manager_pos.is_none());
+        assert!(app.last_saved_manager_size.is_none());
+
+        app.last_saved_manager_pos = Some([510.0, 220.0]);
+        app.last_saved_manager_size = Some([800.0, 520.0]);
+        app.save_layout_state();
+
+        let saved_cfg = core_contracts::CompanionConfig::load_or_default(&app.config_path);
+        assert_eq!(saved_cfg.manager_window_position, Some([510.0, 220.0]));
+        assert_eq!(saved_cfg.manager_window_size, Some([800.0, 520.0]));
+
+        let restored_app = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected,
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+            None,
+            dynamic_engine,
+        );
+
+        assert_eq!(restored_app.last_saved_manager_pos, Some([510.0, 220.0]));
+        assert_eq!(restored_app.last_saved_manager_size, Some([800.0, 520.0]));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_screen_boundary_and_centering() {
+        let center = crate::win32_window::calculate_primary_screen_center(300.0, 280.0);
+        assert!(center[0] >= 20.0);
+        assert!(center[1] >= 20.0);
+
+        // Center on screen must be recognized as visible
+        assert!(crate::win32_window::is_position_visible_on_screen(
+            center,
+            [300.0, 280.0]
+        ));
+
+        // Completely invalid NaN / Infinite coordinates must be rejected
+        assert!(!crate::win32_window::is_position_visible_on_screen(
+            [f32::NAN, 100.0],
+            [300.0, 280.0]
+        ));
+        assert!(!crate::win32_window::is_position_visible_on_screen(
+            [100.0, f32::INFINITY],
+            [300.0, 280.0]
+        ));
     }
 }

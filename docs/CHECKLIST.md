@@ -840,5 +840,45 @@
   - [x] Двуязычный тултип через `self.t("Join Discord Community", "Присоединиться к Discord-сообществу")` со строгой валидацией `i18n_lint_test`.
   - [x] Пройдены все тесты воркспейса с `-j 1` и валидация каталога плагинов.
 
+- [x] **Фаза 72: Нативный запуск PhotoCraft на macOS, автосохранение настроек и контекстные подсказки первого запуска (BUG-076)**
+  - [x] **Детекция и запуск бандлов на macOS (`crates/photocraft_bridge`)**:
+    - Точное распознавание процесса через `/bin/ps -A -o comm` с фильтрацией `!lower.contains("companion")`, предотвращающее ложное самообнаружение.
+    - Семантическая защита `is_token_dir_writable` через `parent.ancestors().any(|p| p.extension() == "app")`, исключающая запись токена внутрь бандлов `.app` и сохраняющая цифровую подпись CodeSeal.
+    - Нативный запуск графических бандлов через `/usr/bin/open -n -a "<bundle.app>" --args ...`, предотвращающий ошибку WindowServer и сброс Gatekeeper (`Killed: 9`).
+    - Расширение путей автопоиска бандлами `.app` в `/Applications` и `~/Downloads`.
+  - [x] **Интерфейс и пользовательский опыт (`crates/overlay_ui`)**:
+    - Гарантированное автосохранение пути `self.save_settings()` при клике на кнопку `> Launch` в General Settings.
+    - Увеличение высоты модального окна оффлайн с 210 до 250 px (`280.0 x 250.0`) ровно в 3 точках инициализации для предотвращения клиппинга UI.
+    - Вывод ОС-таргетированных контекстных подсказок первого запуска (macOS Gatekeeper, Windows SmartScreen, Linux chmod) строго в оффлайн-режиме (`!is_auth_req`).
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - Полная чистота форматирования `cargo fmt --all -- --check` (0 расхождений).
+    - 100% успешное прохождение всех тестов воркспейса `cargo test --workspace -j 1`.
+    - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test`) и валидация плагинов завершены с кодом 0.
+
+- [x] **Фаза 73: Безопасное центрирование окон, персистентность геометрии и предотвращение утечек Win32 (BUG-077)**
+  - [x] **Строгая Win32-идентификация PhotoCraft (`crates/overlay_ui/src/win32_window.rs`)**:
+    - Замена хрупкого поиска окон на строгую проверку PID (`pid != GetCurrentProcessId()`), дескриптора процесса `OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, ...)` и обязательное закрытие `CloseHandle(h_process)` для полного исключения утечек хэндлов (Handle Leak).
+    - Проверка исполняемого файла: путь оканчивается на `photocraft.exe` и не содержит `companion`.
+    - Проверка заголовка окна: содержит `PhotoCraft` и исключает служебные окна Компаньона.
+  - [x] **DPI-Aware центрирование и валидатор экранных границ**:
+    - Реализация `calculate_primary_screen_center` с делением экранных координат на DPI-масштаб `(GetDpiForSystem() / 96.0).clamp(0.5, 4.0)` и защитой от нулевых размеров.
+    - Реализация `is_position_visible_on_screen` через `MonitorFromRect(..., MONITOR_DEFAULTTONULL)`. Автоматический возврат окна в центр экрана при отключении монитора.
+    - Фасадная обратная совместимость `calculate_toolstrip_spawn_pos`.
+  - [x] **Двусторонняя персистентность геометрии Plugin Manager (`crates/core_contracts`, `crates/overlay_ui`)**:
+    - Поля `manager_window_position` и `manager_window_size` в `CompanionConfig` с `#[serde(default)]`.
+    - Защита от раздувания окон: позиция окна отслеживается через `outer_rect.min`, а размеры — строго через `inner_rect.size()`.
+    - Восстановление сохраненных габаритов и позиции при открытии менеджера плагинов в тулбаре и в standalone режиме.
+  - [x] **Улучшение UX оффлайн-окна (`offline_modal.rs`, `lib.rs`)**:
+    - Увеличение габаритов модального окна оффлайн до `300.0 x 280.0` px во всех 3 точках вызова.
+    - Индикация статуса обнаружения процесса `photocraft.exe` при закрытом сокете 18492 с инструкцией перезапуска через кнопку.
+    - 100% соблюдение правил локализации i18n (`.t("En", "Ru")`) и отсутствие кириллицы в `win32_window.rs`.
+  - [x] **Верификация и соблюдение Definition of Done**:
+    - Модульные тесты `test_screen_boundary_and_centering` и `test_manager_geometry_persistence`.
+    - Чистота форматирования `cargo fmt --all -- --check` (0 расхождений).
+    - 100% зеленых тестов во всем воркспейсе (`cargo test --workspace -j 1`).
+    - Все специализированные линтеры пройдены.
+
+
+
 
 

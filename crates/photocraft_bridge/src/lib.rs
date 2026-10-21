@@ -86,6 +86,34 @@ impl PhotoCraftClient {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            let mut cmd = std::process::Command::new("/bin/ps");
+            cmd.args(["-A", "-o", "comm"]);
+            if let Ok(out) = cmd.output() {
+                if out.status.success() {
+                    let text = String::from_utf8_lossy(&out.stdout);
+                    for line in text.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+                        let path = std::path::Path::new(trimmed);
+                        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                            let file_lower = file_name.to_lowercase();
+                            if !file_lower.contains("companion") && file_lower == "photocraft" {
+                                if let Some(parent) = path.parent() {
+                                    if parent.is_dir() {
+                                        return Some(parent.to_path_buf());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         #[cfg(target_os = "linux")]
         {
             // Check /proc for running photocraft binary
@@ -321,6 +349,14 @@ pub fn is_token_dir_writable(path: &std::path::Path) -> bool {
         Some(p) => p,
         None => return false,
     };
+    // Semantic protection: never allow writing tokens inside .app bundles (preserves code signature on macOS)
+    let is_inside_bundle = parent
+        .ancestors()
+        .any(|p| p.extension().and_then(|e| e.to_str()) == Some("app"));
+    if is_inside_bundle {
+        return false;
+    }
+
     let parent_str = parent.to_string_lossy();
     #[cfg(target_os = "macos")]
     {
@@ -495,6 +531,8 @@ impl PhotoCraftClient {
         // 4b. macOS standard install paths
         #[cfg(target_os = "macos")]
         {
+            candidate_paths.push(std::path::PathBuf::from("/Applications/PhotoCraft.app"));
+            candidate_paths.push(std::path::PathBuf::from("/Applications/photocraft.app"));
             candidate_paths.push(std::path::PathBuf::from(
                 "/Applications/PhotoCraft.app/Contents/MacOS/photocraft",
             ));
@@ -502,14 +540,17 @@ impl PhotoCraftClient {
                 "/Applications/PhotoCraft.app/Contents/MacOS/PhotoCraft",
             ));
             if let Ok(home) = std::env::var("HOME") {
-                candidate_paths.push(
-                    std::path::PathBuf::from(&home)
-                        .join("Applications/PhotoCraft.app/Contents/MacOS/photocraft"),
-                );
-                candidate_paths.push(
-                    std::path::PathBuf::from(&home)
-                        .join("Applications/PhotoCraft.app/Contents/MacOS/PhotoCraft"),
-                );
+                let home_path = std::path::PathBuf::from(&home);
+                candidate_paths.push(home_path.join("Applications/PhotoCraft.app"));
+                candidate_paths.push(home_path.join("Applications/photocraft.app"));
+                candidate_paths
+                    .push(home_path.join("Applications/PhotoCraft.app/Contents/MacOS/photocraft"));
+                candidate_paths
+                    .push(home_path.join("Applications/PhotoCraft.app/Contents/MacOS/PhotoCraft"));
+                candidate_paths.push(home_path.join("Downloads/PhotoCraft.app"));
+                candidate_paths.push(home_path.join("Downloads/photocraft.app"));
+                candidate_paths.push(home_path.join("Downloads/PhotoCraft"));
+                candidate_paths.push(home_path.join("Downloads/photocraft"));
             }
             candidate_paths.push(std::path::PathBuf::from("/opt/homebrew/bin/photocraft"));
             candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/photocraft"));
@@ -565,7 +606,25 @@ impl PhotoCraftClient {
             exe_path.to_path_buf()
         };
 
-        if !actual_exe.is_file() {
+        #[cfg(target_os = "macos")]
+        let app_bundle = if actual_exe.extension().and_then(|e| e.to_str()) == Some("app") {
+            Some(actual_exe.clone())
+        } else {
+            actual_exe
+                .ancestors()
+                .find(|p| p.extension().and_then(|e| e.to_str()) == Some("app"))
+                .map(|p| p.to_path_buf())
+        };
+        #[cfg(not(target_os = "macos"))]
+        let app_bundle: Option<std::path::PathBuf> = None;
+
+        let is_valid_target = if app_bundle.is_some() {
+            actual_exe.is_file() || actual_exe.is_dir()
+        } else {
+            actual_exe.is_file()
+        };
+
+        if !is_valid_target {
             return Err(CompanionError::Bridge(format!(
                 "PhotoCraft executable not found at: {}",
                 actual_exe.display()
@@ -576,14 +635,31 @@ impl PhotoCraftClient {
         let token_path = match token_file {
             Some(p) => p.to_path_buf(),
             None => {
-                let base_dir = actual_exe
-                    .parent()
-                    .unwrap_or_else(|| std::path::Path::new("."));
-                let candidate = base_dir.join("PhotoCraftData").join("control.token");
-                if is_token_dir_writable(&candidate) {
-                    candidate
-                } else {
+                #[cfg(target_os = "macos")]
+                if app_bundle.is_some() {
                     user_data_token_path()
+                } else {
+                    let base_dir = actual_exe
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    let candidate = base_dir.join("PhotoCraftData").join("control.token");
+                    if is_token_dir_writable(&candidate) {
+                        candidate
+                    } else {
+                        user_data_token_path()
+                    }
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    let base_dir = actual_exe
+                        .parent()
+                        .unwrap_or_else(|| std::path::Path::new("."));
+                    let candidate = base_dir.join("PhotoCraftData").join("control.token");
+                    if is_token_dir_writable(&candidate) {
+                        candidate
+                    } else {
+                        user_data_token_path()
+                    }
                 }
             }
         };
@@ -605,6 +681,21 @@ impl PhotoCraftClient {
                     token_path.display()
                 ))
             })?;
+        }
+
+        if let Some(bundle_path) = app_bundle {
+            let mut cmd = std::process::Command::new("/usr/bin/open");
+            cmd.arg("-n")
+                .arg("-a")
+                .arg(&bundle_path)
+                .arg("--args")
+                .arg("--control")
+                .arg(port.to_string())
+                .arg("--control-token-file")
+                .arg(&token_path);
+            return cmd.spawn().map_err(|e| {
+                CompanionError::Bridge(format!("Failed to launch PhotoCraft bundle via open: {e}"))
+            });
         }
 
         let mut cmd = std::process::Command::new(&actual_exe);
@@ -1700,5 +1791,40 @@ mod tests {
         let (fg2, bg2) = parse_session_colors(&malformed);
         assert_eq!(fg2, "#000000");
         assert_eq!(bg2, "#ffffff");
+    }
+
+    #[test]
+    fn test_is_token_dir_writable_app_bundle() {
+        let bundle_file =
+            std::path::PathBuf::from("/Applications/PhotoCraft.app/Contents/MacOS/control.token");
+        let parent = bundle_file.parent().unwrap();
+        let is_inside_bundle = parent
+            .ancestors()
+            .any(|p| p.extension().and_then(|e| e.to_str()) == Some("app"));
+        assert!(
+            is_inside_bundle,
+            "Ancestor check should detect .app extension"
+        );
+
+        assert!(!is_token_dir_writable(&bundle_file));
+
+        let user_bundle =
+            std::path::PathBuf::from("/Users/developer/Downloads/PhotoCraft.app/control.token");
+        assert!(!is_token_dir_writable(&user_bundle));
+    }
+
+    #[test]
+    fn test_launch_photocraft_non_existent_target() {
+        let non_existent = std::path::Path::new("/path/that/does/not/exist/photocraft_fake_bin");
+        let result = PhotoCraftClient::launch_photocraft(non_existent, 18492, None);
+        assert!(
+            result.is_err(),
+            "Launch should fail for non-existent target"
+        );
+        let err_msg = result.err().unwrap().to_string();
+        assert!(
+            err_msg.contains("PhotoCraft executable not found"),
+            "Error message should mention executable not found, got: {err_msg}"
+        );
     }
 }
