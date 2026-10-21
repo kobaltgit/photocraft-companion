@@ -878,6 +878,15 @@
     - 100% зеленых тестов во всем воркспейсе (`cargo test --workspace -j 1`).
     - Все специализированные линтеры пройдены.
 
+- [x] **Фаза 74: Официальный регламент контрибьюторов (CONTRIBUTING.md) и открытие экосистемы сообществу**
+  - [x] Разработка исчерпывающего `CONTRIBUTING.md` на международном английском языке по стандарту GitHub.
+  - [x] Разделение 3 сценариев участия: Path A (авторы плагинов No-Code/AI без знания Rust), Path B (разработчики ядра Rust), Path C (баг-репорты и фиче-реквесты).
+  - [x] Формализация Золотых заповедей: Zero-Core Hardcoding, Resource Guard (`-j 1`), Vector-First UI, запрет весов моделей в Git, Plugin Model Isolation.
+  - [x] Специальное руководство для контрибьюторов с AI-ассистентами (Cursor, Claude Code, Antigravity, Copilot) с требованием передачи регламентов и личного аудита diff.
+  - [x] Описание полного Definition of Done чек-листа и RFC-процесса согласования расширений `core_contracts`.
+  - [x] Интеграция ссылок на `CONTRIBUTING.md` и `docs/FIRST_RUN_GUIDE.md` в `README.md` и `README.ru.md`.
+
+
 
 
 

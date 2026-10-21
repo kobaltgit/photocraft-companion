@@ -323,6 +323,8 @@ my_plugin.pcpl
 - 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) / [`EN`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) — Руководство разработчика плагинов (No-Code макросы, нейросети, создание расширений).
 - 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) / [`EN`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) — Полный каталог всех **851** команд ядра PhotoCraft.
 - 📐 [`docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md`](docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md) — Спецификация универсального ядра (Rhai, CLI, C-ABI DynLib).
+- 🚀 [`docs/FIRST_RUN_GUIDE.md`](docs/FIRST_RUN_GUIDE.md) — Руководство по установке и первому запуску (Windows, macOS, Linux).
+- 🤝 [`CONTRIBUTING.md`](CONTRIBUTING.md) — Руководство по участию в разработке, ключевые правила и чек-лист PR.
 
 ---
 

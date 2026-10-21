@@ -2667,3 +2667,41 @@ During validation on Windows 11 running PhotoCraft with non-standard display sca
 - Verified code formatting with `cargo fmt --all -- --check` (0 diffs).
 - Successfully passed all workspace tests: `cargo test --workspace -j 1`.
 - Verified all architectural linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`) and plugin validator.
+
+
+## [2026-10-21 15:58] Chapter 80: Official Contributor Guidelines (CONTRIBUTING.md) and Ecosystem Quality Standards Integration
+
+*Time: October 21, 2026, 15:58 (~20 minutes)*
+
+### 1. Problem Statement & Motivation
+Following the release of v1.2.2 and the stabilization of the cross-platform runtime, PhotoCraft Companion reached a critical milestone: opening its codebase to community developers, plugin authors, and digital artists.
+
+To ensure long-term ecosystem health, prevent architecture degradation, eliminate model keyword-sniffing, and protect contributor machines from unconstrained CPU spikes, the project needed an authoritative, comprehensive contribution manual — `CONTRIBUTING.md` — catering both to human contributors and developers leveraging AI coding agents (Cursor, Claude Code, Antigravity, GitHub Copilot).
+
+### 2. Implementation Details
+1. **Creation of Official `CONTRIBUTING.md`:**
+   - Authored in clear, international English with structured navigation and interactive table of contents.
+   - **Three Defined Contribution Paths:**
+     - **Path A: Plugin Developer (Zero Rust):** Guidance for authoring No-Code macros, interactive Rhai panels, and local neural AI plugins via declarative `plugin.json` without requiring Rust compilation.
+     - **Path B: Core Engine Developer:** Overview of all five decoupled workspace crates (`core_contracts`, `photocraft_bridge`, `ai_engine`, `overlay_ui`, `companion_app`).
+     - **Path C: Bug Reporter & Feature Proposer:** Standardized issue reporting with environment details, GPU model, and log snippets.
+2. **Formalization of Core Invariants (The Golden Rules):**
+   - **Zero-Core Hardcoding Prohibition:** Strict prohibition of keyword-sniffing, hardcoded `.onnx` model filenames, and hardcoded plugin IDs in core crates.
+   - **Resource Guard:** Mandatory thread limitation (`cargo test --workspace -j 1`).
+   - **Vector-First UI:** Absolute ban on emoji and unsupported Unicode symbols to eliminate tofu box rendering defects in `egui`.
+   - **Prohibition of Binary Weights in Git:** Neural models must be hosted on Hugging Face or GitHub Releases with SHA-256 checksums.
+   - **Plugin Isolation:** Self-contained plugin resources and assets inside `plugins/<id>/`.
+3. **Dedicated AI-Assisted Contributing Guidelines:**
+   - Prompts must feed project rules (`AGENTS_MASTER_GUIDE.md`, `SUBAGENT_GUARDRAILS.md`) to AI tools.
+   - Mandatory manual review of `git diff` before opening Pull Requests.
+4. **Core RFC Workflow & Commit Conventions:**
+   - Required GitHub Discussions / RFC proposals prior to modifying `core_contracts`.
+   - Adherence to Conventional Commits standard (`feat:`, `fix:`, `plugin:`, `docs:`, `refactor:`, `test:`).
+5. **Documentation Link Synchronization:**
+   - Linked `CONTRIBUTING.md` and `docs/FIRST_RUN_GUIDE.md` across both `README.md` and `README.ru.md`.
+
+### 3. Verification & Definition of Done
+- Clean code formatting verified with `cargo fmt --all -- --check`.
+- `cargo test -p ai_engine --test dev_regulations_lint_test -j 1` verified chapter count synchronization and catalog parity.
+- `cargo run --package plugin_validator -j 1 -- --validate plugins` confirmed all 7 plugins valid with zero warnings.
+

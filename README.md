@@ -324,6 +324,8 @@ Detailed specifications and development history can be found in [`docs/`](docs/)
 - 🛠️ [`docs/PLUGIN_DEVELOPMENT_GUIDE.en.md`](docs/PLUGIN_DEVELOPMENT_GUIDE.en.md) / [`RU`](docs/PLUGIN_DEVELOPMENT_GUIDE.md) — Plugin Developer Guide (No-Code macros, AI inference, workflows).
 - 📖 [`docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.en.md) / [`RU`](docs/PHOTOCRAFT_COMMANDS_REFERENCE.md) — Complete Catalog of all **851** PhotoCraft Engine Commands.
 - 📐 [`docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md`](docs/UNIVERSAL_PLUGIN_CORE_SPECIFICATION.md) — Universal Core specification (Rhai, CLI runner, C-ABI dynamic libs).
+- 🚀 [`docs/FIRST_RUN_GUIDE.md`](docs/FIRST_RUN_GUIDE.md) — First-Run & Installation Guide (Windows, macOS, Linux).
+- 🤝 [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution guidelines, golden rules, and PR checklist.
 
 ---
 
