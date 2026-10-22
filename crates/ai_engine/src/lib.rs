@@ -6,7 +6,7 @@ use image::{imageops::FilterType, DynamicImage, GrayImage, Rgba, RgbaImage};
 use ort::{inputs, session::Session, value::Tensor};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 type SessionKey = (PathBuf, std::time::SystemTime, bool);
 
@@ -146,7 +146,7 @@ impl AiEngine {
 
     /// Load ONNX session with DirectML or CPU execution providers
     pub fn create_session(&self, model_path: &Path, force_cpu: bool) -> Result<Session> {
-        let is_cpu_only = force_cpu
+        let _is_cpu_only = force_cpu
             || self
                 .cpu_fallback_models
                 .lock()
@@ -158,13 +158,13 @@ impl AiEngine {
         })?;
 
         #[cfg(windows)]
-        let mut builder = if !is_cpu_only {
+        let mut builder = if !_is_cpu_only {
             match builder.with_execution_providers([
                 ort::ep::DirectML::default().build(),
                 ort::ep::CPU::default().build(),
             ]) {
                 Ok(b) => {
-                    debug!("Configured DirectML + CPU execution provider");
+                    tracing::debug!("Configured DirectML + CPU execution provider");
                     b
                 }
                 Err(e) => {
