@@ -1,7 +1,7 @@
 use crate::{CompanionError, PluginManifest, Result};
 use std::fs::{self, File};
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tracing::info;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
@@ -47,39 +47,112 @@ pub fn install_pcpl(
     // 2. Target folder: plugins/<manifest.id>
     let sanitized_id = manifest.id.replace(['/', '\\'], "_");
     let target_dir = plugins_dir.join(&sanitized_id);
-    fs::create_dir_all(&target_dir).map_err(CompanionError::Io)?;
 
-    // 3. Extract all files
-    for i in 0..archive.len() {
-        let mut entry = archive
-            .by_index(i)
-            .map_err(|e| CompanionError::Plugin(format!("Failed to read archive entry: {e}")))?;
+    const MAX_TOTAL_UNCOMPRESSED: u64 = 512 * 1024 * 1024; // 512 MB Zip-Bomb Guard
+    let mut total_uncompressed: u64 = 0;
 
-        let entry_name = entry.name().to_string();
-        // Skip leading root folder if archive was zipped with root folder
-        let relative_path =
-            if let Some(stripped) = entry_name.strip_prefix(&format!("{}/", sanitized_id)) {
-                PathBuf::from(stripped)
-            } else {
-                PathBuf::from(&entry_name)
+    // Temporary directory for atomic extraction
+    let temp_target = plugins_dir.join(format!("{}.tmp.{}", sanitized_id, std::process::id()));
+    if temp_target.exists() {
+        let _ = fs::remove_dir_all(&temp_target);
+    }
+    fs::create_dir_all(&temp_target).map_err(CompanionError::Io)?;
+
+    let install_result = (|| -> Result<()> {
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).map_err(|e| {
+                CompanionError::Plugin(format!("Failed to read archive entry: {e}"))
+            })?;
+
+            total_uncompressed = total_uncompressed.saturating_add(entry.size());
+            if total_uncompressed > MAX_TOTAL_UNCOMPRESSED {
+                return Err(CompanionError::Plugin(
+                    "Security violation: archive uncompressed size exceeds limit (512 MB)".into(),
+                ));
+            }
+
+            let enclosed = match entry.enclosed_name() {
+                Some(p) => p.to_path_buf(),
+                None => {
+                    return Err(CompanionError::Plugin(format!(
+                        "Security violation: path traversal detected in archive entry '{}'",
+                        entry.name()
+                    )));
+                }
             };
 
-        if relative_path.as_os_str().is_empty() {
-            continue;
-        }
+            // 1. Correct handling of archive structure:
+            // If archive was zipped with root folder (<sanitized_id>/...), strip it
+            let relative_path = if let Ok(stripped) = enclosed.strip_prefix(&sanitized_id) {
+                stripped.to_path_buf()
+            } else {
+                enclosed
+            };
 
-        let out_path = target_dir.join(&relative_path);
-
-        if entry.is_dir() {
-            fs::create_dir_all(&out_path).map_err(CompanionError::Io)?;
-        } else {
-            if let Some(parent) = out_path.parent() {
-                fs::create_dir_all(parent).map_err(CompanionError::Io)?;
+            if relative_path.as_os_str().is_empty() {
+                continue;
             }
-            let mut out_file = File::create(&out_path).map_err(CompanionError::Io)?;
-            io::copy(&mut entry, &mut out_file).map_err(CompanionError::Io)?;
+
+            // 2. Strict verification of relative path components
+            for comp in relative_path.components() {
+                match comp {
+                    std::path::Component::Normal(_) => {}
+                    _ => {
+                        return Err(CompanionError::Plugin(format!(
+                            "Security violation: non-normal path component in archive entry '{}'",
+                            entry.name()
+                        )));
+                    }
+                }
+            }
+
+            // 3. Prohibition of symlinks in plugin archives on Unix
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if entry
+                    .unix_mode()
+                    .map(|m| (m & 0o170000) == 0o120000)
+                    .unwrap_or(false)
+                {
+                    return Err(CompanionError::Plugin(format!(
+                        "Security violation: symlink entries forbidden in .pcpl archives: '{}'",
+                        entry.name()
+                    )));
+                }
+            }
+
+            let out_path = temp_target.join(&relative_path);
+            if entry.is_dir() {
+                fs::create_dir_all(&out_path).map_err(CompanionError::Io)?;
+            } else {
+                if let Some(parent) = out_path.parent() {
+                    fs::create_dir_all(parent).map_err(CompanionError::Io)?;
+                }
+                let mut out_file = File::create(&out_path).map_err(CompanionError::Io)?;
+                io::copy(&mut entry, &mut out_file).map_err(CompanionError::Io)?;
+            }
         }
+        Ok(())
+    })();
+
+    if let Err(e) = install_result {
+        let _ = fs::remove_dir_all(&temp_target);
+        return Err(e);
     }
+
+    // 4. Data protection: preserve existing models/ folder with heavy neural weights (.onnx)
+    let old_models = target_dir.join("models");
+    let new_models = temp_target.join("models");
+    if old_models.is_dir() && !new_models.exists() {
+        let _ = fs::rename(&old_models, &new_models);
+    }
+
+    // 5. Atomic replacement of target directory
+    if target_dir.exists() {
+        let _ = fs::remove_dir_all(&target_dir);
+    }
+    fs::rename(&temp_target, &target_dir).map_err(CompanionError::Io)?;
 
     manifest.plugin_dir = Some(target_dir.clone());
     info!(
@@ -257,6 +330,133 @@ mod tests {
         let target_dir = temp_dir.join("target");
         let result = install_pcpl(&corrupt_path, &target_dir);
         assert!(result.is_err());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_install_pcpl_with_root_folder_prefix() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "pcpl_prefix_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let src_dir = temp_dir.join("packaged_dir").join("test.plugin.prefixed");
+        fs::create_dir_all(&src_dir).unwrap();
+
+        let manifest = r#"{
+            "id": "test.plugin.prefixed",
+            "name": "Prefixed Plugin",
+            "version": "1.0.0",
+            "description": "Prefixed archive test",
+            "author": "Unit Tester",
+            "plugin_type": "no_code"
+        }"#;
+        fs::write(src_dir.join("plugin.json"), manifest).unwrap();
+        fs::write(src_dir.join("script.py"), "print('hello')").unwrap();
+
+        let pcpl_path = temp_dir.join("prefixed.pcpl");
+        create_pcpl(temp_dir.join("packaged_dir"), &pcpl_path).unwrap();
+
+        let target_plugins = temp_dir.join("installed");
+        let installed = install_pcpl(&pcpl_path, &target_plugins).unwrap();
+        assert_eq!(installed.id, "test.plugin.prefixed");
+
+        let dest = target_plugins.join("test.plugin.prefixed");
+        assert!(dest.join("plugin.json").exists());
+        assert!(dest.join("script.py").exists());
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_install_pcpl_preserves_existing_models() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "pcpl_models_preserve_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let src_dir = temp_dir.join("update_src");
+        fs::create_dir_all(&src_dir).unwrap();
+
+        let manifest = r#"{
+            "id": "test.plugin.ai_model",
+            "name": "AI Model Plugin",
+            "version": "1.1.0",
+            "description": "Update without models in archive",
+            "author": "Unit Tester",
+            "plugin_type": "native_ai"
+        }"#;
+        fs::write(src_dir.join("plugin.json"), manifest).unwrap();
+
+        let pcpl_path = temp_dir.join("update.pcpl");
+        create_pcpl(&src_dir, &pcpl_path).unwrap();
+
+        let target_plugins = temp_dir.join("installed");
+        let existing_plugin_dir = target_plugins.join("test.plugin.ai_model");
+        let existing_models_dir = existing_plugin_dir.join("models");
+        fs::create_dir_all(&existing_models_dir).unwrap();
+        fs::write(
+            existing_models_dir.join("heavy_weight.onnx"),
+            b"heavy weights",
+        )
+        .unwrap();
+
+        let installed = install_pcpl(&pcpl_path, &target_plugins).unwrap();
+        assert_eq!(installed.id, "test.plugin.ai_model");
+
+        let weight_path = existing_plugin_dir.join("models").join("heavy_weight.onnx");
+        assert!(
+            weight_path.exists(),
+            "Existing heavy models must be preserved during .pcpl update!"
+        );
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_install_pcpl_rejects_zip_slip() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "pcpl_slip_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&temp_dir).unwrap();
+        let pcpl_path = temp_dir.join("slip.pcpl");
+
+        let file = File::create(&pcpl_path).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+        let manifest = r#"{
+            "id": "test.plugin.malicious",
+            "name": "Malicious",
+            "version": "1.0.0",
+            "description": "Exploit",
+            "author": "Attacker",
+            "plugin_type": "no_code"
+        }"#;
+        zip.start_file("plugin.json", options).unwrap();
+        io::copy(&mut manifest.as_bytes(), &mut zip).unwrap();
+
+        zip.start_file("../../escaped_file.txt", options).unwrap();
+        io::copy(&mut "malicious content".as_bytes(), &mut zip).unwrap();
+        zip.finish().unwrap();
+
+        let target_plugins = temp_dir.join("installed");
+        let result = install_pcpl(&pcpl_path, &target_plugins);
+        assert!(result.is_err(), "Zip Slip must be rejected!");
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Security violation") || err_msg.contains("path traversal"),
+            "Error should mention security violation: {err_msg}"
+        );
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

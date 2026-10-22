@@ -252,6 +252,8 @@ impl DynamicToolEngine {
         let mut rhai_asts = HashMap::new();
 
         let mut rhai_engine = rhai::Engine::new();
+        rhai_engine.set_max_expr_depths(64, 64);
+        rhai_engine.set_max_operations(50_000);
         let lang_arc = Arc::new(RwLock::new(language));
         let echo_guard: Arc<std::sync::Mutex<Option<(String, String)>>> =
             Arc::new(std::sync::Mutex::new(None));
@@ -2816,5 +2818,30 @@ mod tests {
         );
         assert!(ratio_trit < 3.0);
         assert!((ratio_trit - 1.4).abs() < 0.2);
+    }
+
+    #[test]
+    fn test_rhai_sandbox_operation_limits() {
+        let manifest = PluginManifest {
+            id: "ui.photocraft.plugins.infinite_loop".to_string(),
+            name: "Infinite Loop Plugin".to_string(),
+            interactive_ui: Some(InteractiveUiConfig {
+                window_title: "Test".to_string(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let engine = DynamicToolEngine::new_with_language(&[manifest], None, Language::En);
+        // Evaluating infinite loop must terminate with operations limit exceeded error without hanging the thread
+        let res = engine
+            .rhai_engine
+            .eval::<()>("let count = 0; while true { count += 1; }");
+        assert!(res.is_err(), "Evaluation must fail due to operation limit!");
+        let err_msg = res.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Too many operations") || err_msg.contains("operations"),
+            "Error should indicate operation limit exceeded, got: {err_msg}"
+        );
     }
 }

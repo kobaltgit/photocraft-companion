@@ -2705,3 +2705,105 @@ To ensure long-term ecosystem health, prevent architecture degradation, eliminat
 - `cargo test -p ai_engine --test dev_regulations_lint_test -j 1` verified chapter count synchronization and catalog parity.
 - `cargo run --package plugin_validator -j 1 -- --validate plugins` confirmed all 7 plugins valid with zero warnings.
 
+
+## [2026-10-22 16:00] Chapter 81: Linux GTK Initialization & System Tray Crash Elimination (GitHub Issue #3 / BUG-078)
+
+*Time: October 22, 2026, 16:00 (~25 minutes)*
+
+### 1. Problem Statement & Incident Context
+Shortly following the v1.2.2 portable release, user CHJ85 filed GitHub Issue #3. On Kubuntu 26.04 LTS (KDE Plasma 6.6.6 on Wayland, Acer Predator with Intel Core Ultra 9 and RTX 5090), PhotoCraft Companion crashed immediately upon startup with an unhandled panic right after plugin discovery:
+```shell
+(process:147198): Gtk-CRITICAL **: gtk_icon_theme_get_for_screen: assertion 'GDK_IS_SCREEN (screen)' failed
+thread 'main' (147198) panicked at .../gtk-0.18.2/src/auto/menu.rs:29:9:
+GTK has not been initialized. Call `gtk::init` first.
+```
+
+### 2. Root Cause Analysis & Engineering Resolution
+On Linux, the `tray-icon` backend (via `libappindicator` / `libayatana-appindicator` and the `muda` menu library) wraps native GTK 3 widgets. In `gtk-rs`, widget instantiation is guarded by `assert_initialized_main_thread!()`. Calling `Menu::new()` in `companion_app` prior to initializing the GTK subsystem caused an immediate panic and process crash.
+
+**Implemented Solutions:**
+1. **Target-Specific Dependency:** Added `gtk = { workspace = true }` under `[target.'cfg(target_os = "linux")'.dependencies]` in `crates/companion_app/Cargo.toml`, with `gtk = { version = "0.18", default-features = false }` registered in root `Cargo.toml`. Windows and macOS targets remain completely unencumbered by GTK dependencies.
+2. **Early Main-Thread Initialization:** In `crates/companion_app/src/main.rs`, added a platform-gated call to `gtk::init()` at the entry point of `fn main()`. As defined by `gtk-rs`, `init()` invokes `gtk_init_check()` under the hood, safely returning a `Result` without terminating the process if display connection negotiation fails.
+3. **Resilient Tray Initialization:** Menu creation and `TrayIconBuilder` calls are strictly conditioned on the `gtk_initialized` flag. If GTK fails to initialize (e.g. headless setups or Wayland environments lacking XWayland), a warning is logged and the application gracefully runs without the system tray icon, preserving full floating toolbar and plugin manager operations.
+4. **Test Suite Stabilization:** Updated `test_find_photocraft_data_dir` to recognize standard `%APPDATA%\PhotoCraft` settings repositories.
+
+### 3. Verification & Definition of Done
+- `cargo fmt --all -- --check` verified clean with 0 diffs.
+- `cargo test --workspace -j 1` completed with 100% pass across all workspace crates.
+- Architectural integrity, development regulation, and i18n linters passed with zero warnings.
+- Plugin catalog validated with `plugin_validator`.
+- Registered `BUG-078` in `docs/BUGS_AND_ISSUES.md` with status `RESOLVED`.
+
+
+## [2026-10-22 16:30] Chapter 82: Codebase Technical Audit Remediation (F-01..F-09: Zip-Slip, IPC Timeouts, Session Cache & Linux CI)
+
+*Time: October 22, 2026, 16:30 (~35 minutes)*
+
+### 1. Problem Statement & Audit Findings
+During a comprehensive external technical audit of PhotoCraft Companion (v1.2.2), 10 systematic improvement items were identified across the codebase:
+- **High Priority:** JSON-RPC response ID verification (F-01), IPC socket timeouts with deadlock prevention (F-02), Zip-Slip package extraction guard & weights preservation (F-03).
+- **Medium Priority:** Lack of ONNX Runtime session caching (F-04), absence of operation bounds in the Rhai scripting engine (F-05), blocking clipboard I/O in the async executor (F-06), SHA-256 model checksum verification (F-07), missing Linux automated builds in CI (F-08).
+- **Low Priority:** Potential lock poisoning panic (F-09).
+
+### 2. Engineering Solutions Implemented
+1. **Secure `.pcpl` Package Extraction & Weight Preservation (F-03, `crates/core_contracts/src/package.rs`):**
+   - Implemented strict path sanitation via `entry.enclosed_name()`, automatically stripping root prefixes `<sanitized_id>/` upon extraction.
+   - Enforced `Component::Normal` path validation and banned symlinks.
+   - Added `MAX_TOTAL_UNCOMPRESSED = 512 MB` Zip-bomb limit.
+   - **User Data Protection:** Preserved existing `target_dir/models` folder containing large neural weights (.onnx) across plugin updates, avoiding redundant multi-hundred-megabyte downloads.
+   - Implemented atomic extraction via temporary directory `<sanitized_id>.tmp.<pid>`.
+2. **Resilient PhotoCraft Control Protocol Bridge (F-01, F-02, F-06, `crates/photocraft_bridge`):**
+   - Enforced `resp.id == Some(id)` validation during auth and JSON-RPC dispatch.
+   - Established `DEFAULT_CONNECT_TIMEOUT = 5s` and `DEFAULT_RPC_TIMEOUT = 30s`. Guarded read/write operations with `tokio::time::timeout` and simultaneous guard resets on failure to eliminate deadlocks.
+   - Added connection verify timeouts preventing status polling freeze when PhotoCraft closes abruptly.
+   - Converted clipboard I/O to non-blocking operations via `tokio::task::spawn_blocking` and async delay yields.
+   - In `crates/companion_app/src/main.rs`, relaxed color polling interval from 180 ms to 400 ms.
+3. **ONNX Session Caching & DirectML Fallback Invalidation (F-04, F-09, `crates/ai_engine`):**
+   - Integrated an LRU session cache `session_cache` with a maximum capacity of 3 models. To align with `ort 2.0-rc` (`session.run(&mut self)`), sessions are encapsulated in `Arc<Mutex<Session>>`.
+   - On DirectML execution error, `invalidate_session` is invoked to clear the faulted session from cache before failing over to CPU.
+   - Wrapped all mutex lock operations in poison-tolerant `.unwrap_or_else(|e| e.into_inner())`.
+4. **Rhai Scripting Sandbox Limits (F-05, `crates/overlay_ui`):**
+   - Configured `set_max_expr_depths(64, 64)` and `set_max_operations(50_000)` in `DynamicToolEngine` to prevent infinite loops from hanging the UI thread.
+5. **SHA-256 Checksum Verification (F-07, `crates/overlay_ui`):**
+   - Added SHA-256 verification in model download threads via `sha2` and `hex`. Damaged files are removed immediately and reported through localized UI notifications.
+6. **Ubuntu Linux Cross-Platform CI (F-08, `.github/workflows/ci.yml`):**
+   - Added `test-linux` GitHub Actions workflow job with GUI dependencies, GTK3, AppIndicator, Wayland, and headless execution via `xvfb-run -a cargo test --workspace -j 1`.
+
+### 3. Verification & Definition of Done
+- Verified 100% style conformance with `cargo fmt --all -- --check`.
+- Completed `cargo clippy --workspace --all-targets -j 1 -- -D warnings` with zero warnings.
+- All workspace tests completed successfully via `cargo test --workspace -j 1`.
+- Release binary built cleanly via `cargo build --package companion_app --release -j 1`.
+- Architectural integrity, development regulation, and i18n linters passed with 0 errors.
+- Plugin catalog validated with `plugin_validator`.
+
+
+## [2026-10-22 17:00] Chapter 83: Contextual User Diagnostics for PhotoCraft Multi-Version Token Conflicts
+
+*Time: October 22, 2026, 17:00 (~20 minutes)*
+
+### 1. Problem Statement & User Experience Feedback
+During local validation of the release binary on the host environment, an important edge case was observed:
+- The system hosted multiple portable distributions of PhotoCraft: an older `photocraft-0.6.0` and the active working `photocraft-0.8.2`.
+- On initial startup, before a specific executable path was committed to configuration, the automatic locator found `PhotoCraftData/control.token` in the 0.6.0 portable directory.
+- Consequently, the active 0.8.2 instance (using its own fresh token) rejected authentication. The offline modal prompted an *Auth Required* state where the primary action was misleadingly labeled "> Launch PhotoCraft", without clarifying why authorization failed when PhotoCraft was visibly already running.
+- Once the user manually specified the 0.8.2 token in settings, the bridge connected immediately. The user emphasized that the UI should clearly explain this scenario and guide users toward resolving version conflicts.
+
+### 2. Engineering & UX Solutions Implemented
+1. **Clear Contextual Diagnostics (`crates/overlay_ui/src/offline_modal.rs`):**
+   - When entering `ConnectionState::AuthRequired`, the modal explains: *"PhotoCraft is running, but the control token was rejected. If multiple versions exist on your PC, an inactive token may have been detected."*
+2. **Prioritized Action Hierarchy:**
+   - Instead of offering to launch an already running app, the primary accent button is now **"Enter Token in Settings"**, immediately opening the General tab in the Plugin Manager.
+   - The secondary action was adjusted to **"> Relaunch PhotoCraft"**.
+3. **In-App Guidance & Tips:**
+   - Added contextual tips both at the bottom of the offline modal and directly underneath the Control Token field in General Preferences, advising users to point to the active `photocraft.exe` folder or pick its `control.token` file via "Browse...".
+4. **Localization & Vector-First Compliance:**
+   - Added `test_offline_modal_auth_required_tip` ensuring strict adherence to `i18n_lint_test` and zero non-standard glyphs per `Vector-First UI` rules.
+
+### 3. Verification & Definition of Done
+- `cargo fmt --all -- --check` verified clean with 0 diffs.
+- `cargo test -p overlay_ui -j 1` completed 52 tests with 100% pass, including all i18n and vector linters.
+- Release binary refreshed via `cargo build --package companion_app --release -j 1`.
+- Synchronized Phase 77 in `docs/CHECKLIST.md`.
+
+

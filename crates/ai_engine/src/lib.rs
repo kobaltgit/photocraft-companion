@@ -8,10 +8,18 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tracing::{debug, info, warn};
 
-/// Thread-safe runtime for ONNX sessions with adaptive DirectML/CPU fallback
+type SessionKey = (PathBuf, std::time::SystemTime, bool);
+
+struct SessionCache {
+    entries: std::collections::HashMap<SessionKey, (Arc<Mutex<Session>>, std::time::Instant)>,
+    max_capacity: usize,
+}
+
+/// Thread-safe runtime for ONNX sessions with adaptive DirectML/CPU fallback and LRU session cache
 pub struct AiEngine {
     pub model_dir: PathBuf,
     cpu_fallback_models: Mutex<Vec<PathBuf>>,
+    session_cache: Mutex<SessionCache>,
 }
 
 impl AiEngine {
@@ -19,6 +27,10 @@ impl AiEngine {
         Self {
             model_dir: model_dir.as_ref().to_path_buf(),
             cpu_fallback_models: Mutex::new(Vec::new()),
+            session_cache: Mutex::new(SessionCache {
+                entries: std::collections::HashMap::new(),
+                max_capacity: 3,
+            }),
         }
     }
 
@@ -81,13 +93,64 @@ impl AiEngine {
         None
     }
 
+    /// Retrieve an existing session from LRU cache or create and cache a new one
+    pub fn get_or_create_session(
+        &self,
+        model_path: &Path,
+        force_cpu: bool,
+    ) -> Result<Arc<Mutex<Session>>> {
+        let modified = std::fs::metadata(model_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        let key = (model_path.to_path_buf(), modified, force_cpu);
+
+        {
+            let mut cache = self.session_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some((sess, touch)) = cache.entries.get_mut(&key) {
+                *touch = std::time::Instant::now();
+                return Ok(sess.clone());
+            }
+        }
+
+        // Create new session outside of cache lock
+        let new_session = self.create_session(model_path, force_cpu)?;
+        let sess_arc = Arc::new(Mutex::new(new_session));
+
+        let mut cache = self.session_cache.lock().unwrap_or_else(|e| e.into_inner());
+        if cache.entries.len() >= cache.max_capacity {
+            if let Some((oldest_key, _)) = cache
+                .entries
+                .iter()
+                .min_by_key(|(_, (_, touch))| *touch)
+                .map(|(k, _)| (k.clone(), ()))
+            {
+                cache.entries.remove(&oldest_key);
+            }
+        }
+        cache
+            .entries
+            .insert(key, (sess_arc.clone(), std::time::Instant::now()));
+
+        Ok(sess_arc)
+    }
+
+    /// Remove a model session from LRU cache upon failure or fallback
+    pub fn invalidate_session(&self, model_path: &Path, force_cpu: bool) {
+        let modified = std::fs::metadata(model_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+        let key = (model_path.to_path_buf(), modified, force_cpu);
+        let mut cache = self.session_cache.lock().unwrap_or_else(|e| e.into_inner());
+        cache.entries.remove(&key);
+    }
+
     /// Load ONNX session with DirectML or CPU execution providers
     pub fn create_session(&self, model_path: &Path, force_cpu: bool) -> Result<Session> {
         let is_cpu_only = force_cpu
             || self
                 .cpu_fallback_models
                 .lock()
-                .unwrap()
+                .unwrap_or_else(|e| e.into_inner())
                 .contains(&model_path.to_path_buf());
 
         let builder = Session::builder().map_err(|e| {
@@ -236,24 +299,25 @@ impl AiEngine {
         let is_cpu = self
             .cpu_fallback_models
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .contains(&model_path.to_path_buf());
 
-        let mut session = if !is_cpu {
-            match self.create_session(model_path, false) {
+        let session_arc = if !is_cpu {
+            match self.get_or_create_session(model_path, false) {
                 Ok(s) => s,
                 Err(e) => {
                     warn!("DirectML session setup failed ({e}), falling back to CPU");
                     self.cpu_fallback_models
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|e| e.into_inner())
                         .push(model_path.to_path_buf());
-                    self.create_session(model_path, true)?
+                    self.get_or_create_session(model_path, true)?
                 }
             }
         } else {
-            self.create_session(model_path, true)?
+            self.get_or_create_session(model_path, true)?
         };
+        let mut session = session_arc.lock().unwrap_or_else(|e| e.into_inner());
 
         // If image fits within a single tile, pad to exact tile_size x tile_size, run, and crop back
         if w <= tile_size && h <= tile_size {
@@ -411,11 +475,12 @@ impl AiEngine {
         let is_cpu = self
             .cpu_fallback_models
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .contains(&model_path.to_path_buf());
 
         if !is_cpu {
-            if let Ok(mut session) = self.create_session(model_path, false) {
+            if let Ok(session_arc) = self.get_or_create_session(model_path, false) {
+                let mut session = session_arc.lock().unwrap_or_else(|e| e.into_inner());
                 let tensor = Tensor::from_array((shape, input_data.clone())).map_err(|e| {
                     CompanionError::AiEngine(format!("Failed to build input tensor: {e}"))
                 })?;
@@ -425,18 +490,21 @@ impl AiEngine {
                     }
                 }
                 warn!(
-                    "Default session run failed, remembering model for CPU fallback: {}",
+                    "Default session run failed, invalidating and remembering model for CPU fallback: {}",
                     model_path.display()
                 );
+                drop(session);
+                self.invalidate_session(model_path, false);
                 self.cpu_fallback_models
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|e| e.into_inner())
                     .push(model_path.to_path_buf());
             }
         }
 
         // CPU execution
-        let mut cpu_session = self.create_session(model_path, true)?;
+        let cpu_session_arc = self.get_or_create_session(model_path, true)?;
+        let mut cpu_session = cpu_session_arc.lock().unwrap_or_else(|e| e.into_inner());
         let tensor = Tensor::from_array((shape, input_data)).map_err(|e| {
             CompanionError::AiEngine(format!("Failed to build CPU input tensor: {e}"))
         })?;
@@ -551,24 +619,25 @@ impl AiEngine {
         let is_cpu = self
             .cpu_fallback_models
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .contains(&model_path.to_path_buf());
 
-        let mut session = if !is_cpu {
-            match self.create_session(model_path, false) {
+        let session_arc = if !is_cpu {
+            match self.get_or_create_session(model_path, false) {
                 Ok(s) => s,
                 Err(e) => {
                     warn!("DirectML session setup failed ({e}), falling back to CPU");
                     self.cpu_fallback_models
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|e| e.into_inner())
                         .push(model_path.to_path_buf());
-                    self.create_session(model_path, true)?
+                    self.get_or_create_session(model_path, true)?
                 }
             }
         } else {
-            self.create_session(model_path, true)?
+            self.get_or_create_session(model_path, true)?
         };
+        let mut session = session_arc.lock().unwrap_or_else(|e| e.into_inner());
 
         self.run_single_rgb_patch_session(&mut session, img, scale, normalize)
     }
@@ -819,14 +888,15 @@ impl AiEngine {
         let is_cpu = self
             .cpu_fallback_models
             .lock()
-            .unwrap()
+            .unwrap_or_else(|e| e.into_inner())
             .contains(&model_path.to_path_buf());
 
         let ts = tile_size as usize;
 
         let out_slice = if !is_cpu {
             let res = (|| -> Result<Vec<f32>> {
-                let mut session = self.create_session(model_path, false)?;
+                let session_arc = self.get_or_create_session(model_path, false)?;
+                let mut session = session_arc.lock().unwrap_or_else(|e| e.into_inner());
                 let img_tensor = Tensor::from_array(([1usize, 3, ts, ts], img_data.clone()))
                     .map_err(|e| {
                         CompanionError::AiEngine(format!("Failed to create image tensor: {e}"))
@@ -847,12 +917,14 @@ impl AiEngine {
             match res {
                 Ok(v) => v,
                 Err(e) => {
-                    warn!("Inpaint default execution failed ({e}), falling back to CPU...");
+                    warn!("Inpaint default execution failed ({e}), invalidating and falling back to CPU...");
+                    self.invalidate_session(model_path, false);
                     self.cpu_fallback_models
                         .lock()
-                        .unwrap()
+                        .unwrap_or_else(|e| e.into_inner())
                         .push(model_path.to_path_buf());
-                    let mut cpu_session = self.create_session(model_path, true)?;
+                    let cpu_session_arc = self.get_or_create_session(model_path, true)?;
+                    let mut cpu_session = cpu_session_arc.lock().unwrap_or_else(|e| e.into_inner());
                     let img_tensor =
                         Tensor::from_array(([1usize, 3, ts, ts], img_data)).map_err(|e| {
                             CompanionError::AiEngine(format!("Failed to create image tensor: {e}"))
@@ -873,7 +945,8 @@ impl AiEngine {
                 }
             }
         } else {
-            let mut cpu_session = self.create_session(model_path, true)?;
+            let cpu_session_arc = self.get_or_create_session(model_path, true)?;
+            let mut cpu_session = cpu_session_arc.lock().unwrap_or_else(|e| e.into_inner());
             let img_tensor = Tensor::from_array(([1usize, 3, ts, ts], img_data)).map_err(|e| {
                 CompanionError::AiEngine(format!("Failed to create image tensor: {e}"))
             })?;
@@ -1465,5 +1538,21 @@ mod tests {
             ai_cfg.output_type,
             Some(core_contracts::AiOutputType::GrayscaleLayer)
         );
+    }
+
+    #[test]
+    fn test_session_cache_capacity_and_invalidation() {
+        let engine = AiEngine::new("test_model_dir");
+        let model_a = PathBuf::from("model_a.onnx");
+
+        // Verify initial state
+        {
+            let cache = engine.session_cache.lock().unwrap();
+            assert_eq!(cache.entries.len(), 0);
+            assert_eq!(cache.max_capacity, 3);
+        }
+
+        // Test invalidation on non-existent entry does not panic
+        engine.invalidate_session(&model_a, false);
     }
 }

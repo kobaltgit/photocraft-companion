@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.2.2"
+version = "1.2.3"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
@@ -37,6 +37,9 @@ zip = { version = "2.2", default-features = false, features = ["deflate"] }
 rfd = "0.15"
 vtracer = "0.6.5"
 rhai = { version = "1.19", default-features = false, features = ["sync", "serde"] }
+gtk = { version = "0.18", default-features = false }
+sha2 = "0.10"
+hex = "0.4"
 
 [profile.dev]
 opt-level = 0

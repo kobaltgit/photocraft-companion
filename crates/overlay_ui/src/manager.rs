@@ -203,7 +203,11 @@ impl PluginManagerApp {
                 }
                 ModelDownloadEvent::Error { model_name, error } => {
                     self.active_download = None;
-                    let msg_err = self.t("Download error", "Ошибка загрузки");
+                    let msg_err = if error == "SHA256 checksum verification failed" {
+                        self.t("Checksum mismatch", "Несовпадение контрольной суммы")
+                    } else {
+                        self.t("Download error", "Ошибка загрузки")
+                    };
                     self.set_status(format!("{}: {}: {}", model_name, msg_err, error), true);
                 }
             }
@@ -672,6 +676,19 @@ impl PluginManagerApp {
                     }
                 });
                 ui.end_row();
+
+                if state == ConnectionState::AuthRequired {
+                    ui.label("");
+                    ui.label(
+                        RichText::new(self.t(
+                            "Tip: If multiple versions exist on your PC, point to the active photocraft.exe or select its control.token file.",
+                            "Подсказка: Если на ПК несколько версий, укажите активный photocraft.exe или выберите его control.token.",
+                        ))
+                        .size(10.5)
+                        .color(Color32::from_rgb(0xea, 0x86, 0x00)),
+                    );
+                    ui.end_row();
+                }
             });
     }
 
@@ -1013,6 +1030,7 @@ impl PluginManagerApp {
                                             let part_file_worker = part_file.clone();
                                             let target_file_worker = target_file.clone();
                                             let model_name_worker = model_name.clone();
+                                            let req_sha256 = req.sha256.clone();
                                             let tx_worker = tx.clone();
                                             std::thread::spawn(move || {
                                                 // Clean up any stale partial download first
@@ -1054,6 +1072,38 @@ impl PluginManagerApp {
 
                                                 match status {
                                                     Ok(exit_status) if exit_status.success() => {
+                                                        // Verify SHA256 checksum if provided in manifest
+                                                        if let Some(expected_sha256) = &req_sha256 {
+                                                            use std::io::Read;
+                                                            let matches = match std::fs::File::open(&part_file_worker) {
+                                                                Ok(mut file) => {
+                                                                    use sha2::{Digest, Sha256};
+                                                                    let mut hasher = Sha256::new();
+                                                                    let mut buffer = [0u8; 64 * 1024];
+                                                                    while let Ok(n) = file.read(&mut buffer) {
+                                                                        if n == 0 {
+                                                                            break;
+                                                                        }
+                                                                        hasher.update(&buffer[..n]);
+                                                                    }
+                                                                    let actual_hex = hex::encode(hasher.finalize());
+                                                                    actual_hex.eq_ignore_ascii_case(expected_sha256.trim())
+                                                                }
+                                                                Err(_) => false,
+                                                            };
+
+                                                            if !matches {
+                                                                let _ = std::fs::remove_file(&part_file_worker);
+                                                                let _ = tx_worker.send(
+                                                                    ModelDownloadEvent::Error {
+                                                                        model_name: model_name_worker,
+                                                                        error: "SHA256 checksum verification failed".to_string(),
+                                                                    },
+                                                                );
+                                                                return;
+                                                            }
+                                                        }
+
                                                         // Atomic rename from .part to final file
                                                         if let Err(e) = std::fs::rename(
                                                             &part_file_worker,

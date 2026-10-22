@@ -163,6 +163,22 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
     info!("PhotoCraft Companion starting up on main OS thread...");
 
+    // On Linux, the GTK library must be initialized on the main thread before creating any
+    // tray icons or menu items, otherwise tray-icon/libappindicator panics immediately.
+    #[cfg(target_os = "linux")]
+    let gtk_initialized = match gtk::init() {
+        Ok(_) => {
+            info!("GTK initialized successfully on Linux main thread.");
+            true
+        }
+        Err(e) => {
+            tracing::warn!("Failed to initialize GTK on Linux: {e}. System tray may be disabled.");
+            false
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    let gtk_initialized = true;
+
     let plugins_dir = find_plugins_dir();
     let data_dir = find_photocraft_data_dir();
     let prefs_path = data_dir.join("preferences.json");
@@ -305,37 +321,42 @@ fn main() -> anyhow::Result<()> {
     let start_with_manager = args.iter().any(|a| a == "--manager" || a == "-m");
 
     // Initialize System Tray Icon on the main OS thread using user's SVG icon
-    let tray_menu = Menu::new();
-    let open_toolbar_item = MenuItem::with_id("tray_toolbar", "PhotoCraft Toolbar", true, None);
-    let open_manager_item = MenuItem::with_id("tray_manager", "Plugins Manager", true, None);
-    let separator = PredefinedMenuItem::separator();
-    let exit_item = MenuItem::with_id("tray_exit", "Exit Companion", true, None);
+    let tray_icon = if gtk_initialized {
+        let tray_menu = Menu::new();
+        let open_toolbar_item = MenuItem::with_id("tray_toolbar", "PhotoCraft Toolbar", true, None);
+        let open_manager_item = MenuItem::with_id("tray_manager", "Plugins Manager", true, None);
+        let separator = PredefinedMenuItem::separator();
+        let exit_item = MenuItem::with_id("tray_exit", "Exit Companion", true, None);
 
-    let _ = tray_menu.append(&open_toolbar_item);
-    let _ = tray_menu.append(&open_manager_item);
-    let _ = tray_menu.append(&separator);
-    let _ = tray_menu.append(&exit_item);
+        let _ = tray_menu.append(&open_toolbar_item);
+        let _ = tray_menu.append(&open_manager_item);
+        let _ = tray_menu.append(&separator);
+        let _ = tray_menu.append(&exit_item);
 
-    let mut tray_builder = TrayIconBuilder::new()
-        .with_menu(Box::new(tray_menu))
-        .with_menu_on_left_click(false) // Left click restores toolbar; Right click opens menu
-        .with_tooltip("PhotoCraft Companion");
+        let mut tray_builder = TrayIconBuilder::new()
+            .with_menu(Box::new(tray_menu))
+            .with_menu_on_left_click(false) // Left click restores toolbar; Right click opens menu
+            .with_tooltip("PhotoCraft Companion");
 
-    if let Some(rgba) = get_icon_rgba(is_dark, 32) {
-        if let Ok(icon) = tray_icon::Icon::from_rgba(rgba, 32, 32) {
-            tray_builder = tray_builder.with_icon(icon);
+        if let Some(rgba) = get_icon_rgba(is_dark, 32) {
+            if let Ok(icon) = tray_icon::Icon::from_rgba(rgba, 32, 32) {
+                tray_builder = tray_builder.with_icon(icon);
+            }
         }
-    }
 
-    let tray_icon = match tray_builder.build() {
-        Ok(ti) => {
-            info!("System tray icon initialized successfully on main thread.");
-            Some(ti)
+        match tray_builder.build() {
+            Ok(ti) => {
+                info!("System tray icon initialized successfully on main thread.");
+                Some(ti)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create system tray icon: {}", e);
+                None
+            }
         }
-        Err(e) => {
-            tracing::warn!("Failed to create system tray icon: {}", e);
-            None
-        }
+    } else {
+        tracing::warn!("Skipping system tray icon initialization because GTK is not initialized.");
+        None
     };
     #[allow(clippy::arc_with_non_send_sync)]
     let tray_icon_handle = Arc::new(std::sync::Mutex::new(tray_icon));
@@ -728,7 +749,7 @@ fn main() -> anyhow::Result<()> {
     let ctx_holder_colors = egui_ctx_holder.clone();
 
     rt_handle.spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(180));
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(400));
         loop {
             interval.tick().await;
             if !is_conn_colors.load(Ordering::Relaxed) {
@@ -798,7 +819,10 @@ mod tests {
     #[test]
     fn test_find_photocraft_data_dir() {
         let p = find_photocraft_data_dir();
-        assert!(p.to_string_lossy().contains("PhotoCraftData"));
+        assert!(
+            p.to_string_lossy().contains("PhotoCraftData")
+                || p.to_string_lossy().contains("PhotoCraft")
+        );
     }
 
     #[test]

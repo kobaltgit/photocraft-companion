@@ -24,8 +24,9 @@ async-trait = { workspace = true }
 rfd = { workspace = true }
 rhai = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { workspace = true }
+
 [[bin]]
 name = "photocraft-companion"
 path = "src/main.rs"
-
-

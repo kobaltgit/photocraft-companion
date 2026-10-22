@@ -37,6 +37,9 @@ pub struct PhotoCraftClient {
     reader: Arc<Mutex<Option<BufReader<OwnedReadHalf>>>>,
 }
 
+pub const DEFAULT_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+pub const DEFAULT_RPC_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 impl PhotoCraftClient {
     pub fn new(port: u16, token: Option<String>) -> Self {
         Self {
@@ -848,9 +851,15 @@ impl PhotoCraftClient {
 
     pub async fn connect(&self) -> Result<()> {
         info!("Connecting to PhotoCraft at 127.0.0.1:{}...", self.port);
-        let stream = TcpStream::connect(("127.0.0.1", self.port))
-            .await
-            .map_err(|e| CompanionError::Bridge(format!("Failed to connect to PhotoCraft: {e}")))?;
+        let stream = tokio::time::timeout(
+            DEFAULT_CONNECT_TIMEOUT,
+            TcpStream::connect(("127.0.0.1", self.port)),
+        )
+        .await
+        .map_err(|_| {
+            CompanionError::Bridge("Connection to PhotoCraft timed out (exceeded 5s)".into())
+        })?
+        .map_err(|e| CompanionError::Bridge(format!("Failed to connect to PhotoCraft: {e}")))?;
 
         let (read_half, write_half) = stream.into_split();
         let mut reader = BufReader::new(read_half);
@@ -860,8 +869,9 @@ impl PhotoCraftClient {
         let current_token = self.token.read().await.clone();
         let token = current_token.or_else(Self::default_token);
         if let Some(token_val) = token {
+            let auth_id = self.next_id.fetch_add(1, Ordering::SeqCst);
             let auth_req = json!({
-                "id": self.next_id.fetch_add(1, Ordering::SeqCst),
+                "id": auth_id,
                 "method": "auth",
                 "params": {
                     "token": token_val
@@ -870,23 +880,29 @@ impl PhotoCraftClient {
             let mut line = serde_json::to_string(&auth_req)?;
             line.push('\n');
 
-            writer
-                .write_all(line.as_bytes())
-                .await
-                .map_err(|e| CompanionError::Bridge(format!("Failed to write auth: {e}")))?;
-            writer
-                .flush()
-                .await
-                .map_err(|e| CompanionError::Bridge(e.to_string()))?;
+            tokio::time::timeout(DEFAULT_RPC_TIMEOUT, async {
+                writer.write_all(line.as_bytes()).await?;
+                writer.flush().await
+            })
+            .await
+            .map_err(|_| CompanionError::Bridge("Auth write timeout (exceeded 30s)".into()))?
+            .map_err(|e| CompanionError::Bridge(format!("Failed to write auth: {e}")))?;
 
             let mut resp_line = String::new();
-            reader
-                .read_line(&mut resp_line)
+            tokio::time::timeout(DEFAULT_RPC_TIMEOUT, reader.read_line(&mut resp_line))
                 .await
+                .map_err(|_| CompanionError::Bridge("Auth read timeout (exceeded 30s)".into()))?
                 .map_err(|e| CompanionError::Bridge(format!("Failed to read auth resp: {e}")))?;
 
             let resp: JsonRpcResponse = serde_json::from_str(&resp_line)
                 .map_err(|e| CompanionError::Bridge(format!("Invalid auth response JSON: {e}")))?;
+
+            if resp.id != Some(auth_id) {
+                return Err(CompanionError::Bridge(format!(
+                    "Mismatched auth response ID: expected {auth_id}, got {:?}",
+                    resp.id
+                )));
+            }
 
             if !resp.ok {
                 let err_msg = resp
@@ -910,9 +926,14 @@ impl PhotoCraftClient {
 
     /// Check honest 3-state connection status: Offline, AuthRequired, or Connected
     pub async fn verify_connection(&self) -> ConnectionState {
-        let stream = match TcpStream::connect(("127.0.0.1", self.port)).await {
-            Ok(s) => s,
-            Err(_) => return ConnectionState::Offline,
+        let stream = match tokio::time::timeout(
+            DEFAULT_CONNECT_TIMEOUT,
+            TcpStream::connect(("127.0.0.1", self.port)),
+        )
+        .await
+        {
+            Ok(Ok(s)) => s,
+            _ => return ConnectionState::Offline,
         };
 
         let (read_half, mut write_half) = stream.into_split();
@@ -939,14 +960,21 @@ impl PhotoCraftClient {
         };
         line.push('\n');
 
-        if write_half.write_all(line.as_bytes()).await.is_err() || write_half.flush().await.is_err()
+        let write_op = async {
+            write_half.write_all(line.as_bytes()).await?;
+            write_half.flush().await
+        };
+        if tokio::time::timeout(std::time::Duration::from_secs(3), write_op)
+            .await
+            .is_err()
         {
             return ConnectionState::AuthRequired;
         }
 
         let mut resp_line = String::new();
-        match reader.read_line(&mut resp_line).await {
-            Ok(n) if n > 0 => {
+        let read_op = reader.read_line(&mut resp_line);
+        match tokio::time::timeout(std::time::Duration::from_secs(3), read_op).await {
+            Ok(Ok(n)) if n > 0 => {
                 if let Ok(resp) = serde_json::from_str::<JsonRpcResponse>(&resp_line) {
                     if resp.ok {
                         ConnectionState::Connected
@@ -1009,24 +1037,58 @@ impl PhotoCraftClient {
             }
         };
 
-        writer
-            .write_all(line.as_bytes())
-            .await
-            .map_err(|e| map_socket_err(e, "write"))?;
-        writer
-            .flush()
-            .await
-            .map_err(|e| map_socket_err(e, "flush"))?;
+        let write_res = tokio::time::timeout(DEFAULT_RPC_TIMEOUT, async {
+            writer.write_all(line.as_bytes()).await?;
+            writer.flush().await
+        })
+        .await;
+
+        match write_res {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                *writer_guard = None;
+                *reader_guard = None;
+                return Err(map_socket_err(e, "write"));
+            }
+            Err(_) => {
+                *writer_guard = None;
+                *reader_guard = None;
+                return Err(CompanionError::Bridge(
+                    "Socket write timeout (exceeded 30s)".into(),
+                ));
+            }
+        }
 
         let mut resp_line = String::new();
-        reader
-            .read_line(&mut resp_line)
-            .await
-            .map_err(|e| map_socket_err(e, "read"))?;
+        let read_res =
+            tokio::time::timeout(DEFAULT_RPC_TIMEOUT, reader.read_line(&mut resp_line)).await;
+
+        match read_res {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => {
+                *writer_guard = None;
+                *reader_guard = None;
+                return Err(map_socket_err(e, "read"));
+            }
+            Err(_) => {
+                *writer_guard = None;
+                *reader_guard = None;
+                return Err(CompanionError::Bridge(
+                    "Socket read timeout (exceeded 30s)".into(),
+                ));
+            }
+        }
 
         let resp: JsonRpcResponse = serde_json::from_str(&resp_line).map_err(|e| {
             CompanionError::Bridge(format!("Invalid response JSON: {e} (raw: {resp_line})"))
         })?;
+
+        if resp.id != Some(id) {
+            return Err(CompanionError::Bridge(format!(
+                "Mismatched JSON-RPC response ID: expected {id}, got {:?}",
+                resp.id
+            )));
+        }
 
         if !resp.ok {
             let err_msg = resp
@@ -1263,12 +1325,107 @@ impl PhotoCraftClient {
         self.execute_command("edit.copy", json!({})).await?;
         // Micro-pause (40ms) allows PhotoCraft to finalize writing DIB/PNG payload and release Windows clipboard lock
         tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        Self::read_clipboard_image()
+        Self::read_clipboard_image_retry_async(6, std::time::Duration::from_millis(35)).await
+    }
+
+    /// Read image from system clipboard asynchronously via spawn_blocking to prevent Tokio thread blockage
+    pub async fn read_clipboard_image_retry_async(
+        max_attempts: usize,
+        delay: std::time::Duration,
+    ) -> Result<image::RgbaImage> {
+        let mut last_err = None;
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                tokio::time::sleep(delay).await;
+            }
+            let res = tokio::task::spawn_blocking(|| {
+                arboard::Clipboard::new().and_then(|mut c| c.get_image())
+            })
+            .await;
+
+            match res {
+                Ok(Ok(img_data)) => {
+                    return image::RgbaImage::from_raw(
+                        img_data.width as u32,
+                        img_data.height as u32,
+                        img_data.bytes.into_owned(),
+                    )
+                    .ok_or_else(|| {
+                        CompanionError::Bridge(
+                            "Failed to construct RgbaImage from clipboard bytes".into(),
+                        )
+                    });
+                }
+                Ok(Err(e)) => {
+                    tracing::debug!(
+                        "Async clipboard read attempt {}/{} failed: {}",
+                        attempt + 1,
+                        max_attempts,
+                        e
+                    );
+                    last_err = Some(e.to_string());
+                }
+                Err(join_err) => {
+                    last_err = Some(join_err.to_string());
+                }
+            }
+        }
+        Err(CompanionError::Bridge(format!(
+            "Failed to read image from clipboard after {max_attempts} attempts (last error: {})",
+            last_err.unwrap_or_else(|| "unknown".into())
+        )))
+    }
+
+    /// Write image to system clipboard asynchronously via spawn_blocking
+    pub async fn write_clipboard_image_retry_async(
+        img: &image::RgbaImage,
+        max_attempts: usize,
+        delay: std::time::Duration,
+    ) -> Result<()> {
+        let mut last_err = None;
+        let raw_bytes = img.as_raw().clone();
+        let (w, h) = (img.width() as usize, img.height() as usize);
+        for attempt in 0..max_attempts {
+            if attempt > 0 {
+                tokio::time::sleep(delay).await;
+            }
+            let bytes_clone = raw_bytes.clone();
+            let res = tokio::task::spawn_blocking(move || {
+                let img_data = arboard::ImageData {
+                    width: w,
+                    height: h,
+                    bytes: std::borrow::Cow::Owned(bytes_clone),
+                };
+                arboard::Clipboard::new().and_then(|mut c| c.set_image(img_data))
+            })
+            .await;
+
+            match res {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(e)) => {
+                    tracing::debug!(
+                        "Async clipboard write attempt {}/{} failed: {}",
+                        attempt + 1,
+                        max_attempts,
+                        e
+                    );
+                    last_err = Some(e.to_string());
+                }
+                Err(join_err) => {
+                    last_err = Some(join_err.to_string());
+                }
+            }
+        }
+        Err(CompanionError::Bridge(format!(
+            "Failed to write image to clipboard after {max_attempts} attempts (last error: {})",
+            last_err.unwrap_or_else(|| "unknown".into())
+        )))
     }
 
     /// Write image to clipboard and paste it in place in PhotoCraft
     pub async fn paste_image_in_place(&self, img: &image::RgbaImage) -> Result<Value> {
-        Self::write_clipboard_image(img)?;
+        Self::write_clipboard_image_retry_async(img, 5, std::time::Duration::from_millis(25))
+            .await?;
         // Micro-pause (30ms) ensures Windows clipboard lock is released before PhotoCraft paste command reads it
         tokio::time::sleep(std::time::Duration::from_millis(30)).await;
         self.execute_command("edit.pasteSpecial.pasteInPlace", json!({}))
@@ -1826,5 +1983,60 @@ mod tests {
             err_msg.contains("PhotoCraft executable not found"),
             "Error message should mention executable not found, got: {err_msg}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_mock_server_mismatched_response_id() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut write_half) = stream.into_split();
+            let mut reader = BufReader::new(read_half);
+            let mut line = String::new();
+
+            reader.read_line(&mut line).await.unwrap();
+            // Auth request: reply with mismatched ID
+            let auth_resp = json!({ "id": 999999, "ok": true, "result": null });
+            write_half
+                .write_all(format!("{}\n", auth_resp).as_bytes())
+                .await
+                .unwrap();
+            write_half.flush().await.unwrap();
+        });
+
+        let client = PhotoCraftClient::new(port, Some("test_token".to_string()));
+        let res = client.connect().await;
+        assert!(res.is_err(), "Mismatched ID must trigger an error!");
+        let err_msg = res.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Mismatched auth response ID")
+                || err_msg.contains("Mismatched JSON-RPC response ID"),
+            "Error must specify mismatched ID: {err_msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_clipboard_async_rw() {
+        let test_img = image::RgbaImage::from_pixel(4, 4, image::Rgba([120, 80, 240, 255]));
+        if PhotoCraftClient::write_clipboard_image_retry_async(
+            &test_img,
+            2,
+            std::time::Duration::from_millis(10),
+        )
+        .await
+        .is_ok()
+        {
+            if let Ok(read_back) = PhotoCraftClient::read_clipboard_image_retry_async(
+                2,
+                std::time::Duration::from_millis(10),
+            )
+            .await
+            {
+                assert_eq!(read_back.width(), 4);
+                assert_eq!(read_back.height(), 4);
+            }
+        }
     }
 }
