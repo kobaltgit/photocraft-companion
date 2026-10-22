@@ -109,7 +109,6 @@ pub fn install_pcpl(
             // 3. Prohibition of symlinks in plugin archives on Unix
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
                 if entry
                     .unix_mode()
                     .map(|m| (m & 0o170000) == 0o120000)
