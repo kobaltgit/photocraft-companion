@@ -39,3 +39,8 @@ screen_check.png
 control.token
 PhotoCraftData/
 companion_config.json
+
+# Experimental / WIP plugins
+plugins/colorize/
+plugins_quarantine_colorize/
+

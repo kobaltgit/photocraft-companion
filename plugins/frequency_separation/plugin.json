@@ -1,0 +1,64 @@
+{
+  "id": "macro.photocraft.plugins.frequency_separation",
+  "name": "Frequency Separation (Retouch)",
+  "name_ru": "Частотное разложение (Ретушь)",
+  "version": "1.0.0",
+  "description": "Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching.",
+  "description_ru": "Разделяет портрет на слой текстуры (высокие частоты) и слой тона/цвета (низкие частоты) для профессиональной ретуши кожи.",
+  "author": "kobaltGIT",
+  "plugin_type": "no_code",
+  "action_id": "plugin:frequency_separation",
+  "icon": "icon.svg",
+  "commands": [
+    {
+      "command": "layer.duplicate",
+      "params": {},
+      "description": "Duplicate source layer for low frequency"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Low Frequency (Color & Tone)"
+      },
+      "description": "Rename to Low Frequency"
+    },
+    {
+      "command": "layer.duplicate",
+      "params": {},
+      "description": "Duplicate for high frequency texture"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "High Frequency (Texture)"
+      },
+      "description": "Rename to High Frequency"
+    },
+    {
+      "command": "filter.other.highPass",
+      "params": {
+        "radius": 4.0
+      },
+      "description": "Extract fine skin microtexture using High Pass filter"
+    },
+    {
+      "command": "layer.setProps",
+      "params": {
+        "blend": "Linear Light"
+      },
+      "description": "Set High Frequency blending to Linear Light"
+    },
+    {
+      "command": "layer.selectBelow",
+      "params": {},
+      "description": "Activate Low Frequency layer for skin tone smoothing"
+    },
+    {
+      "command": "filter.blur.gaussianBlur",
+      "params": {
+        "radius": 4.0
+      },
+      "description": "Smooth colors and tonal transitions on Low Frequency layer"
+    }
+  ]
+}

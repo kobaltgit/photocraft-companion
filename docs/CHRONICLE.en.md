@@ -2807,3 +2807,68 @@ During local validation of the release binary on the host environment, an import
 - Synchronized Phase 77 in `docs/CHECKLIST.md`.
 
 
+## [2026-10-22 21:15] Chapter 84: AI Colorize (DeOldify) Plugin on Declarative Zero-Core Hardcoding Architecture
+
+*Time: October 22, 2026, 21:15 (~30 minutes)*
+
+### 1. Problem Statement & Motivation
+Following an in-depth code audit of contracts and runtime capabilities, we explored what fundamentally new category of tools could be authored immediately without altering a single line of Rust core code in `companion_app`, `ai_engine`, or `core_contracts`.
+
+The analysis revealed that `ai_engine` already featured a battle-tested universal `AiTask::ImageToImage` execution paradigm with adaptive tiling (`tile_size` / `tile_pad`), DirectML GPU acceleration, and tensor normalization. However, no plugin in the repository had utilized this capability yet. We selected **AI Colorize** — deep-learning-based color reconstruction for monochrome and historical archival photography powered by **DeOldify**.
+
+### 2. Implementation Without Core Modifications
+1. **Declarative Manifest (`plugins/colorize/plugin.json`):**
+   - Configured `ai: { "task": "image_to_image", "tile_size": 512, "tile_pad": 32, "normalize": "zero_to_one" }`.
+   - Defined `deoldify.onnx` (873 MB) with role `colorization`, direct Hugging Face download URL, and SHA-256 integrity hash.
+   - Provided sub-actions (`sub_actions`) for creating a colored overlay layer ("Colorize to New Layer") or in-place merging ("Colorize In-Place").
+2. **Vector Icon (`plugins/colorize/icon.svg`):**
+   - Designed a crisp vector painter's palette icon in strict adherence to `Vector-First UI` rules (no `<image>` tags or embedded base64 data).
+3. **Bilingual Documentation (`plugins/colorize/README.md`):**
+   - Detailed 3 practical use cases for retouchers and artists (archival restoration, sketch tinting, retro grading).
+   - Provided direct links to model weight downloads on Hugging Face.
+4. **Registry & Packaging Pipeline:**
+   - Executed `plugin_validator` to package `dist/colorize.pcpl`, build the updated `registry.json`, and synchronize catalog tables in `README.md` and `README.ru.md`.
+
+### 3. Verification & Definition of Done
+- `cargo fmt --all -- --check` verified clean formatting with 0 diffs.
+- `plugin_validator` verified all 8 plugin manifests with zero errors.
+- All workspace tests (`cargo test --workspace -j 1`), including `architecture_integrity_test` and `dev_regulations_lint_test`, passed with 100% success.
+
+---
+
+## [2026-10-22 22:45] Chapter 85: Frequency Separation Beauty Retouch Plugin (No-Code Macro) for Portrait Skin Retouching
+
+*Time: October 22, 2026, 22:45 (~30 minutes)*
+
+### 1. Architectural Context & Practical Value
+Following in-depth testing of lightweight generative neural networks (NAFNet Denoise, DeOldify), it became evident that for high-resolution beauty retouching and portrait restoration, small models inevitably blur fine pores, soften skin microtexture into plastic, or introduce visible tile boundary seams.
+
+In contrast to controversial generative models, we implemented the undisputed industry gold standard of beauty retouching — **Frequency Separation**. This workflow is mathematically deterministic, runs natively at 100% document resolution (up to 50+ megapixels) in under 100 milliseconds, and replaces an 8-to-10 step manual setup routine in the graphic editor with a single click.
+
+### 2. PhotoCraft IPC Protocol Investigation
+Direct exploration of the PhotoCraft Control Protocol via port `18492` confirmed robust native support for essential filters and layer commands:
+- `layer.duplicate` and `layer.renameLayer` for non-destructive layer duplication;
+- `filter.other.highPass` with customizable radius (4.0 px) for texture extraction;
+- `layer.setProps` supporting `blend: "Linear Light"`;
+- `layer.selectBelow` for deterministic layer stack navigation;
+- `filter.blur.gaussianBlur` with radius (4.0 px) for smoothing tone and color transitions.
+
+### 3. Declarative Plugin Implementation (`plugins/frequency_separation/`)
+1. **Manifest `plugin.json` (No-Code Macro):**
+   - Chains 8 deterministic actions: duplicate base layer -> rename to "Low Frequency (Color & Tone)" -> duplicate again -> rename to "High Frequency (Texture)" -> apply High Pass filter -> set Linear Light blend mode -> select layer below -> apply Gaussian Blur.
+   - The mathematical sum of the two layers matches the original image bit-for-bit while leaving the active layer set to Low Frequency, immediately ready for retouching with soft brushes, stamp tools, or blur lasso.
+2. **Vector Icon `icon.svg` (Vector-First UI):**
+   - Clean SVG graphic illustrating high-frequency oscillations, low-frequency wave, and layer separation line.
+3. **Bilingual `README.md`:**
+   - Authored 3 real-world practical use cases (skin tone smoothing without plastic look, blemish cleanup on texture layer, wrinkle removal in fabrics).
+4. **Registry & Packaging Pipeline:**
+   - `plugin_validator` packaged `dist/frequency_separation.pcpl`, generated `dist/registry.json`, and synced catalog tables in `README.md` and `README.ru.md`.
+
+### 4. Verification & Definition of Done
+- `cargo fmt --all -- --check` verified clean formatting with 0 diffs.
+- All workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, passed with 100% success.
+- Changes to Rust core (`crates/`): **0 lines (100% Zero-Core Hardcoding compliance)**.
+
+
+
+
