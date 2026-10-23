@@ -11,7 +11,7 @@ Set-Location $RootDir
 Write-Host ">>> Building release binary (photocraft-companion)..." -ForegroundColor Cyan
 cargo build --package companion_app --release -j 1
 
-$Version = "1.2.3"
+$Version = "1.2.4"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"

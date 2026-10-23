@@ -2834,6 +2834,15 @@ The analysis revealed that `ai_engine` already featured a battle-tested universa
 - `plugin_validator` verified all 8 plugin manifests with zero errors.
 - All workspace tests (`cargo test --workspace -j 1`), including `architecture_integrity_test` and `dev_regulations_lint_test`, passed with 100% success.
 
+### 4. Practical Evaluation & Placement into Quarantine
+Despite flawless technical integration within the Zero-Core architecture, real-world testing of DeOldify on high-resolution archival photographs revealed severe quality shortcomings:
+- **Tiling Boundary Seams & Semantic Incoherence:** Splitting large canvases into 512×512 patches caused the neural model to colorize adjacent regions in isolation without whole-image semantic context. This introduced harsh boundary seams, discordant color temperatures, and mismatched saturations across uniform surfaces like skies, backdrops, and garments.
+- **Color Bleeding & Texture Degradation:** The network frequently hallucinated unnatural chromatic splotches (oversaturated blues, purples, and rusty tones) across neutral grayscale areas while softening fine textural detail into blur.
+
+Because the output failed to meet PhotoCraft's rigorous standards for professional photo restoration, **AI Colorize (DeOldify) was officially withdrawn from the catalog and placed into quarantine (`Quarantine`)** pending the emergence of lightweight global-context or diffusion-based colorization architectures.
+
+This real-world evaluation directly motivated the creation of the mathematically deterministic **Frequency Separation** macro plugin in Chapter 85, delivering studio-grade beauty retouching with 100% pixel fidelity and zero neural artifacts.
+
 ---
 
 ## [2026-10-22 22:45] Chapter 85: Frequency Separation Beauty Retouch Plugin (No-Code Macro) for Portrait Skin Retouching
@@ -2868,6 +2877,46 @@ Direct exploration of the PhotoCraft Control Protocol via port `18492` confirmed
 - `cargo fmt --all -- --check` verified clean formatting with 0 diffs.
 - All workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, passed with 100% success.
 - Changes to Rust core (`crates/`): **0 lines (100% Zero-Core Hardcoding compliance)**.
+
+---
+
+## [2026-10-23 06:15] Chapter 86: Resolving GitHub Issue #4: Linux Desktop Entry, AppImage Support and Resilient PhotoCraft Launch
+
+*Time: October 23, 2026, 06:15 (~30 minutes)*
+
+### 1. Problem Statement & User Context
+An issue was raised in the project repository: **GitHub Issue #4: `[Bug]: Unable to locate Photocraft`** by user `CHJ85`.
+The user reported two interconnected challenges on Linux:
+1. **PhotoCraft is running, but Companion cannot detect it:** Under the ArtCraft launcher, PhotoCraft is distributed and updated as an AppImage whose filename changes on each release (e.g. `PhotoCraft-1.2.3.AppImage`). The existing `find_running_photocraft_dir` logic on Linux checked solely for exact equality of `/proc/*/exe` with `"photocraft"`, missing versioned filenames, uppercase characters, and squashfs mounts inside `/tmp/.mount_*`.
+2. **Launch failure when selecting `.desktop` files:** The user manually pointed the configuration to a desktop shortcut (`.desktop`). However, `launch_photocraft` attempted to execute the file directly via `std::process::Command::new()`. Because FreeDesktop Desktop Entry files are text configuration files, the Linux kernel rejected execution with Unix error `ENOEXEC` (`Exec format error`).
+
+### 2. Engineering Solutions & Architecture
+
+1. **Cross-Platform Desktop Entry Parser (`crates/photocraft_bridge/src/desktop_entry.rs`):**
+   - Engineered a zero-dependency FreeDesktop Desktop Entry Specification parser.
+   - Extracts `Name`, `Exec`, `Type`, `TryExec`, and `Path` from the `[Desktop Entry]` section.
+   - Tokenizes `Exec` command lines with support for single/double quotes, escaped spaces, and `env` prefixes (e.g., `env FOO=BAR "/opt/PhotoCraft.AppImage" %F`).
+   - Strips XDG field codes (`%f`, `%F`, `%u`, `%U`, `%d`, `%n`, `%i`, `%k`, `%v`) and Flatpak markers (`@@u %U @@`).
+   - Validates `Type=Application` and resolves the target binary on disk or via system `PATH`.
+
+2. **Preventing `Exec format error` in `launch_photocraft`:**
+   - When the supplied path ends in `.desktop`, `PhotoCraftClient::launch_photocraft` resolves the shortcut to its physical executable prior to calling `std::process::Command`. Unresolvable entries return an explicit and informative bridge error.
+
+3. **Desktop Shortcut & AppImage Autodiscovery on Linux:**
+   - In `PhotoCraftClient::find_photocraft_executable`, added automatic directory scanning across standard XDG locations: `~/.local/share/applications`, `/usr/share/applications`, `/usr/local/share/applications`, and Flatpak export directories.
+   - Matched `.desktop` files containing `photocraft` in filename or `Name=` attribute.
+   - Broadened file dialog filters (`rfd`) in `companion_app/src/main.rs` and `overlay_ui/src/manager.rs` to support case variations: `&["AppImage", "appimage", "desktop", "bin", ""]`.
+
+4. **AppImage Process Tracking & Read-Only Squashfs Guard:**
+   - In `find_running_photocraft_dir`, introduced case-insensitive process matching in `/proc/<pid>/exe` and fallback checking via `/proc/<pid>/cmdline`.
+   - When the executable points inside an AppImage squashfs mount (`/tmp/.mount_*`), the companion inspects `/proc/<pid>/environ` for the `APPIMAGE=...` variable to resolve the host filesystem folder housing `PhotoCraftData`.
+   - Marked `/tmp/.mount_*` paths as strictly read-only in `is_token_dir_writable`, ensuring the companion never attempts token generation inside the ephemeral mount and cleanly uses `~/.local/share/photocraft/`.
+
+### 3. Verification & Definition of Done
+- Added 13 unit tests in `desktop_entry.rs` and 2 integration tests in `photocraft_bridge`.
+- Code formatting verified with `cargo fmt --all -- --check` (0 diffs).
+- All 120+ workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, passed with 100% success.
+- Documentation synchronized: `BUG-079` closed in `docs/BUGS_AND_ISSUES.md`, Phase 80 checked off in `docs/CHECKLIST.md`.
 
 
 

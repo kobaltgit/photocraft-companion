@@ -9,6 +9,8 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tracing::{debug, info};
 
+pub mod desktop_entry;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct JsonRpcRequest {
     id: u64,
@@ -125,12 +127,79 @@ impl PhotoCraftClient {
                     let file_name = entry.file_name();
                     if let Some(pid_str) = file_name.to_str() {
                         if pid_str.chars().all(|c| c.is_ascii_digit()) {
-                            let exe_link = entry.path().join("exe");
+                            let proc_dir = entry.path();
+                            let exe_link = proc_dir.join("exe");
+
+                            let mut is_match = false;
+                            let mut target_path: Option<std::path::PathBuf> = None;
+
                             if let Ok(target) = std::fs::read_link(&exe_link) {
-                                if target.file_name().and_then(|n| n.to_str()) == Some("photocraft")
+                                let target_str = target.to_string_lossy();
+                                let target_lower = target_str.to_lowercase();
+                                if target_lower.contains("photocraft")
+                                    && !target_lower.contains("companion")
                                 {
+                                    is_match = true;
+                                    target_path = Some(target);
+                                }
+                            }
+
+                            // Fallback to /proc/<pid>/cmdline if exe link wasn't a match
+                            if !is_match {
+                                let cmdline_path = proc_dir.join("cmdline");
+                                if let Ok(cmdline_bytes) = std::fs::read(&cmdline_path) {
+                                    let cmdline_str = String::from_utf8_lossy(&cmdline_bytes);
+                                    for arg in cmdline_str.split('\0') {
+                                        let arg_lower = arg.to_lowercase();
+                                        if arg_lower.contains("photocraft")
+                                            && !arg_lower.contains("companion")
+                                        {
+                                            is_match = true;
+                                            let candidate = std::path::PathBuf::from(arg);
+                                            if candidate.is_absolute() {
+                                                target_path = Some(candidate);
+                                            }
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if is_match {
+                                let target_str = target_path
+                                    .as_ref()
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .unwrap_or_default();
+
+                                // AppImage mount check (/tmp/.mount_)
+                                if target_str.starts_with("/tmp/.mount_") {
+                                    let environ_path = proc_dir.join("environ");
+                                    if let Ok(environ_bytes) = std::fs::read(&environ_path) {
+                                        for var_slice in environ_bytes.split(|&b| b == 0) {
+                                            if let Ok(var_str) = std::str::from_utf8(var_slice) {
+                                                if let Some(appimage_path) =
+                                                    var_str.strip_prefix("APPIMAGE=")
+                                                {
+                                                    let p = std::path::PathBuf::from(appimage_path);
+                                                    if let Some(parent) = p.parent() {
+                                                        if parent.is_dir() {
+                                                            return Some(parent.to_path_buf());
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // If APPIMAGE was missing from environ, do NOT return read-only
+                                    // /tmp/.mount_* dir. Return None so user_data_token_path() is used.
+                                    return None;
+                                }
+
+                                if let Some(target) = target_path {
                                     if let Some(parent) = target.parent() {
-                                        return Some(parent.to_path_buf());
+                                        if parent.is_dir() {
+                                            return Some(parent.to_path_buf());
+                                        }
                                     }
                                 }
                             }
@@ -377,6 +446,7 @@ pub fn is_token_dir_writable(path: &std::path::Path) -> bool {
             || parent_str.starts_with("/opt")
             || parent_str.starts_with("/var")
             || parent_str.starts_with("/etc")
+            || parent_str.starts_with("/tmp/.mount_")
         {
             return false;
         }
@@ -414,6 +484,69 @@ pub fn is_token_dir_writable(path: &std::path::Path) -> bool {
 }
 
 impl PhotoCraftClient {
+    /// Inspect a candidate path (handling Linux .desktop entries, macOS .app bundles or plain directories)
+    pub fn resolve_candidate(p: &std::path::Path) -> Option<std::path::PathBuf> {
+        let exe_name = if cfg!(windows) {
+            "photocraft.exe"
+        } else {
+            "photocraft"
+        };
+
+        if p.is_file() {
+            // If it's a Linux FreeDesktop .desktop entry file
+            if p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("desktop"))
+                .unwrap_or(false)
+            {
+                if let Some(resolved) = desktop_entry::parse_desktop_file(p) {
+                    return Some(resolved);
+                }
+                return None;
+            }
+            return Some(p.to_path_buf());
+        }
+        if p.is_dir() {
+            // If it's a macOS .app bundle
+            let mac_candidates = [
+                p.join("Contents").join("MacOS").join("photocraft"),
+                p.join("Contents").join("MacOS").join("PhotoCraft"),
+            ];
+            for mc in mac_candidates {
+                if mc.is_file() {
+                    return Some(mc);
+                }
+            }
+            // Check if any file inside Contents/MacOS exists
+            let mac_dir = p.join("Contents").join("MacOS");
+            if mac_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&mac_dir) {
+                    for entry in entries.flatten() {
+                        let ep = entry.path();
+                        if ep.is_file() {
+                            return Some(ep);
+                        }
+                    }
+                }
+            }
+
+            // Check standard binary names in directory
+            let sub_candidates = [
+                p.join(exe_name),
+                p.join("PhotoCraft.exe"),
+                p.join("photocraft.exe"),
+                p.join("PhotoCraft"),
+                p.join("photocraft"),
+            ];
+            for sc in sub_candidates {
+                if sc.is_file() {
+                    return Some(sc);
+                }
+            }
+        }
+        None
+    }
+
     /// Locate PhotoCraft executable: configured path -> running process -> relative candidates -> standard install paths -> PATH
     pub fn find_photocraft_executable(
         configured_path: Option<&std::path::Path>,
@@ -424,62 +557,16 @@ impl PhotoCraftClient {
             "photocraft"
         };
 
-        // Helper to inspect a candidate path (handling macOS .app bundles or plain directories)
-        let resolve_candidate = |p: &std::path::Path| -> Option<std::path::PathBuf> {
-            if p.is_file() {
-                return Some(p.to_path_buf());
-            }
-            if p.is_dir() {
-                // If it's a macOS .app bundle
-                let mac_candidates = [
-                    p.join("Contents").join("MacOS").join("photocraft"),
-                    p.join("Contents").join("MacOS").join("PhotoCraft"),
-                ];
-                for mc in mac_candidates {
-                    if mc.is_file() {
-                        return Some(mc);
-                    }
-                }
-                // Check if any file inside Contents/MacOS exists
-                let mac_dir = p.join("Contents").join("MacOS");
-                if mac_dir.is_dir() {
-                    if let Ok(entries) = std::fs::read_dir(&mac_dir) {
-                        for entry in entries.flatten() {
-                            let ep = entry.path();
-                            if ep.is_file() {
-                                return Some(ep);
-                            }
-                        }
-                    }
-                }
-
-                // Check standard binary names in directory
-                let sub_candidates = [
-                    p.join(exe_name),
-                    p.join("PhotoCraft.exe"),
-                    p.join("photocraft.exe"),
-                    p.join("PhotoCraft"),
-                    p.join("photocraft"),
-                ];
-                for sc in sub_candidates {
-                    if sc.is_file() {
-                        return Some(sc);
-                    }
-                }
-            }
-            None
-        };
-
         // 1. Explicitly configured path
         if let Some(path) = configured_path {
-            if let Some(resolved) = resolve_candidate(path) {
+            if let Some(resolved) = Self::resolve_candidate(path) {
                 return Some(resolved);
             }
         }
 
         // 2. Running photocraft process directory
         if let Some(proc_dir) = Self::find_running_photocraft_dir() {
-            if let Some(resolved) = resolve_candidate(&proc_dir) {
+            if let Some(resolved) = Self::resolve_candidate(&proc_dir) {
                 return Some(resolved);
             }
         }
@@ -559,9 +646,10 @@ impl PhotoCraftClient {
             candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/photocraft"));
         }
 
-        // 4c. Linux standard install paths
+        // 4c. Linux standard install paths & Desktop entries
         #[cfg(target_os = "linux")]
         {
+            // Standard binary paths
             candidate_paths.push(std::path::PathBuf::from("/usr/bin/photocraft"));
             candidate_paths.push(std::path::PathBuf::from("/usr/bin/PhotoCraft"));
             candidate_paths.push(std::path::PathBuf::from("/usr/local/bin/photocraft"));
@@ -572,10 +660,67 @@ impl PhotoCraftClient {
                 candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/photocraft"));
                 candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/PhotoCraft"));
             }
+
+            // Standard FreeDesktop Desktop Entry locations
+            let mut desktop_dirs = Vec::new();
+            if let Ok(home) = std::env::var("HOME") {
+                let home_path = std::path::PathBuf::from(&home);
+                desktop_dirs.push(home_path.join(".local/share/applications"));
+                desktop_dirs
+                    .push(home_path.join(".local/share/flatpak/exports/share/applications"));
+            }
+            desktop_dirs.push(std::path::PathBuf::from("/usr/local/share/applications"));
+            desktop_dirs.push(std::path::PathBuf::from("/usr/share/applications"));
+            desktop_dirs.push(std::path::PathBuf::from(
+                "/var/lib/flatpak/exports/share/applications",
+            ));
+
+            for d_dir in desktop_dirs {
+                if !d_dir.is_dir() {
+                    continue;
+                }
+                if let Ok(entries) = std::fs::read_dir(&d_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| e.eq_ignore_ascii_case("desktop"))
+                            .unwrap_or(false)
+                        {
+                            let file_name_lower = path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .map(|s| s.to_lowercase())
+                                .unwrap_or_default();
+                            let is_candidate_name = file_name_lower.contains("photocraft")
+                                && !file_name_lower.contains("companion");
+
+                            if is_candidate_name {
+                                candidate_paths.push(path.clone());
+                            } else if let Ok(content) = std::fs::read_to_string(&path) {
+                                if let Some(de) = desktop_entry::parse_desktop_entry(&content) {
+                                    let name_matches = de
+                                        .name
+                                        .as_deref()
+                                        .map(|n| {
+                                            let nl = n.to_lowercase();
+                                            nl.contains("photocraft") && !nl.contains("companion")
+                                        })
+                                        .unwrap_or(false);
+                                    if name_matches {
+                                        candidate_paths.push(path);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         for path in candidate_paths {
-            if let Some(resolved) = resolve_candidate(&path) {
+            if let Some(resolved) = Self::resolve_candidate(&path) {
                 return Some(resolved);
             }
         }
@@ -601,10 +746,22 @@ impl PhotoCraftClient {
         port: u16,
         token_file: Option<&std::path::Path>,
     ) -> Result<std::process::Child> {
-        let actual_exe = if exe_path.is_dir() {
-            // macOS .app bundle resolution
-            Self::find_photocraft_executable(Some(exe_path))
-                .unwrap_or_else(|| exe_path.to_path_buf())
+        let is_desktop_entry = exe_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("desktop"))
+            .unwrap_or(false);
+
+        let actual_exe = if is_desktop_entry {
+            desktop_entry::parse_desktop_file(exe_path).ok_or_else(|| {
+                CompanionError::Bridge(format!(
+                    "Failed to resolve executable binary from desktop entry: {}",
+                    exe_path.display()
+                ))
+            })?
+        } else if exe_path.is_dir() {
+            // macOS .app bundle resolution or folder search
+            Self::resolve_candidate(exe_path).unwrap_or_else(|| exe_path.to_path_buf())
         } else {
             exe_path.to_path_buf()
         };
@@ -2038,5 +2195,51 @@ mod tests {
                 assert_eq!(read_back.height(), 4);
             }
         }
+    }
+
+    #[test]
+    fn test_launch_photocraft_unresolvable_desktop_entry() {
+        let temp_dir = std::env::temp_dir();
+        let invalid_desktop = temp_dir.join(format!("unresolvable_{}.desktop", std::process::id()));
+        std::fs::write(
+            &invalid_desktop,
+            "[Desktop Entry]\nType=Application\nName=PhotoCraft\nExec=/nonexistent/binary/path %F\n",
+        )
+        .unwrap();
+
+        let res = PhotoCraftClient::launch_photocraft(&invalid_desktop, 18492, None);
+        assert!(res.is_err());
+        let err_str = res.err().unwrap().to_string();
+        assert!(
+            err_str.contains("Failed to resolve executable binary from desktop entry")
+                || err_str.contains("PhotoCraft executable not found"),
+            "Error should explain failed executable resolution: {err_str}"
+        );
+
+        let _ = std::fs::remove_file(&invalid_desktop);
+    }
+
+    #[test]
+    fn test_resolve_candidate_desktop_file() {
+        let temp_dir = std::env::temp_dir();
+        let test_bin = temp_dir.join(format!("test_target_bin_{}.tmp", std::process::id()));
+        std::fs::write(&test_bin, b"binary").unwrap();
+
+        let valid_desktop =
+            temp_dir.join(format!("valid_candidate_{}.desktop", std::process::id()));
+        std::fs::write(
+            &valid_desktop,
+            format!(
+                "[Desktop Entry]\nType=Application\nName=PhotoCraft\nExec=\"{}\" %U\n",
+                test_bin.display()
+            ),
+        )
+        .unwrap();
+
+        let resolved = PhotoCraftClient::resolve_candidate(&valid_desktop);
+        assert_eq!(resolved, Some(test_bin.clone()));
+
+        let _ = std::fs::remove_file(&test_bin);
+        let _ = std::fs::remove_file(&valid_desktop);
     }
 }

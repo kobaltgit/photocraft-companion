@@ -934,6 +934,7 @@
   - [x] Составление обязательной двуязычной документации `plugins/colorize/README.md` с практическими сценариями (реставрация архивов, тонирование графики, ретро-грейдинг) и ссылками на веса модели `deoldify.onnx` (873 МБ) на Hugging Face.
   - [x] Автоматическая сборка пакета `dist/colorize.pcpl`, обновление индекса маркетплейса `registry.json` и синхронизация таблиц плагинов в `README.md` и `README.ru.md`.
   - [x] 100% соблюдение Definition of Done: валидатор плагинов без ошибок, чистый запуск тестов воркспейса с `-j 1`.
+  - [x] Практические полевые испытания: выявление артефактов тайлинга и неестественных оттенков DeOldify на высоких разрешениях; снятие плагина с публикации и помещение в карантин (`Quarantine`).
 
 - [x] **Фаза 79: Профессиональный плагин бьюти-ретуши Frequency Separation (Частотное разложение)**
   - [x] Исследование протокола PhotoCraft: подтверждена нативная поддержка `filter.blur.gaussianBlur`, `filter.other.highPass`, режима `Linear Light` в `layer.setProps` и навигации `layer.selectBelow`.
@@ -943,6 +944,16 @@
   - [x] Валидация каталога `plugin_validator`, сборка пакета `dist/frequency_separation.pcpl`, синхронизация `dist/registry.json`, `README.md` и `README.ru.md`.
   - [x] 100% Zero-Core Hardcoding: 0 строк изменений в крейтах ядра `crates/`.
   - [x] Успешный прогон всех тестов воркспейса `cargo test --workspace -j 1` и линтеров регламентов.
+
+- [x] **Фаза 80: Поддержка Linux Desktop Entry, AppImage и надежное автообнаружение PhotoCraft (GitHub Issue #4, BUG-079)**
+  - [x] Разработка кроссплатформенного парсера FreeDesktop Desktop Entry Specification в `crates/photocraft_bridge/src/desktop_entry.rs` (разбор секции `[Desktop Entry]`, shlex-подобное экранирование `Exec`, очистка спецификаторов XDG `%F/%U/@@`, обработка `env`).
+  - [x] Решение проблемы `Exec format error`: прямое разрешение `.desktop` файлов в исполняемый бинарник перед передачей в `std::process::Command` в `PhotoCraftClient::launch_photocraft`.
+  - [x] Автообнаружение стандартных каталогов FreeDesktop Desktop Entry на Linux (`~/.local/share/applications`, `/usr/share/applications`, `/var/lib/flatpak/exports/...`) в `PhotoCraftClient::find_photocraft_executable`.
+  - [x] Надежное отслеживание процессов AppImage в `/proc/*/exe` и извлечение оригинального пути из `APPIMAGE=` в `/proc/*/environ`.
+  - [x] Защита от точек монтирования `/tmp/.mount_*` (squashfs read-only) в `is_token_dir_writable` и `find_running_photocraft_dir`.
+  - [x] Поддержка обоих регистров расширения `AppImage` и `.desktop` в фильтрах диалога выбора файлов в `companion_app/src/main.rs` и `overlay_ui/src/manager.rs`.
+  - [x] 100% покрытие модульными тестами парсера и резолвера в `photocraft_bridge`.
+  - [x] Успешное прохождение всех тестов воркспейса (`cargo test --workspace -j 1`) и линтеров регламентов с флагом `-j 1`.
 
 
 

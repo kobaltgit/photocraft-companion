@@ -567,8 +567,10 @@ impl PluginManagerApp {
                         }
                         #[cfg(target_os = "linux")]
                         {
-                            dialog = dialog
-                                .add_filter("Executable / AppImage", &["AppImage", "bin", ""]);
+                            dialog = dialog.add_filter(
+                                "PhotoCraft Executable / AppImage / Desktop Entry",
+                                &["AppImage", "appimage", "desktop", "bin", ""],
+                            );
                         }
                         if let Some(path) = dialog.pick_file() {
                             self.photocraft_path = path.to_string_lossy().to_string();
