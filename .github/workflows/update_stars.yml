@@ -23,10 +23,11 @@ jobs:
           node-version: "22"
 
       - name: Generate Star Chart SVG
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npx --yes star-chart-generator --repo "${{ github.repository }}" --output "assets/star-history.svg" || true
+        uses: kobaltgit/star-chart-generator@main
+        with:
+          repo: "${{ github.repository }}"
+          output: "assets/star-history.svg"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit & push if changed
         run: |
