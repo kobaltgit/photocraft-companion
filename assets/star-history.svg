@@ -1,0 +1,256 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" width="1280" height="520" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-base" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0e17" />
+      <stop offset="50%" stop-color="#0d111b" />
+      <stop offset="100%" stop-color="#080b12" />
+    </linearGradient>
+
+    <radialGradient id="bg-glow-cyan" cx="15%" cy="25%" r="65%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#0284c7" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="bg-glow-purple" cx="85%" cy="75%" r="60%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Curve & Glow Line Gradients -->
+    <linearGradient id="curve-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#818cf8" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <linearGradient id="area-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.28" />
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#080b12" stop-opacity="0" />
+    </linearGradient>
+
+    <!-- Drop Shadows -->
+    <filter id="glow-line" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#38bdf8" flood-opacity="0.6" />
+    </filter>
+    <filter id="shadow-card" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- Outer Canvas Container -->
+  <rect width="1280" height="520" rx="16" fill="url(#bg-base)" />
+  <rect width="1280" height="520" rx="16" fill="url(#bg-glow-cyan)" />
+  <rect width="1280" height="520" rx="16" fill="url(#bg-glow-purple)" />
+  <rect width="1280" height="520" rx="16" fill="none" stroke="#1e293b" stroke-width="1.5" />
+
+  <!-- Subtle Tech Grid -->
+  <g opacity="0.04" stroke="#94a3b8" stroke-width="1">
+    <line x1="60" y1="0" x2="60" y2="520" />
+    <line x1="120" y1="0" x2="120" y2="520" />
+    <line x1="180" y1="0" x2="180" y2="520" />
+    <line x1="240" y1="0" x2="240" y2="520" />
+    <line x1="300" y1="0" x2="300" y2="520" />
+    <line x1="360" y1="0" x2="360" y2="520" />
+    <line x1="420" y1="0" x2="420" y2="520" />
+    <line x1="480" y1="0" x2="480" y2="520" />
+    <line x1="540" y1="0" x2="540" y2="520" />
+    <line x1="600" y1="0" x2="600" y2="520" />
+    <line x1="660" y1="0" x2="660" y2="520" />
+    <line x1="720" y1="0" x2="720" y2="520" />
+    <line x1="780" y1="0" x2="780" y2="520" />
+    <line x1="840" y1="0" x2="840" y2="520" />
+    <line x1="900" y1="0" x2="900" y2="520" />
+    <line x1="960" y1="0" x2="960" y2="520" />
+    <line x1="1020" y1="0" x2="1020" y2="520" />
+    <line x1="1080" y1="0" x2="1080" y2="520" />
+    <line x1="1140" y1="0" x2="1140" y2="520" />
+    <line x1="1200" y1="0" x2="1200" y2="520" />
+    <line x1="1260" y1="0" x2="1260" y2="520" />
+    <line x1="0" y1="60" x2="1280" y2="60" />
+    <line x1="0" y1="120" x2="1280" y2="120" />
+    <line x1="0" y1="180" x2="1280" y2="180" />
+    <line x1="0" y1="240" x2="1280" y2="240" />
+    <line x1="0" y1="300" x2="1280" y2="300" />
+    <line x1="0" y1="360" x2="1280" y2="360" />
+    <line x1="0" y1="420" x2="1280" y2="420" />
+    <line x1="0" y1="480" x2="1280" y2="480" />
+  </g>
+
+  <!-- Header Section -->
+  <g transform="translate(48, 42)">
+    <!-- Star Icon (Clean solid gold star without blue outline) -->
+    <g transform="translate(0, 0)">
+      <polygon points="14,1 18,10 28,11 20,18 23,28 14,22 5,28 8,18 0,11 10,10" fill="#facc15" />
+    </g>
+    <!-- Title & Subtitle -->
+    <text x="40" y="18" font-size="20" font-weight="700" fill="#f8fafc" letter-spacing="-0.02em">
+      GitHub Star History
+    </text>
+    <text x="40" y="38" font-size="13" font-weight="500" fill="#94a3b8">
+      Real-time growth trajectory &amp; release milestones
+    </text>
+
+    <!-- Top-Right Badges: Age & Star Counter -->
+    <g transform="translate(874, -6)">
+      
+      <!-- Project Age Badge -->
+      <g transform="translate(0, 0)">
+        <rect width="115" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#334155" stroke-width="1" />
+        <text x="16" y="27" font-size="12" font-weight="600" fill="#64748b">Age:</text>
+        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">12 days</text>
+      </g>
+
+      <!-- Star Counter Badge -->
+      <g transform="translate(130, 0)">
+        <rect width="170" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#38bdf8" stroke-opacity="0.4" stroke-width="1" />
+        <text x="20" y="27" font-size="13" font-weight="600" fill="#94a3b8">Total Stars:</text>
+        <text x="105" y="28" font-size="18" font-weight="700" fill="#38bdf8">14</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Horizontal Grid Lines & Y-Labels -->
+  <g>
+    
+    <line x1="70" y1="460.0" x2="1230.0" y2="460.0" stroke="#334155" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="52" y="464.0" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">0</text>
+
+    <line x1="70" y1="377.3" x2="1230.0" y2="377.3" stroke="#334155" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="52" y="381.3" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">4</text>
+
+    <line x1="70" y1="294.7" x2="1230.0" y2="294.7" stroke="#334155" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="52" y="298.7" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">8</text>
+
+    <line x1="70" y1="232.7" x2="1230.0" y2="232.7" stroke="#334155" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="52" y="236.7" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">11</text>
+
+    <line x1="70" y1="150.0" x2="1230.0" y2="150.0" stroke="#334155" stroke-opacity="0.4" stroke-width="1" stroke-dasharray="4 4" />
+    <text x="52" y="154.0" font-size="12" font-weight="600" fill="#64748b" text-anchor="end">15</text>
+  </g>
+
+  <!-- X-Axis Labels -->
+  <g>
+    
+    <text x="70.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 12</text>
+
+    <text x="360.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 15</text>
+
+    <text x="650.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 18</text>
+
+    <text x="940.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 21</text>
+
+    <text x="1230.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 23</text>
+  </g>
+
+  <!-- Release Vertical Markers (Clean, vertical labels) -->
+  <g>
+    
+    <!-- Release: v1.0.0 -->
+    <line x1="190.6" y1="100" x2="190.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="186.6" y="138.0" transform="rotate(-90 186.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.0</text>
+
+    <!-- Release: v1.0.3 -->
+    <line x1="307.6" y1="100" x2="307.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="303.6" y="138.0" transform="rotate(-90 303.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.3</text>
+
+    <!-- Release: v1.0.5 -->
+    <line x1="339.7" y1="100" x2="339.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="335.7" y="138.0" transform="rotate(-90 335.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.5</text>
+
+    <!-- Release: v1.0.6 -->
+    <line x1="409.8" y1="100" x2="409.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="405.8" y="138.0" transform="rotate(-90 405.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.6</text>
+
+    <!-- Release: v1.0.7 -->
+    <line x1="506.7" y1="100" x2="506.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="502.7" y="138.0" transform="rotate(-90 502.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.7</text>
+
+    <!-- Release: v1.0.8 -->
+    <line x1="746.8" y1="100" x2="746.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="742.8" y="138.0" transform="rotate(-90 742.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.8</text>
+
+    <!-- Release: v1.1.0 -->
+    <line x1="783.2" y1="100" x2="783.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="779.2" y="138.0" transform="rotate(-90 779.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.1.0</text>
+
+    <!-- Release: v1.2.0 -->
+    <line x1="903.2" y1="100" x2="903.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="899.2" y="138.0" transform="rotate(-90 899.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.0</text>
+
+    <!-- Release: v1.2.2 -->
+    <line x1="960.9" y1="100" x2="960.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="956.9" y="138.0" transform="rotate(-90 956.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.2</text>
+
+    <!-- Release: v1.2.3 -->
+    <line x1="1110.0" y1="100" x2="1110.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1106.0" y="138.0" transform="rotate(-90 1106.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.3</text>
+
+    <!-- Release: v1.2.4 -->
+    <line x1="1160.1" y1="100" x2="1160.1" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1156.1" y="138.0" transform="rotate(-90 1156.1,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.4</text>
+  </g>
+
+  <!-- Chart Area Gradient Fill -->
+  <path d="M 70.0,460.0 C 70.0,456.6 52.9,442.8 70.0,439.3 C 87.1,435.9 138.2,442.8 172.4,439.3 C 206.5,435.9 236.3,425.6 274.7,418.7 C 313.1,411.8 368.5,408.3 402.6,398.0 C 436.8,387.7 447.4,367.0 479.4,356.7 C 511.4,346.3 560.4,339.4 594.6,336.0 C 628.7,332.6 650.7,339.4 684.1,336.0 C 717.5,332.6 758.0,322.2 795.0,315.3 C 832.0,308.4 868.9,298.1 905.9,294.7 C 942.8,291.2 986.9,301.6 1016.8,294.7 C 1046.6,287.8 1066.5,267.1 1085.0,253.3 C 1103.5,239.6 1107.7,222.3 1127.6,212.0 C 1147.5,201.7 1187.4,198.2 1204.4,191.3 C 1221.5,184.4 1225.7,174.1 1230.0,170.7 L 1230.0,460.0 L 70.0,460.0 Z" fill="url(#area-gradient)" />
+
+  <!-- Chart Glow & Main Spline Line -->
+  <path d="M 70.0,460.0 C 70.0,456.6 52.9,442.8 70.0,439.3 C 87.1,435.9 138.2,442.8 172.4,439.3 C 206.5,435.9 236.3,425.6 274.7,418.7 C 313.1,411.8 368.5,408.3 402.6,398.0 C 436.8,387.7 447.4,367.0 479.4,356.7 C 511.4,346.3 560.4,339.4 594.6,336.0 C 628.7,332.6 650.7,339.4 684.1,336.0 C 717.5,332.6 758.0,322.2 795.0,315.3 C 832.0,308.4 868.9,298.1 905.9,294.7 C 942.8,291.2 986.9,301.6 1016.8,294.7 C 1046.6,287.8 1066.5,267.1 1085.0,253.3 C 1103.5,239.6 1107.7,222.3 1127.6,212.0 C 1147.5,201.7 1187.4,198.2 1204.4,191.3 C 1221.5,184.4 1225.7,174.1 1230.0,170.7" fill="none" stroke="url(#curve-gradient)" stroke-width="5" filter="url(#glow-line)" opacity="0.6" />
+  <path d="M 70.0,460.0 C 70.0,456.6 52.9,442.8 70.0,439.3 C 87.1,435.9 138.2,442.8 172.4,439.3 C 206.5,435.9 236.3,425.6 274.7,418.7 C 313.1,411.8 368.5,408.3 402.6,398.0 C 436.8,387.7 447.4,367.0 479.4,356.7 C 511.4,346.3 560.4,339.4 594.6,336.0 C 628.7,332.6 650.7,339.4 684.1,336.0 C 717.5,332.6 758.0,322.2 795.0,315.3 C 832.0,308.4 868.9,298.1 905.9,294.7 C 942.8,291.2 986.9,301.6 1016.8,294.7 C 1046.6,287.8 1066.5,267.1 1085.0,253.3 C 1103.5,239.6 1107.7,222.3 1127.6,212.0 C 1147.5,201.7 1187.4,198.2 1204.4,191.3 C 1221.5,184.4 1225.7,174.1 1230.0,170.7" fill="none" stroke="url(#curve-gradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Data Point Knots -->
+  <g>
+    
+    <circle cx="70.0" cy="460.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="70.0" cy="439.3" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="172.4" cy="439.3" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="274.7" cy="418.7" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="402.6" cy="398.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="479.4" cy="356.7" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="594.6" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="684.1" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="795.0" cy="315.3" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="905.9" cy="294.7" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1016.8" cy="294.7" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1085.0" cy="253.3" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1127.6" cy="212.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1204.4" cy="191.3" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1230.0" cy="170.7" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+  </g>
+
+  <!-- Final Milestone Glowing Pulse (Last Point) -->
+  
+  <g transform="translate(1230.0, 170.7)">
+    <circle r="7" fill="#38bdf8" fill-opacity="0.3">
+      <animate attributeName="r" values="6;11;6" dur="2.5s" repeatCount="indefinite" />
+      <animate attributeName="fill-opacity" values="0.4;0.05;0.4" dur="2.5s" repeatCount="indefinite" />
+    </circle>
+    <circle r="4.5" fill="#38bdf8" stroke="#ffffff" stroke-width="1.5" />
+  </g>
+
+  <!-- Bottom-Right Repository Badge / Link -->
+  <g transform="translate(1010, 480)">
+    <a href="https://github.com/kobaltgit/photocraft-companion" target="_blank">
+      <rect width="220" height="28" rx="6" fill="#0f172a" fill-opacity="0.9" stroke="#334155" stroke-width="1" />
+      <!-- Minimal Octocat / Repo Icon -->
+      <path d="M12,14 C8.7,14 6,11.3 6,8 C6,4.7 8.7,2 12,2 C15.3,2 18,4.7 18,8 C18,10.7 16.2,12.9 13.8,13.7 C13.5,13.8 13.4,13.5 13.4,13.4 L13.4,12.2 C13.4,11.8 13.3,11.5 13.1,11.3 C14.6,11.1 16.2,10.5 16.2,7.9 C16.2,7.2 15.9,6.6 15.5,6.1 C15.6,5.9 15.8,5.2 15.4,4.3 C15.4,4.3 14.8,4.1 13.4,5.1 C12.8,4.9 12.2,4.8 11.6,4.8 C11,4.8 10.4,4.9 9.8,5.1 C8.4,4.1 7.8,4.3 7.8,4.3 C7.4,5.2 7.6,5.9 7.7,6.1 C7.3,6.6 7,7.2 7,7.9 C7,10.5 8.6,11.1 10.1,11.3 C9.9,11.5 9.8,11.7 9.8,12 L9.8,13.4 C9.8,13.5 9.7,13.8 9.4,13.7 C7,12.9 5.2,10.7 5.2,8 C5.2,4.7 7.9,2 11.2,2" transform="translate(6, 6) scale(0.9)" fill="#94a3b8" />
+      <text x="32" y="18" font-size="11.5" font-weight="600" fill="#94a3b8">kobaltgit/photocraft-companion</text>
+    </a>
+  </g>
+
+</svg>

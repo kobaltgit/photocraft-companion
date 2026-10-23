@@ -347,6 +347,14 @@ Join the official **PhotoCraft Companion Discord Server**:
 
 ---
 
+## ⭐ Star History
+
+<p align="center">
+  <img src="assets/star-history.svg" alt="PhotoCraft Companion Star History" width="100%">
+</p>
+
+---
+
 ## 👤 Author
 
 **kobaltGIT** ([GitHub](https://github.com/kobaltgit))

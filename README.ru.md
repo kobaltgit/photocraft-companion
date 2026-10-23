@@ -346,6 +346,14 @@ my_plugin.pcpl
 
 ---
 
+## ⭐ История звёзд (Star History)
+
+<p align="center">
+  <img src="assets/star-history.svg" alt="PhotoCraft Companion Star History" width="100%">
+</p>
+
+---
+
 ## 👤 Автор
 
 **kobaltGIT** ([GitHub](https://github.com/kobaltgit))
