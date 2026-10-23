@@ -1,0 +1,76 @@
+{
+  "id": "macro.photocraft.plugins.teal_orange",
+  "name": "Cinematic Teal & Orange",
+  "name_ru": "Кинематографичный Teal & Orange",
+  "version": "1.0.0",
+  "description": "Applies a Hollywood cinematic color grade with 3D LUT, film contrast S-curve, and skin vibrance protection.",
+  "description_ru": "Создает голливудский кинематографический грейдинг: 3D LUT, пленочная S-кривая контраста и защита оттенков кожи.",
+  "author": "kobaltGIT",
+  "plugin_type": "no_code",
+  "action_id": "plugin:teal_orange",
+  "icon": "icon.svg",
+  "commands": [
+    {
+      "command": "layer.newAdjustmentLayer.colorLookup",
+      "params": {
+        "lut": "tealOrange"
+      },
+      "description": "Create Teal & Orange 3D LUT adjustment layer"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Teal & Orange (3D LUT)"
+      },
+      "description": "Rename LUT layer"
+    },
+    {
+      "command": "layer.setProps",
+      "params": {
+        "opacity": 0.85
+      },
+      "description": "Set LUT opacity to 85% for balanced skin tones"
+    },
+    {
+      "command": "layer.newAdjustmentLayer.curves",
+      "params": {
+        "points": [
+          [0, 0],
+          [64, 54],
+          [192, 202],
+          [255, 255]
+        ]
+      },
+      "description": "Create cinematic S-Curve for rich tonal dynamic range"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Film Contrast (S-Curve)"
+      },
+      "description": "Rename Curves layer"
+    },
+    {
+      "command": "layer.setProps",
+      "params": {
+        "blend": "Luminosity"
+      },
+      "description": "Set S-Curve blend mode to Luminosity to preserve pure hue values"
+    },
+    {
+      "command": "layer.newAdjustmentLayer.vibrance",
+      "params": {
+        "vibrance": 15,
+        "saturation": -5
+      },
+      "description": "Add Vibrance adjustment to enrich background colors and protect skin"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Skin Vibrance & Protection"
+      },
+      "description": "Rename Vibrance layer"
+    }
+  ]
+}

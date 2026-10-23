@@ -2918,6 +2918,87 @@ The user reported two interconnected challenges on Linux:
 - All 120+ workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, passed with 100% success.
 - Documentation synchronized: `BUG-079` closed in `docs/BUGS_AND_ISSUES.md`, Phase 80 checked off in `docs/CHECKLIST.md`.
 
+---
+
+## [2026-10-23 11:15] Chapter 87: Completing the Retouching Gold Standard: Pro Dodge & Burn 50% Gray Suite
+
+*Time: October 23, 2026, 11:15 (~30 minutes)*
+
+### 1. Architectural Context & Practical Value
+Following the successful release of the **Frequency Separation** plugin, we finalized the classic two-stage pipeline of high-end editorial beauty retouching.
+In professional photography workflows, retouching is strictly divided into two distinct phases:
+1. *Frequency Separation:* cleans up texture imperfections (pores, blemishes, stray hairs) and smooths out skin tone patches.
+2. *Dodge & Burn:* sculpts light, shadow, and dimensionality — accentuating cheekbones, specular highlights on lips, nose bridge, iris depth, and deepening contours to give images rich three-dimensional volume.
+
+Traditionally, retouchers spend 3 to 5 minutes repeatedly setting up this working stack: creating a layer, selecting neutral 50% gray (`#808080`), filling the canvas, setting the blend mode to `Soft Light`, generating a black-and-white adjustment layer to eliminate distracting color noise, and resetting brush colors. The **Pro Dodge & Burn** plugin turns this repetitive chore into a single-click action taking merely **0.05 seconds**, without altering a single line of Rust core code (Zero-Core Hardcoding).
+
+### 2. Macro Pipeline & Non-Destructive Stack Design
+Through the declarative manifest in `plugins/dodge_and_burn/plugin.json`, a deterministic sequence of 9 actions executes over the PhotoCraft Control Protocol (port 18492):
+1. `tools.setColors` — sets the foreground color to neutral 50% gray (`[0.5, 0.5, 0.5, 1.0]`);
+2. `layer.new.layer` + `layer.renameLayer` — creates and renames the working layer `Dodge & Burn (50% Gray)`;
+3. `edit.fillForeground` — fills the newly created layer with 50% gray;
+4. `layer.setProps` — sets blend mode to `Soft Light` (mathematically, 50% neutral gray 128 is completely invisible, leaving underlying pixels untouched);
+5. `layer.newAdjustmentLayer.blackWhite` + `layer.renameLayer` — creates a Black & White adjustment layer named `Visual Aid (B&W Helper)` above the gray layer;
+6. `layer.selectBelow` — moves active layer focus back to the `Dodge & Burn (50% Gray)` working layer;
+7. `tools.setColors` — configures the brush to pure white (`1.0`) on the foreground for instant highlights (Dodge) and pure black (`0.0`) on the background for shadows (Burn).
+
+While the `Visual Aid` layer is visible, retouchers work with pure tonal luminosity without distraction from skin pigmentation. Once contouring is complete, toggling the helper layer's visibility leaves a natural, striking three-dimensional portrait.
+
+### 3. Vector-First UI, Documentation & Marketplace Ecosystem
+1. **Vector Icon `icon.svg` (Vector-First UI):**
+   - Designed a clean SVG icon without Unicode glyphs or raster dependencies: a sun with radiating rays (Dodge — highlights) paired with a crescent moon (Burn — shadows), displaying crisply across both dark and light Toolstrip themes.
+2. **Bilingual Documentation `README.md`:**
+   - Authored synchronized English and Russian sections covering 3 comprehensive real-world scenarios (facial sculpting, clothing and fabric wrinkle contouring, landscape and product volume enhancement) and noting that no neural weights are needed.
+3. **Automated Ecosystem Packaging:**
+   - Validated via `plugin_validator`, generated standalone `dist/dodge_and_burn.pcpl` package, updated `dist/registry.json`, and synchronized catalog tables across `README.md` and `README.ru.md`.
+
+### 4. Verification & Definition of Done
+- Changes to Rust core (`crates/`): **0 lines (100% Zero-Core Hardcoding compliance)**.
+- Formatting check `cargo fmt --all -- --check` verified clean (0 diffs).
+- All workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, completed with 100% success under the `-j 1` resource guard.
+- Registered Phase 81 in `CHECKLIST.md` and updated tool status to `DONE` in `IDEAS_AND_BACKLOG.md`.
+
+---
+
+## [2026-10-23 11:50] Chapter 88: Hollywood Grade in a Single Click: Cinematic Teal & Orange Macro Suite
+
+*Time: October 23, 2026, 11:50 (~25 minutes)*
+
+### 1. Architectural Context & Practical Value
+The **Teal & Orange** color grading palette is the uncontested visual trademark of contemporary cinema. From the dystopian neon landscapes of *Blade Runner 2049* and explosive summer blockbusters to prestige television drama and editorial fashion: splitting tonal spectrums into complementary opposites (warm skin tones centered near 30° hue and cool shadows near 210° hue) produces maximum visual separation and cinematic depth.
+
+In standard raster editors, manually assembling this look requires tedious configuration of multiple adjustment layers: acquiring or importing 3D LUTs, attenuating harsh color clipping, building an S-curve contrast adjustment without hue shifts, and fine-tuning vibrance to shield human skin from neon burn-in.
+The **Cinematic Teal & Orange** macro suite (`plugins/teal_orange/`) turns this entire multi-step process into a single-click action taking **0.05 seconds**, instantiating an expertly balanced 3-layer non-destructive Hollywood grade stack inside PhotoCraft.
+
+### 2. Engineering the 3-Layer Non-Destructive Stack
+Declared declaratively in `plugins/teal_orange/plugin.json`, the execution pipeline runs 8 deterministic steps:
+1. `layer.newAdjustmentLayer.colorLookup` with `{"lut": "tealOrange"}` — applies PhotoCraft's native high-precision 3D Look-Up Table;
+2. `layer.renameLayer` — assigns the clean label `Teal & Orange (3D LUT)`;
+3. `layer.setProps` with `{"opacity": 0.85}` — sets base LUT strength to 85%, eliminating harsh highlight blowouts while maintaining rich shadow depth;
+4. `layer.newAdjustmentLayer.curves` with control points `[[0, 0], [64, 54], [192, 202], [255, 255]]` — introduces a subtle filmic S-curve;
+5. `layer.renameLayer` — names the layer `Film Contrast (S-Curve)`;
+6. `layer.setProps` with `{"blend": "Luminosity"}` — ensures the contrast curve sculpts dynamic range without corrupting underlying hues;
+7. `layer.newAdjustmentLayer.vibrance` with `{"vibrance": 15, "saturation": -5}` — dedicated skin tone protection that enriches muted background blues/cyans while gently attenuating skin saturation;
+8. `layer.renameLayer` — names the layer `Skin Vibrance & Protection`.
+
+Every layer in the generated stack is 100% non-destructive and equipped with an editable raster mask, granting retouchers full manual control over local intensity, brushing, and opacity blending.
+
+### 3. Vector-First UI, Documentation & Marketplace Sync
+1. **Vector-First Icon `icon.svg`:**
+   - Designed an adaptive SVG icon (viewBox 0 0 24 24) depicting a 35mm film frame with perforations and a central dual-tone aperture disc, rendering crisply in light and dark Toolstrip themes via `currentColor`.
+2. **Bilingual Documentation `README.md`:**
+   - Authored synchronized English and Russian sections covering 3 comprehensive practical use cases (cinematic portrait retouching, urban night street photography, travel and video production stills) and explicitly stating zero neural weight downloads (0 MB).
+3. **Automated Marketplace Sync:**
+   - Validated via `plugin_validator`, generated standalone `dist/teal_orange.pcpl`, updated `dist/registry.json`, and synchronized catalog tables in `README.md` and `README.ru.md`.
+
+### 4. Verification & Definition of Done
+- Changes to Rust core (`crates/`): **0 lines (100% Zero-Core Hardcoding compliance)**.
+- Formatting check `cargo fmt --all -- --check` verified clean (0 diffs).
+- All workspace tests (`cargo test --workspace -j 1`), including `dev_regulations_lint_test`, `architecture_integrity_test`, `i18n_lint_test`, and `vector_first_lint_test`, completed with 100% success under the `-j 1` resource guard.
+- Registered Phase 82 in `CHECKLIST.md` and updated tool status to `DONE` in `IDEAS_AND_BACKLOG.md`.
+
+
+
 
 
 

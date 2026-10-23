@@ -1,0 +1,70 @@
+{
+  "id": "macro.photocraft.plugins.dodge_and_burn",
+  "name": "Pro Dodge & Burn (50% Gray)",
+  "name_ru": "Pro Dodge & Burn (50% Серый)",
+  "version": "1.0.0",
+  "description": "Creates a non-destructive 50% Gray Soft Light layer with a B&W visual aid layer for professional Dodge & Burn contouring.",
+  "description_ru": "Создает недеструктивный слой 50% серого в режиме Soft Light со вспомогательным Ч/Б слоем для профессиональной светотеневой прорисовки объемов.",
+  "author": "kobaltGIT",
+  "plugin_type": "no_code",
+  "action_id": "plugin:dodge_and_burn",
+  "icon": "icon.svg",
+  "commands": [
+    {
+      "command": "tools.setColors",
+      "params": {
+        "foreground": [0.5, 0.5, 0.5, 1.0]
+      },
+      "description": "Set foreground color to 50% neutral gray"
+    },
+    {
+      "command": "layer.new.layer",
+      "params": {},
+      "description": "Create new blank layer"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Dodge & Burn (50% Gray)"
+      },
+      "description": "Name layer Dodge & Burn (50% Gray)"
+    },
+    {
+      "command": "edit.fillForeground",
+      "params": {},
+      "description": "Fill layer with 50% neutral gray"
+    },
+    {
+      "command": "layer.setProps",
+      "params": {
+        "blend": "Soft Light"
+      },
+      "description": "Set blend mode to Soft Light (neutral gray becomes fully invisible)"
+    },
+    {
+      "command": "layer.newAdjustmentLayer.blackWhite",
+      "params": {},
+      "description": "Add Black & White adjustment layer as non-destructive visual aid"
+    },
+    {
+      "command": "layer.renameLayer",
+      "params": {
+        "name": "Visual Aid (B&W Helper)"
+      },
+      "description": "Name helper layer Visual Aid (B&W Helper)"
+    },
+    {
+      "command": "layer.selectBelow",
+      "params": {},
+      "description": "Select Dodge & Burn working layer below"
+    },
+    {
+      "command": "tools.setColors",
+      "params": {
+        "foreground": [1.0, 1.0, 1.0, 1.0],
+        "background": [0.0, 0.0, 0.0, 1.0]
+      },
+      "description": "Set brush colors: White (Dodge) foreground, Black (Burn) background"
+    }
+  ]
+}
