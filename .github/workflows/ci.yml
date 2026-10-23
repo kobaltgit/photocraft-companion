@@ -37,7 +37,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -j 1 -- -D warnings
 
       - name: Run All Workspace Tests
-        run: cargo test --workspace -j 1
+        run: cargo test --workspace -j 1 -- --test-threads=1
 
       - name: Validate Plugin Ecosystem & Manifests
         run: cargo run --package plugin_validator -j 1 -- --validate plugins
@@ -72,4 +72,4 @@ jobs:
         run: cargo check --workspace --all-targets -j 1
 
       - name: Workspace Tests (Headless Xvfb)
-        run: xvfb-run -a cargo test --workspace -j 1
+        run: xvfb-run -a cargo test --workspace -j 1 -- --test-threads=1
