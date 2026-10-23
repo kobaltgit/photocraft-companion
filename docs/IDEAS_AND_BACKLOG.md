@@ -6,6 +6,41 @@
 
 ## 1. Реестр плагинов и инструментов
 
+### Сводный статус экосистемы плагинов
+
+| # | Плагин | ID | Тип | Статус | Технология / Модель | Zero-Core |
+|:---:|:---|:---|:---:|:---:|:---|:---:|
+| 1 | **AI Remove Background** | `remove_bg` | `AI GPU` | `DONE` | RMBG-1.4 (168 МБ) | **Да** |
+| 2 | **AI Super-Resolution** | `upscale` | `AI GPU` | `DONE` | Real-ESRGAN 2x (64 МБ) | **Да** |
+| 3 | **AI Generative Fill** | `inpaint` | `AI GPU` | `DONE` | LaMa Inpainting (196 МБ) | **Да** |
+| 4 | **AI Depth Map** | `depth_map` | `AI GPU` | `DONE` | Depth Anything V2 (99 МБ) | **Да** |
+| 5 | **B&W Film Pop** | `black_and_white` | `Макрос` | `DONE` | No-Code Macro PhotoCraft | **Да** |
+| 6 | **Beauty Frequency Separation** | `frequency_separation` | `Макрос` | `DONE` | No-Code Macro PhotoCraft | **Да** |
+| 7 | **ChromaSense A11y Assistant** | `chromasense` | `UI Panel` | `DONE` | Rhai Script + egui (SYS-001) | **Да** |
+| 8 | **Cinematic Teal & Orange** | `teal_orange_grading`| `Макрос` | `READY_FOR_DEV` | No-Code Macro PhotoCraft | **Да** |
+| 9 | **3D LUT Cinema Loader** | `lut_loader` | `Rust SIMD` | `READY_FOR_DEV` | SIMD 3D LUT Parser (.cube) | **Да** |
+| 10 | **16-Zone Luminosity Masks** | `luminosity_masks` | `Макрос` | `READY_FOR_DEV` | No-Code Channel Macro | **Да** |
+| 11 | **Pro Dodge & Burn 50% Gray** | `dodge_and_burn` | `Макрос` | `READY_FOR_DEV` | No-Code Macro PhotoCraft | **Да** |
+| 12 | **Multi-Format Social Auto-Crop**| `social_autocrop` | `Макрос` | `READY_FOR_DEV` | No-Code Macro PhotoCraft | **Да** |
+| 13 | **2D Sprite Sheet Packer** | `sprite_sheet_packer`| `Rust Alg` | `READY_FOR_DEV` | MaxRects 2D Bin Packing | **Да** |
+| 14 | **CMYK Gamut Warning** | `cmyk_gamut_warning` | `Rust CMS` | `READY_FOR_DEV` | Little-CMS (lcms2) | **Да** |
+| 15 | **AI Zero-DCE Low-Light** | `zero_dce` | `AI GPU` | `READY_FOR_DEV` | Zero-DCE++ (1.5 МБ) | **Да** |
+| 16 | **AI DeHaze & Atmosphere Clear** | `dehaze` | `AI GPU` | `READY_FOR_DEV` | AOD-Net / DehazeFormer (5 МБ) | **Да** |
+| 17 | **AI Normal Map Generator** | `normal_map` | `AI GPU` | `READY_FOR_DEV` | DSINE / Bae-Normal (120 МБ) | **Да** |
+| 18 | **AI Historical Colorizer** | `colorizer` | `AI GPU` | `BACKLOG` | DDColor Lab (130 МБ, SYS-006)| **Контракт (SYS-006)** |
+| 19 | **AI Lineart & Manga Inker** | `lineart_extractor` | `AI GPU` | `READY_FOR_DEV` | Anime2Sketch (50 МБ) | **Да** |
+| 20 | **AI Optical Deblur** | `motion_deblur` | `AI GPU` | `READY_FOR_DEV` | NAFNet-Deblur (65 МБ) | **Да** |
+| 21 | **AI Reflection Remover** | `reflection_remover` | `AI GPU` | `READY_FOR_DEV` | DSRNet (35 МБ) | **Да** |
+| 22 | **AI Auto-Cleaner (Watermarks)** | `auto_cleaner` | `AI GPU` | `READY_FOR_DEV` | DBNet + LaMa (208 МБ) | **Да** |
+| 23 | **AI Ground Shadow Generator** | `shadow_gen` | `AI GPU` | `CONSOLIDATED` | FSSG (входит в #27) | **Да** |
+| 24 | **AI Semantic Masker** | `semantic_masker` | `AI GPU` | `READY_FOR_DEV` | BiRefNet-matting (140 МБ) | **Да** |
+| 25 | **AI Harmonization** | `harmonize` | `AI GPU` | `CONSOLIDATED` | Harmonizer (входит в #27) | **Контракт (SYS-004)** |
+| 26 | **Smart Vectorizer / SVG Trace** | `vectorize` | `Native Alg`| `DONE` | vtracer 0.6.5 (Rust) | **Да** |
+| 27 | **AI Scene Compositor** | `scene_compositor` | `AI+Rust` | `BACKLOG` | Harmonizer+DEShadow+DSINE | **Контракт (SYS-004/005)**|
+| 28 | **AI Mockup Studio** | `mockup_studio` | `AI+Rust` | `BACKLOG` | Smart Object Runner (SYS-005)| **Контракт (SYS-005)** |
+
+---
+
 ### 1. AI Remove Background (`remove_bg`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
@@ -85,18 +120,33 @@
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
-| `Макрос` | `READY_FOR_DEV` | **P1** | Активный слой | Макрос PhotoCraft (0 МБ) | Не применимо (Макрос) | **Да** |
+| `Макрос` | `DONE` | **P1** | Активный слой | Встроенные фильтры PhotoCraft (0 МБ) | Золотой стандарт бьюти-ретуши | **Да** |
 
-* **Проблема штатного редактора:** Ручное частотное разложение на низкие (тон, цвет) и высокие (текстура, поры) частоты требует 10–12 последовательных действий со слоями, режимами наложения и инверсией.
-* **Что делает наш плагин и ценность:** Автоматически раскладывает активный портрет на два слоя: `Low Frequency (Color/Tone)` и `High Frequency (Texture/Linear Light)`. Профессиональная ретушь кожи за 1 клик: ретушер выравнивает тон на низких частотах, сохраняя 100% пор и деталей на высоких.
+* **Проблема штатного редактора:** Ручное частотное разложение на низкие (тон, цвет) и высокие (текстура, поры) частоты требует 10–12 последовательных рутинных действий со слоями, фильтрами и режимами наложения.
+* **Что делает наш плагин и ценность:** Автоматически за < 100 мс раскладывает активный портрет на два рабочих слоя: `Low Frequency (Color & Tone)` (сглаженный светотеневой рисунок, Gaussian Blur 4.0 px) и `High Frequency (Texture)` (микропоры и детали, High Pass 4.0 px в режиме `Linear Light`). Математическая сумма слоев до бита воссоздает исходный снимок, а ретушер получает возможность выравнивать тон и пятна на коже мягкой кистью или штампом, сохраняя 100% естественных пор и фактуры.
 * **Входные данные:** Активный слой
 * **Лицензия и источник:** MIT
-* **Актуальность SOTA и альтернативы:** Не применимо (Макрос)
-* **Парадигма ядра и реализация:** `NoCode Macro` • Легко, декларативный манифест `plugin.json` (`layer.duplicate`, `filter.gaussianBlur`, `layer.blendMode`) • Изменения в ядре: **Нет**
+* **Актуальность SOTA и альтернативы:** Золотой стандарт мировой индустрии бьюти-ретуши (детерминированная замена ненадежным и мылящим нейросетям NAFNet/DeOldify).
+* **Парадигма ядра и реализация:** `NoCode Macro` • Реализован в `plugins/frequency_separation/` (8 детерминированных шагов: `layer.duplicate`, `layer.renameLayer`, `filter.other.highPass`, `layer.setProps`, `layer.selectBelow`, `filter.blur.gaussianBlur`) • Изменения в ядре: **Нет**
 
 ---
 
-### 7. Cinematic Teal & Orange (`teal_orange_grading`)
+### 7. ChromaSense A11y Color Assistant (`chromasense`)
+
+| Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
+|---|---|---|---|---|---|---|
+| `UI Panel` | `DONE` | **P1** | IPC `session.colors` | Скрипт Rhai + egui виджеты (0 МБ) | WCAG 2.1 Color Accessibility | **Да** |
+
+* **Проблема штатного редактора:** В PhotoCraft отсутствуют инструменты проверки цветовой доступности (WCAG 2.1) и моделирования восприятия графики людьми с дальтонизмом; художники с нарушениями цветового зрения не имеют инструмента навигации по оттенкам.
+* **Что делает наш плагин и ценность:** Отдельное плавающее мульти-окно ассистента: симуляция дейтеранопии, протанопии и тританопии в реальном времени, цветовой компас оттенков, динамический анализатор контраста текста и фона, а также предупреждения о коллизиях цветов. Работает на базе песочницы Rhai (`SYS-001`) без пересборки приложения.
+* **Входные данные:** Активные цвета сессии (Foreground / Background через IPC сокет 18492)
+* **Лицензия и источник:** MIT
+* **Актуальность SOTA и альтернативы:** Уникальный интерактивный a11y-инструмент в экосистеме PhotoCraft.
+* **Парадигма ядра и реализация:** `PluginType::InteractiveUi` • Реализован в `plugins/chromasense/` (`logic.rhai`, декларативные виджеты, подписка на `session.colors`) • Изменения в ядре: **Нет** (использует архитектуру `SYS-001`)
+
+---
+
+### 8. Cinematic Teal & Orange (`teal_orange_grading`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -111,7 +161,7 @@
 
 ---
 
-### 8. 3D LUT Cinema Loader (`lut_loader`)
+### 9. 3D LUT Cinema Loader (`lut_loader`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -127,7 +177,7 @@
 ---
 
 
-### 9. Full 16-Zone Luminosity Masks (`luminosity_masks`)
+### 10. Full 16-Zone Luminosity Masks (`luminosity_masks`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -142,7 +192,7 @@
 
 ---
 
-### 10. Pro Dodge & Burn 50% Gray Suite (`dodge_and_burn`)
+### 11. Pro Dodge & Burn 50% Gray Suite (`dodge_and_burn`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -157,7 +207,7 @@
 
 ---
 
-### 11. Multi-Format Social Auto-Crop (`social_autocrop`)
+### 12. Multi-Format Social Auto-Crop (`social_autocrop`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -172,7 +222,7 @@
 
 ---
 
-### 12. 2D Game Sprite Sheet Packer (`sprite_sheet_packer`)
+### 13. 2D Game Sprite Sheet Packer (`sprite_sheet_packer`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -187,7 +237,7 @@
 
 ---
 
-### 13. CMYK Gamut Warning & Soft-Proofing (`cmyk_gamut_warning`)
+### 14. CMYK Gamut Warning & Soft-Proofing (`cmyk_gamut_warning`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -202,7 +252,7 @@
 
 ---
 
-### 14. AI Zero-DCE Low-Light Enhancer (`zero_dce`)
+### 15. AI Zero-DCE Low-Light Enhancer (`zero_dce`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -217,7 +267,7 @@
 
 ---
 
-### 15. AI DeHaze & Atmosphere Clear (`dehaze`)
+### 16. AI DeHaze & Atmosphere Clear (`dehaze`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -232,7 +282,7 @@
 
 ---
 
-### 16. AI Normal Map Generator (`normal_map`)
+### 17. AI Normal Map Generator (`normal_map`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -247,23 +297,24 @@
 
 ---
 
-### 17. AI Historical Colorizer (`colorizer`)
+### 18. AI Historical Colorizer (`colorizer`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
 | `AI GPU` | `BACKLOG` | **P1** | Активный слой | `DDColor` (2024, 130 МБ) | Мировой SOTA CVPR 2024 | **Контракт (SYS-006)** |
 
-* **Проблема штатного редактора:** Ручная колоризация черно-белых снимков требует часов ручной работы со слоями и масками; в PhotoCraft нет семантического цвета.
+* **Проблема штатного редактора:** Ручная колоризация черно-белых снимков требует часов кропотливой ручной работы со слоями и масками; в PhotoCraft нет семантического понимания цвета сцены.
 * **Что делает наш плагин и ценность:** Распознает контекст объектов (кожа, форма, ткань, кирпич, небо, деревья) и генерирует реалистичный полноцветный слой в режиме наложения Color. Восстановление семейных архивов, исторических кадров и старых фотоальбомов за 1 клик прямо в окне редактора.
 * **Входные данные:** Активный слой
 * **Лицензия и источник:** Apache-2.0 • [github.com/piddnad/DDColor](https://github.com/piddnad/DDColor)
 * **Актуальность SOTA и альтернативы:** Актуально (Мировой SOTA CVPR 2024) • Альтернативы: `DeOldify-Artistic` (2022) / `BigColor` (2023)
-* **Парадигма ядра и реализация:** `ImageToImage (lab_chroma)` • Требуется поддержка 2-канального Lab-вывода [1, 2, H, W] и слияния с оригинальной яркостью L • Изменения в ядре: **Да (SYS-006)**
+* **Архитектурный вывод тестирования DeOldify:** Прямая генерация sRGB-пикселей через тайлинг (512×512) на высоких разрешениях неприемлема для продакшна: она приводит к шахматному расхождению цветовой температуры между соседними тайлами, паразитным желто-зеленым ореолам на стыках и искажению оригинального тонального контраста. Настоящая студийная колоризация требует сохранения 100% оригинальной яркости $L$ и предсказания только цветоразностных каналов $ab$ в пространстве CIE Lab.
+* **Парадигма ядра и реализация:** `ImageToImage (lab_chroma)` • Требуется реализация спецификации `SYS-006`: поддержка 2-канального тензорного вывода `[1, 2, H, W]` ($ab$) и быстрого Rust SIMD слияния `Lab -> sRGB` с нативным $L$-каналом фото • Изменения в ядре: **Да (SYS-006)**
 
 ---
 
 
-### 18. AI Lineart & Manga Inker (`lineart_extractor`)
+### 19. AI Lineart & Manga Inker (`lineart_extractor`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -278,7 +329,7 @@
 
 ---
 
-### 19. AI Optical Deblur & Anti-Shake (`motion_deblur`)
+### 20. AI Optical Deblur & Anti-Shake (`motion_deblur`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -293,7 +344,7 @@
 
 ---
 
-### 20. AI Reflection & Glare Remover (`reflection_remover`)
+### 21. AI Reflection & Glare Remover (`reflection_remover`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -308,7 +359,7 @@
 
 ---
 
-### 21. AI Auto-Cleaner: Watermarks & Text (`auto_cleaner`)
+### 22. AI Auto-Cleaner: Watermarks & Text (`auto_cleaner`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -323,13 +374,13 @@
 
 ---
 
-### 22. AI Ground Shadow Generator (`shadow_gen`) [КОНСОЛИДИРОВАН В #26]
+### 23. AI Ground Shadow Generator (`shadow_gen`) [КОНСОЛИДИРОВАН В #27]
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
 | `AI GPU` | `CONSOLIDATED` | **P1** | Слой с альфа-каналом | `FSSG` / `DEShadow` (50 МБ) | SOTA | **Да** |
 
-* **Статус консолидации:** Включен как встроенный быстрый пресет («Товар / E-commerce») в мастер-плагин **#26 `scene_compositor`**, чтобы не перегружать тулбар отдельными кнопками.
+* **Статус консолидации:** Включен как встроенный быстрый пресет («Товар / E-commerce») в мастер-плагин **#27 `scene_compositor`**, чтобы не перегружать тулбар отдельными кнопками.
 * **Проблема штатного редактора:** При вырезании объекта и вставке на новый фон встроенный Drop Shadow дает плоскую неестественную тень под углом без учета перспективы и без контактной тени.
 * **Что делает наш плагин и ценность:** Анализирует силуэт вырезанного объекта и генерирует физически корректную перспективную тень на полу с мягким затуханием и плотным пятном Ambient Occlusion у основания. Карточки товаров для маркетплейсов и e-commerce, рекламный дизайн и реалистичный фотомонтаж.
 * **Входные данные:** Активный слой (объект с альфа-каналом)
@@ -339,7 +390,7 @@
 
 ---
 
-### 23. AI Semantic Masker (Sky/Hair/Skin) (`semantic_masker`)
+### 24. AI Semantic Masker (Sky/Hair/Skin) (`semantic_masker`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -354,13 +405,13 @@
 
 ---
 
-### 24. AI Harmonization / Color Match (`harmonize`) [КОНСОЛИДИРОВАН В #26]
+### 25. AI Harmonization / Color Match (`harmonize`) [КОНСОЛИДИРОВАН В #27]
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
 | `AI GPU` | `CONSOLIDATED` | **P1** | 2 слоя (объект + фон) | `Harmonizer` (90 МБ) | SOTA | Контракт (SYS-004) |
 
-* **Статус консолидации:** Включен как встроенный этап и тумблер в мастер-плагин **#26 `scene_compositor`**.
+* **Статус консолидации:** Включен как встроенный этап и тумблер в мастер-плагин **#27 `scene_compositor`**.
 * **Проблема штатного редактора:** Вставленный на новый фон вырезанный объект диссонирует по температуре, яркости и цветовому балансу; стандартные авто-цвета не учитывают контекст окружения.
 * **Что делает наш плагин и ценность:** Анализирует вырезанный объект и подложку, гармонизируя тон, контрастность и отраженный свет объекта под окружающий фон без потери деталей. Ускорение создания фотоколлажей и композитинга в десятки раз для концепт-артистов, дизайнеров и маркетологов.
 * **Входные данные:** 2 слоя (активный объект + фон)
@@ -370,7 +421,7 @@
 
 ---
 
-### 25. Smart Vectorizer / SVG Trace (`vectorize`)
+### 26. Smart Vectorizer / SVG Trace (`vectorize`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -385,13 +436,13 @@
 
 ---
 
-### 26. AI Scene Compositor: Smart Object Insertion (`scene_compositor`)
+### 27. AI Scene Compositor: Smart Object Insertion (`scene_compositor`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
 | `AI GPU + Rust` | `BACKLOG` | **P1** | 2 слоя (объект + фон) | `Harmonizer` + `DEShadow` + `DSINE` (~235 МБ) | Комплексный SOTA | Контракт (SYS-004) |
 
-* **Концепция All-in-One:** Единый флагманский комбайн внедрения вырезанного объекта в окружение, объединяющий генерацию тени (#22), гармонизацию цвета (#24) и релайтинг с контурным светом (Rim Light). Устраняет захламление панели тулбара тремя отдельными кнопками.
+* **Концепция All-in-One:** Единый флагманский комбайн внедрения вырезанного объекта в окружение, объединяющий генерацию тени (#23), гармонизацию цвета (#25) и релайтинг с контурным светом (Rim Light). Устраняет захламление панели тулбара тремя отдельными кнопками.
 * **Интерфейс и One-Click Пресеты в оверлее:**
   * ⚡ **«Поместить в сцену (Всё сразу)»** (Дефолт в 1 клик: Цвет + Тень + Свет).
   * 👤 **«Портрет / Персонаж»** (Гармонизация цвета + Rim Light, без тени на полу).
@@ -410,7 +461,7 @@
 
 ---
 
-### 27. AI Mockup Studio & Smart Object Runner (`mockup_studio`)
+### 28. AI Mockup Studio & Smart Object Runner (`mockup_studio`)
 
 | Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
 |---|---|---|---|---|---|---|
@@ -444,7 +495,7 @@
 
 | ID | Компонент | Описание и статус |
 |---|---|---|
-| **SYS-001** | Embedded Script Engine (Rhai) | Встроенный скриптинг на чистом Rust для легковесной автоматизации (`plugin.rhai`) без компиляции. *(Специфицирован)* |
+| **SYS-001** | Embedded Script Engine (Rhai) | Встроенный скриптинг на чистом Rust для легковесной логики (`logic.rhai`), декларативных виджетов и подписок на IPC без пересборки ядра. *(РЕАЛИЗОВАН / DONE — на нем работает плагин ChromaSense)* |
 | **SYS-002** | External CLI Runner | Запуск внешних консольных утилит (Python, ImageMagick, Go, C++) с передачей параметров документа и растра. *(Специфицирован)* |
 | **SYS-003** | Dynamic C-ABI DynLib Runner | Поддержка сторонних динамических библиотек (`.dll` / `.so` / `.dylib`) через `libloading`. *(Специфицирован)* |
 | **SYS-004** | Multi-Layer Input Contract | Возможность передавать в плагин сразу несколько слоев (активный слой + композитный фон) для плагинов гармонизации и релайтинга. *(Бэклог)* |
