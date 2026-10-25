@@ -26,7 +26,7 @@ pub enum ConnectionState {
 
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ButtonConfig {
     pub label: String,
     pub action: String,
@@ -43,22 +43,6 @@ pub struct ButtonConfig {
     pub name_ru: Option<String>,
     #[serde(default)]
     pub locales: std::collections::HashMap<String, PluginLocaleInfo>,
-}
-
-impl Default for ButtonConfig {
-    fn default() -> Self {
-        Self {
-            label: String::new(),
-            action: String::new(),
-            icon: None,
-            icon_path: None,
-            plugin_dir: None,
-            sub_actions: Vec::new(),
-            active_sub_action: None,
-            name_ru: None,
-            locales: std::collections::HashMap::new(),
-        }
-    }
 }
 
 impl ButtonConfig {
