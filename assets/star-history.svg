@@ -99,7 +99,7 @@
       <g transform="translate(0, 0)">
         <rect width="115" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#334155" stroke-width="1" />
         <text x="16" y="27" font-size="12" font-weight="600" fill="#64748b">Age:</text>
-        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">12 days</text>
+        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">13 days</text>
       </g>
 
       <!-- Star Counter Badge -->
