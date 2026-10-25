@@ -12,14 +12,14 @@
 
 [![CI & Quality Gate](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/kobaltgit/photocraft-companion/actions/workflows/ci.yml)
 [![Discord](https://img.shields.io/badge/Discord-Companion_Server-5865F2?logo=discord&logoColor=white)](https://discord.gg/2gzn4Un4Bw)
-[![Release: v1.2.2](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.2.2)
+[![Release: v1.3.0](https://img.shields.io/github/v/release/kobaltgit/photocraft-companion?color=blue)](https://github.com/kobaltgit/photocraft-companion/releases/tag/v1.3.0)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust: 2021 Edition](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![GUI: egui 0.36](https://img.shields.io/badge/GUI-egui_0.36-blueviolet.svg)](https://github.com/emilk/egui)
 [![AI Backend: DirectML GPU](https://img.shields.io/badge/AI_Backend-DirectML_GPU-brightgreen.svg)](https://github.com/microsoft/DirectML)
 [![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
 [![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
-[![Tests: 159 Passing](https://img.shields.io/badge/Tests-159_Passing-success.svg)](crates/)
+[![Tests: 194 Passing](https://img.shields.io/badge/Tests-194_Passing-success.svg)](crates/)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
@@ -107,9 +107,17 @@ Here is how **PhotoCraft Companion** elevates the editing experience:
   - Plugin neural weights are fully self-contained inside each plugin directory (`plugins/<id>/models/`).
   - Model integrity verification, progress bars with live transfer speed (MB/s), and automatic missing weights downloader directly in the UI.
 
-- ⏳ **Resilient Waiting / Offline Mode:**
-  - The companion does not crash if PhotoCraft is not running; it displays a sleek standby window.
-  - Background polling every 1.5s: when PhotoCraft starts, the toolbar smoothly appears above the canvas.
+- 🌐 **Internationalization (15 UI Languages, 22 Host Parameter Languages) & Smart Parameter Retry:**
+  - **15 Verified UI Languages (`Language::UI_SUPPORTED`):** Complete Companion interface localization for Latin and Cyrillic script languages with guaranteed font rendering in egui, strictly avoiding unsupported CJK ideographs to prevent Unicode tofu squares (`□`).
+  - **Safe Font Fallback (`safe_ui_language`):** When PhotoCraft runs in East Asian or complex script environments (Japanese, Chinese, Korean, Hindi), Companion UI automatically and safely renders in English.
+  - **Smart Parameter Retry:** Automatic translation of internal PhotoCraft parameters (such as 28 layer blend modes) across all 22 official host languages.
+  - **Native System Locale Detection:** Native BCP 47 dialect normalization (`sys-locale`) automatically matching PhotoCraft's interface language out of the box (`ru-KZ` -> `ru`, `cs-CZ` -> `cs`).
+  - **Multilingual Plugin Manifests:** Full support for `locales` dictionary in `plugin.json` and sub-actions.
+
+- ⏳ **Modernized Standby / Offline UX:**
+  - Sleek waiting window when PhotoCraft is not running, featuring background polling on port 18492.
+  - Free drag-and-drop movement across multi-monitor setups with coordinate persistence.
+  - Vector pushpin for Always-on-Top pinning and minimize-to-tray capability without interrupting socket monitoring.
 
 - 🔔 **Instant Reactive System Tray (0 ms):**
   - System tray icon across Windows, Linux, and macOS with zero-latency dispatching and native Win32 dark context menu support.
@@ -122,9 +130,9 @@ Ready-to-use binaries are built for every platform as both full **installers** a
 
 | Platform                          | Installer (Setup)                             | Portable Archive                                           | Notes                                                              |
 | :-------------------------------- | :-------------------------------------------- | :--------------------------------------------------------- | :----------------------------------------------------------------- |
-| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.2.2-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
-| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-macos.dmg`              | `PhotoCraft-Companion-v1.2.2-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
-| **Linux (x86_64)**                | `PhotoCraft-Companion-v1.2.2-linux-amd64.deb` | `PhotoCraft-Companion-v1.2.2-linux-x86_64-portable.tar.gz` | Debian package with desktop icon & app menu / Standalone tar.gz    |
+| **Windows (x64)**                 | `PhotoCraft-Companion-Setup-Windows-x64.exe`  | `PhotoCraft-Companion-v1.3.0-windows-x64-portable.zip`     | Inno Setup installer with tray autostart / No-registry portable zip |
+| **macOS (Apple Silicon & Intel)** | `PhotoCraft-Companion-Setup-macOS.dmg`        | `photocraft-companion-v1.3.0-macos-portable.tar.gz`        | Drag-and-drop DMG image for `/Applications` / Standalone `.app`    |
+| **Linux (x86_64)**                | `photocraft-companion_1.3.0_amd64.deb`        | `photocraft-companion-v1.3.0-linux-x64-portable.tar.gz`    | Debian package with desktop icon & app menu / Standalone tar.gz    |
 
 > [!TIP]
 > All release binaries are published on the **[GitHub Releases](https://github.com/kobaltgit/photocraft-companion/releases)** page.
@@ -301,7 +309,7 @@ Download community plugins as ready-to-use `.pcpl` packages and drop them into y
 | <img src="plugins/dodge_and_burn/icon.svg" width="28" height="28"> | **Pro Dodge & Burn (50% Gray)**<br>_Creates a non-destructive 50% Gray Soft Light layer with a B&W visual aid layer for professional Dodge & Burn contouring._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/dodge_and_burn.pcpl) |
 | <img src="plugins/frequency_separation/icon.svg" width="28" height="28"> | **Frequency Separation (Retouch)**<br>_Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/frequency_separation.pcpl) |
 | <img src="plugins/inpaint/icon.svg" width="28" height="28"> | **AI Generative Fill (LaMa)**<br>_Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/inpaint.pcpl) |
-| <img src="plugins/remove_bg/icon.svg" width="28" height="28"> | **AI Remove Background (RMBG-1.4)**<br>_High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime._ | `🤖 AI (ONNX)` | `1.1.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/remove_bg.pcpl) |
+| <img src="plugins/remove_bg/icon.svg" width="28" height="28"> | **AI Remove Background (RMBG-1.4)**<br>_High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime._ | `🤖 AI (ONNX)` | `1.1.1` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/remove_bg.pcpl) |
 | <img src="plugins/teal_orange/icon.svg" width="28" height="28"> | **Cinematic Teal & Orange**<br>_Applies a Hollywood cinematic color grade with 3D LUT, film contrast S-curve, and skin vibrance protection._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/teal_orange.pcpl) |
 | <img src="plugins/upscale/icon.svg" width="28" height="28"> | **AI Super-Resolution (2x)**<br>_2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime & DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/upscale.pcpl) |
 | <img src="plugins/vectorize/icon.svg" width="28" height="28"> | **Smart Vectorizer / SVG Trace**<br>_High-fidelity vectorization and SVG tracing of raster layers with Bezier curve fitting._ | `📐 Algorithm` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/vectorize.pcpl) |

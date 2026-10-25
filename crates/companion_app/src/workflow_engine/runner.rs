@@ -1,5 +1,7 @@
 use super::resolver::{resolve_value, ExecutionContext};
-use core_contracts::{BridgeOperations, PluginCommandStep, Result};
+use core_contracts::{
+    is_translatable_param, to_host_locale, BridgeOperations, Language, PluginCommandStep, Result,
+};
 use tracing::{debug, info, warn};
 
 /// Evaluates execution condition for a step against context state
@@ -23,6 +25,55 @@ fn evaluate_condition(when: &str, ctx: &ExecutionContext) -> bool {
             Some(serde_json::Value::Null) | None => false,
             Some(_) => true,
         }
+    }
+}
+
+/// Recursively traverses a JSON value and replaces known canonical terminology with localized terms for `host_lang`.
+/// Returns the new JSON value and a boolean indicating whether any replacement took place.
+pub fn translate_value_to_host(
+    val: &serde_json::Value,
+    host_lang: &str,
+) -> (serde_json::Value, bool) {
+    match val {
+        serde_json::Value::Object(map) => {
+            let mut changed = false;
+            let mut new_map = serde_json::Map::new();
+            for (k, v) in map {
+                if is_translatable_param(k) {
+                    if let serde_json::Value::String(s) = v {
+                        if let Some(trans) = to_host_locale(s, host_lang) {
+                            if trans != s {
+                                new_map.insert(
+                                    k.clone(),
+                                    serde_json::Value::String(trans.to_string()),
+                                );
+                                changed = true;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                let (trans_v, sub_changed) = translate_value_to_host(v, host_lang);
+                if sub_changed {
+                    changed = true;
+                }
+                new_map.insert(k.clone(), trans_v);
+            }
+            (serde_json::Value::Object(new_map), changed)
+        }
+        serde_json::Value::Array(arr) => {
+            let mut changed = false;
+            let mut new_arr = Vec::with_capacity(arr.len());
+            for item in arr {
+                let (trans_item, item_changed) = translate_value_to_host(item, host_lang);
+                if item_changed {
+                    changed = true;
+                }
+                new_arr.push(trans_item);
+            }
+            (serde_json::Value::Array(new_arr), changed)
+        }
+        _ => (val.clone(), false),
     }
 }
 
@@ -69,7 +120,49 @@ pub async fn execute_steps(
             );
         }
 
-        match client.execute_command(&step.command, resolved_params).await {
+        // Canonical-first + Smart Retry:
+        // 1. Try canonical English parameters first (zero overhead for English hosts and when PhotoCraft updates)
+        // 2. If it fails and localized translations exist for host locale, retry with translated parameters
+        let first_try = client
+            .execute_command(&step.command, resolved_params.clone())
+            .await;
+        let command_result = match first_try {
+            Ok(output) => Ok(output),
+            Err(original_err) => {
+                let target_locale = ctx.host_language.as_deref().unwrap_or("auto");
+                let effective_locale = if target_locale == "auto" {
+                    Language::Auto.resolve(None).code()
+                } else {
+                    target_locale
+                };
+
+                let (translated_params, changed) =
+                    translate_value_to_host(&resolved_params, effective_locale);
+
+                if changed {
+                    info!(
+                        "Step [{}/{}] '{}' failed with canonical params: {}. Retrying with host locale '{}' params: {}",
+                        idx + 1,
+                        steps.len(),
+                        step.command,
+                        original_err,
+                        effective_locale,
+                        translated_params
+                    );
+                    match client
+                        .execute_command(&step.command, translated_params)
+                        .await
+                    {
+                        Ok(retry_output) => Ok(retry_output),
+                        Err(_) => Err(original_err),
+                    }
+                } else {
+                    Err(original_err)
+                }
+            }
+        };
+
+        match command_result {
             Ok(output) => {
                 if let Some(ref save_var) = step.save_as {
                     if let Some(layer_id) = output
@@ -243,5 +336,86 @@ mod tests {
         let mut ctx = ExecutionContext::default();
         let res = execute_steps(&steps, &mut ctx, &bridge).await;
         assert!(res.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_smart_retry_with_localized_blend_mode() {
+        struct MockLocalizedBridge;
+        #[async_trait]
+        impl BridgeOperations for MockLocalizedBridge {
+            async fn execute_command(
+                &self,
+                command: &str,
+                params: serde_json::Value,
+            ) -> Result<serde_json::Value> {
+                if command == "layer.setProps" {
+                    if let Some(b) = params.get("blend").and_then(|v| v.as_str()) {
+                        if b == "Soft Light" {
+                            return Err(CompanionError::Bridge(
+                                "unknown blend mode `Soft Light`".to_string(),
+                            ));
+                        } else if b == "Weiches Licht" {
+                            return Ok(json!({ "status": "ok", "applied": "Weiches Licht" }));
+                        }
+                    }
+                }
+                Ok(json!({ "status": "ok" }))
+            }
+            async fn copy_active_layer_image(&self) -> Result<RgbaImage> {
+                Ok(RgbaImage::new(1, 1))
+            }
+            async fn paste_image_in_place(&self, _image: &RgbaImage) -> Result<serde_json::Value> {
+                Ok(json!({}))
+            }
+            async fn rename_layer(
+                &self,
+                _layer_id: u64,
+                _new_name: &str,
+            ) -> Result<serde_json::Value> {
+                Ok(json!({}))
+            }
+            async fn get_document_info(&self) -> Result<DocumentInfo> {
+                Ok(DocumentInfo::default())
+            }
+        }
+
+        let bridge = MockLocalizedBridge;
+        let steps = vec![PluginCommandStep {
+            command: "layer.setProps".to_string(),
+            params: json!({ "blend": "Soft Light" }),
+            save_as: Some("result".to_string()),
+            ignore_errors: false,
+            when: None,
+            description: None,
+        }];
+
+        let mut ctx = ExecutionContext {
+            host_language: Some("de".to_string()),
+            ..Default::default()
+        };
+
+        let res = execute_steps(&steps, &mut ctx, &bridge).await;
+        assert!(
+            res.is_ok(),
+            "Expected retry to succeed with German blend mode"
+        );
+        assert_eq!(ctx.custom_vars["result"]["applied"], "Weiches Licht");
+    }
+
+    #[tokio::test]
+    async fn test_translate_value_to_host() {
+        let input = json!({
+            "blend": "Soft Light",
+            "opacity": 0.85,
+            "nested": {
+                "mode": "Linear Light"
+            }
+        });
+
+        let (translated, changed) = translate_value_to_host(&input, "de");
+        assert!(changed);
+        assert_eq!(translated["blend"], "Weiches Licht");
+        assert_eq!(translated["opacity"], 0.85);
+        assert_eq!(translated["nested"]["mode"], "Lineares Licht");
     }
 }

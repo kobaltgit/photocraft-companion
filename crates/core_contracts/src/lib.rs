@@ -39,9 +39,44 @@ pub struct ButtonConfig {
     pub sub_actions: Vec<SubAction>,
     #[serde(default)]
     pub active_sub_action: Option<String>,
+    #[serde(default)]
+    pub name_ru: Option<String>,
+    #[serde(default)]
+    pub locales: std::collections::HashMap<String, PluginLocaleInfo>,
+}
+
+impl Default for ButtonConfig {
+    fn default() -> Self {
+        Self {
+            label: String::new(),
+            action: String::new(),
+            icon: None,
+            icon_path: None,
+            plugin_dir: None,
+            sub_actions: Vec::new(),
+            active_sub_action: None,
+            name_ru: None,
+            locales: std::collections::HashMap::new(),
+        }
+    }
 }
 
 impl ButtonConfig {
+    pub fn name_for_lang(&self, lang: Language) -> &str {
+        let code = lang.code();
+        if let Some(loc) = self.locales.get(code) {
+            if let Some(ref n) = loc.name {
+                if !n.trim().is_empty() {
+                    return n;
+                }
+            }
+        }
+        if (code == "ru" || code.starts_with("ru")) && self.name_ru.is_some() {
+            return self.name_ru.as_deref().unwrap();
+        }
+        &self.label
+    }
+
     pub fn sub_action_icon_path(&self, sub: &SubAction) -> Option<PathBuf> {
         if let (Some(dir), Some(icon_name)) = (&self.plugin_dir, &sub.icon) {
             let p = dir.join(icon_name);
@@ -67,13 +102,16 @@ impl ButtonConfig {
 pub mod i18n;
 pub use i18n::Language;
 
+pub mod host_i18n;
+pub use host_i18n::{is_translatable_param, normalize_term, to_canonical, to_host_locale};
+
 pub mod plugin;
 pub use plugin::{
     ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
     BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode,
-    Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginManifest,
-    PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, SubAction, WidgetNode,
-    IPC_SUB_SESSION_COLORS,
+    Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginLocaleInfo,
+    PluginManifest, PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, SubAction,
+    WidgetNode, IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;

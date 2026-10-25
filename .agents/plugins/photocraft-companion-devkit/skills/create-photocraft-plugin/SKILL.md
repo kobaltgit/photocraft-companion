@@ -143,6 +143,23 @@ description: Пошаговое создание нового автономно
     "default_width": 320.0,
     "default_height": 420.0,
     "script": "logic.rhai",
+
+### Интернационализация (i18n): словарь `locales` и канонические параметры
+1. **Словарь `locales` в `plugin.json`:**
+   Для перевода названия и описания на другие языки (de, fr, es, ja, zh-hans и т.д.) используйте секцию `locales`:
+   ```json
+   "locales": {
+     "de": { "name": "...", "description": "..." },
+     "fr": { "name": "...", "description": "..." },
+     "ja": { "name": "...", "description": "..." }
+   }
+   ```
+   В `sub_actions` вариации также поддерживают `"locales": { "de": { "name": "..." } }`.
+2. **Канонические параметры команд (Smart Parameter Retry):**
+   Всегда указывайте команды и параметры на английском языке (`"blend": "Soft Light"`, `"channel": "transparency"`).
+   Движок Компаньона автоматически определит язык PhotoCraft и, если локализованный редактор отклонит каноническую команду, на лету переведет параметр и повторит выполнение без ошибки.
+
+
     "ipc_subscriptions": [
       "session.colors"
     ],

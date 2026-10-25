@@ -413,6 +413,7 @@ fn main() -> anyhow::Result<()> {
     let data_dir_exec = data_dir.clone();
     let plugins_dir_exec = plugins_dir.clone();
     let config_path_exec = config_path.clone();
+    let prefs_path_exec = prefs_path.clone();
     let exec_status: SharedExecutionStatus = Arc::new(std::sync::Mutex::new(ExecutionState::Idle));
     let exec_status_worker = exec_status.clone();
 
@@ -472,6 +473,11 @@ fn main() -> anyhow::Result<()> {
                         .clone()
                         .unwrap_or_else(|| plugins_dir_exec.join(&manifest.id));
 
+                    let current_host_lang = core_contracts::Language::Auto
+                        .resolve(Some(&prefs_path_exec))
+                        .code()
+                        .to_string();
+
                     let mut exec_ctx = workflow_engine::ExecutionContext {
                         source_layer_id: doc.active_layer,
                         result_layer_id: None,
@@ -483,6 +489,7 @@ fn main() -> anyhow::Result<()> {
                         fg_color: None,
                         bg_color: None,
                         custom_vars: std::collections::HashMap::new(),
+                        host_language: Some(current_host_lang),
                     };
 
                     // 1. Pre-commands (only for non-NoCode plugins, as NoCode commands ARE the plugin body)

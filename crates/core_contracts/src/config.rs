@@ -24,6 +24,8 @@ pub struct CompanionConfig {
     #[serde(default)]
     pub manager_window_size: Option<[f32; 2]>,
     #[serde(default)]
+    pub offline_window_position: Option<[f32; 2]>,
+    #[serde(default)]
     pub enabled_plugins: Vec<String>,
     #[serde(default)]
     pub active_sub_actions: std::collections::HashMap<String, String>,
@@ -59,6 +61,7 @@ impl Default for CompanionConfig {
             window_position: None,
             manager_window_position: None,
             manager_window_size: None,
+            offline_window_position: None,
             enabled_plugins: Vec::new(),
             active_sub_actions: std::collections::HashMap::new(),
             photocraft_path: None,
@@ -264,26 +267,35 @@ pub fn user_data_dir() -> PathBuf {
     {
         if let Ok(local) = std::env::var("LOCALAPPDATA") {
             let p = PathBuf::from(local).join("PhotoCraft Companion");
-            let _ = fs::create_dir_all(&p);
-            return p;
+            if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
+                return p;
+            }
         }
         if let Ok(appdata) = std::env::var("APPDATA") {
             let p = PathBuf::from(appdata).join("PhotoCraft Companion");
-            let _ = fs::create_dir_all(&p);
-            return p;
+            if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
+                return p;
+            }
         }
         if let Ok(profile) = std::env::var("USERPROFILE") {
             let p = PathBuf::from(profile).join("PhotoCraftData");
-            let _ = fs::create_dir_all(&p);
+            if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
+                return p;
+            }
+        }
+    }
+    // Generic fallback
+    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        let p = PathBuf::from(home).join("PhotoCraftData");
+        if (p.exists() || fs::create_dir_all(&p).is_ok()) && is_dir_writable(&p) {
             return p;
         }
     }
 
-    // Generic fallback
-    if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-        let p = PathBuf::from(home).join("PhotoCraftData");
-        let _ = fs::create_dir_all(&p);
-        return p;
+    let temp = std::env::temp_dir().join("PhotoCraft Companion");
+    let _ = fs::create_dir_all(&temp);
+    if is_dir_writable(&temp) {
+        return temp;
     }
 
     PathBuf::from("PhotoCraftData")

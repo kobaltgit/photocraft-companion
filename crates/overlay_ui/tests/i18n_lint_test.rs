@@ -231,3 +231,39 @@ fn find_closing_quote(s: &str) -> Option<usize> {
     }
     None
 }
+
+#[test]
+fn test_no_cjk_or_unsupported_glyphs_in_ui_dictionary() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let mod_rs_path = Path::new(manifest_dir)
+        .join("src")
+        .join("i18n")
+        .join("mod.rs");
+    let content = fs::read_to_string(&mod_rs_path)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", mod_rs_path.display()));
+
+    // CJK character ranges: Hiragana, Katakana, CJK Unified Ideographs, Hangul, etc.
+    let is_cjk = |c: char| {
+        matches!(c,
+            '\u{3040}'..='\u{30ff}' | // Hiragana & Katakana
+            '\u{3400}'..='\u{4dbf}' | // CJK Unified Ideographs Extension A
+            '\u{4e00}'..='\u{9fff}' | // CJK Unified Ideographs
+            '\u{f900}'..='\u{faff}' | // CJK Compatibility Ideographs
+            '\u{ff66}'..='\u{ff9f}' | // Halfwidth Katakana
+            '\u{ac00}'..='\u{d7af}'   // Hangul Syllables
+        )
+    };
+
+    for (line_num, line) in content.lines().enumerate() {
+        for ch in line.chars() {
+            assert!(
+                !is_cjk(ch),
+                "Found unsupported CJK glyph '{}' (U+{:04X}) in {} at line {}: tofu box risk in egui!",
+                ch,
+                ch as u32,
+                mod_rs_path.display(),
+                line_num + 1
+            );
+        }
+    }
+}

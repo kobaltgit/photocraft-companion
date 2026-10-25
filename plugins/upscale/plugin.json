@@ -1,36 +1,60 @@
 {
-  "id": "ai.photocraft.plugins.upscale",
-  "name": "AI Super-Resolution (2x)",
-  "version": "1.0.0",
-  "description": "2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime & DirectML GPU.",
-  "author": "kobaltGIT",
-  "plugin_type": "native_ai",
-  "action_id": "plugin:upscale",
-  "icon": "icon.svg",
-  "input": "active_layer",
-  "output_mode": "in_place",
-  "post_commands": [
-    {
-      "command": "image.revealAll",
-      "ignore_errors": true
-    },
-    {
-      "command": "layer.mergeDown",
-      "ignore_errors": true
-    }
-  ],
-  "ai": {
-    "task": "super_resolution",
-    "scale": 2
-  },
-  "models": [
-    {
-      "role": "super_resolution",
-      "name": "realesrgan-x2.onnx",
-      "required": true,
-      "size_mb": 68,
-      "url": "https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx",
-      "sha256": "f1a5e0dc1b83a7b4641078ead62fd180046fb8eb7b0231b3a29e30c071be1b6f"
-    }
-  ]
+    "id":  "ai.photocraft.plugins.upscale",
+    "name":  "AI Super-Resolution (2x)",
+    "version":  "1.0.0",
+    "description":  "2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime \u0026 DirectML GPU.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "native_ai",
+    "action_id":  "plugin:upscale",
+    "icon":  "icon.svg",
+    "input":  "active_layer",
+    "output_mode":  "in_place",
+    "post_commands":  [
+                          {
+                              "command":  "image.revealAll",
+                              "ignore_errors":  true
+                          },
+                          {
+                              "command":  "layer.mergeDown",
+                              "ignore_errors":  true
+                          }
+                      ],
+    "ai":  {
+               "task":  "super_resolution",
+               "scale":  2
+           },
+    "models":  [
+                   {
+                       "role":  "super_resolution",
+                       "name":  "realesrgan-x2.onnx",
+                       "required":  true,
+                       "size_mb":  68,
+                       "url":  "https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx",
+                       "sha256":  "f1a5e0dc1b83a7b4641078ead62fd180046fb8eb7b0231b3a29e30c071be1b6f"
+                   }
+               ],
+    "name_ru":  "ИИ Сверхразрешение 2x (Real-ESRGAN)",
+    "description_ru":  "Увеличение разрешения в 2 раза с восстановлением четких контуров и мелких деталей с помощью Real-ESRGAN через локальный ONNX Runtime.",
+    "locales":  {
+                    "de":  {
+                               "name":  "KI-Super-Resolution 2x (Real-ESRGAN)",
+                               "description":  "Neuronales 2-faches Upscaling und Detailwiederherstellung für PhotoCraft mit Real-ESRGAN via ONNX Runtime."
+                           },
+                    "fr":  {
+                               "name":  "Super-résolution IA 2x (Real-ESRGAN)",
+                               "description":  "Mise à l\u0027échelle neuronale 2x et restauration des détails pour PhotoCraft avec Real-ESRGAN via ONNX Runtime."
+                           },
+                    "es":  {
+                               "name":  "Superresolución por IA 2x (Real-ESRGAN)",
+                               "description":  "Escalado neuronal 2x y restauración de detalles para PhotoCraft usando Real-ESRGAN vía ONNX Runtime."
+                           },
+                    "ja":  {
+                               "name":  "AI超解像 2x (Real-ESRGAN)",
+                               "description":  "ONNX Runtimeを介したReal-ESRGANによるPhotoCraft用の2倍ニューラルアップスケーリングとディテール復元。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "AI超分辨率 2x (Real-ESRGAN)",
+                                    "description":  "通过ONNX Runtime使用Real-ESRGAN为PhotoCraft提供2倍神经超分与细节增强。"
+                                }
+                }
 }

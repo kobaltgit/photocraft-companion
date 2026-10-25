@@ -1,76 +1,110 @@
 {
-  "id": "macro.photocraft.plugins.teal_orange",
-  "name": "Cinematic Teal & Orange",
-  "name_ru": "Кинематографичный Teal & Orange",
-  "version": "1.0.0",
-  "description": "Applies a Hollywood cinematic color grade with 3D LUT, film contrast S-curve, and skin vibrance protection.",
-  "description_ru": "Создает голливудский кинематографический грейдинг: 3D LUT, пленочная S-кривая контраста и защита оттенков кожи.",
-  "author": "kobaltGIT",
-  "plugin_type": "no_code",
-  "action_id": "plugin:teal_orange",
-  "icon": "icon.svg",
-  "commands": [
-    {
-      "command": "layer.newAdjustmentLayer.colorLookup",
-      "params": {
-        "lut": "tealOrange"
-      },
-      "description": "Create Teal & Orange 3D LUT adjustment layer"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Teal & Orange (3D LUT)"
-      },
-      "description": "Rename LUT layer"
-    },
-    {
-      "command": "layer.setProps",
-      "params": {
-        "opacity": 0.85
-      },
-      "description": "Set LUT opacity to 85% for balanced skin tones"
-    },
-    {
-      "command": "layer.newAdjustmentLayer.curves",
-      "params": {
-        "points": [
-          [0, 0],
-          [64, 54],
-          [192, 202],
-          [255, 255]
-        ]
-      },
-      "description": "Create cinematic S-Curve for rich tonal dynamic range"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Film Contrast (S-Curve)"
-      },
-      "description": "Rename Curves layer"
-    },
-    {
-      "command": "layer.setProps",
-      "params": {
-        "blend": "Luminosity"
-      },
-      "description": "Set S-Curve blend mode to Luminosity to preserve pure hue values"
-    },
-    {
-      "command": "layer.newAdjustmentLayer.vibrance",
-      "params": {
-        "vibrance": 15,
-        "saturation": -5
-      },
-      "description": "Add Vibrance adjustment to enrich background colors and protect skin"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Skin Vibrance & Protection"
-      },
-      "description": "Rename Vibrance layer"
-    }
-  ]
+    "id":  "macro.photocraft.plugins.teal_orange",
+    "name":  "Cinematic Teal \u0026 Orange",
+    "version":  "1.0.0",
+    "description":  "Applies a Hollywood cinematic color grade with 3D LUT, film contrast S-curve, and skin vibrance protection.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "no_code",
+    "action_id":  "plugin:teal_orange",
+    "icon":  "icon.svg",
+    "commands":  [
+                     {
+                         "command":  "layer.newAdjustmentLayer.colorLookup",
+                         "params":  {
+                                        "lut":  "tealOrange"
+                                    },
+                         "description":  "Create Teal \u0026 Orange 3D LUT adjustment layer"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Teal \u0026 Orange (3D LUT)"
+                                    },
+                         "description":  "Rename LUT layer"
+                     },
+                     {
+                         "command":  "layer.setProps",
+                         "params":  {
+                                        "opacity":  0.85
+                                    },
+                         "description":  "Set LUT opacity to 85% for balanced skin tones"
+                     },
+                     {
+                         "command":  "layer.newAdjustmentLayer.curves",
+                         "params":  {
+                                        "points":  [
+                                                       [
+                                                           0,
+                                                           0
+                                                       ],
+                                                       [
+                                                           64,
+                                                           54
+                                                       ],
+                                                       [
+                                                           192,
+                                                           202
+                                                       ],
+                                                       [
+                                                           255,
+                                                           255
+                                                       ]
+                                                   ]
+                                    },
+                         "description":  "Create cinematic S-Curve for rich tonal dynamic range"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Film Contrast (S-Curve)"
+                                    },
+                         "description":  "Rename Curves layer"
+                     },
+                     {
+                         "command":  "layer.setProps",
+                         "params":  {
+                                        "blend":  "Luminosity"
+                                    },
+                         "description":  "Set S-Curve blend mode to Luminosity to preserve pure hue values"
+                     },
+                     {
+                         "command":  "layer.newAdjustmentLayer.vibrance",
+                         "params":  {
+                                        "vibrance":  15,
+                                        "saturation":  -5
+                                    },
+                         "description":  "Add Vibrance adjustment to enrich background colors and protect skin"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Skin Vibrance \u0026 Protection"
+                                    },
+                         "description":  "Rename Vibrance layer"
+                     }
+                 ],
+    "name_ru":  "Кинематографичный Teal \u0026 Orange",
+    "description_ru":  "Применяет выразительный кинематографичный цветовой грейдинг с теплыми оранжевыми светами и холодными бирюзовыми тенями через баланс цвета и кривые.",
+    "locales":  {
+                    "de":  {
+                               "name":  "Kinoreifes Teal \u0026 Orange",
+                               "description":  "Wendet einen dynamischen Film-Look mit warmen Lichtern und kühlen Schatten über Farbbalance und Gradationskurven an."
+                           },
+                    "fr":  {
+                               "name":  "Teal \u0026 Orange cinématographique",
+                               "description":  "Applique une colorimétrie dynamique style cinéma avec des tons clairs chauds et des ombres froides."
+                           },
+                    "es":  {
+                               "name":  "Teal \u0026 Orange cinematográfico",
+                               "description":  "Aplica una gradación de color cinematográfica con luces cálidas y sombras frías mediante curvas y balance de color."
+                           },
+                    "ja":  {
+                               "name":  "シネマティック Teal \u0026 Orange",
+                               "description":  "カラーバランスとトーンカーブにより、暖色系のハイライトと寒色系のシャドウを持つ映画調のグレーディングを適用。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "电影感青橙色调 (Teal \u0026 Orange)",
+                                    "description":  "通过色彩平衡和曲线为画面应用温暖高光与冷调阴影的电影质感调色。"
+                                }
+                }
 }

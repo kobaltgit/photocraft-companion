@@ -41,6 +41,7 @@ pub struct PluginManagerApp {
     pub active_tab: ActiveTab,
     pub manifests: Vec<PluginManifest>,
     pub current_language: Language,
+    pub resolved_auto_language: Language,
     pub current_theme: ThemeMode,
     pub host: String,
     pub port: u16,
@@ -81,13 +82,24 @@ impl PluginManagerApp {
 
         let photocraft_path = cfg
             .photocraft_path
+            .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
 
-        let lang = if cfg.language == "ru" {
-            Language::Ru
-        } else if cfg.language == "en" {
-            Language::En
+        let lang = Language::from_str_code(&cfg.language);
+        let resolved = if let Some(ref p) = cfg.photocraft_path {
+            let exe_prefs = p
+                .parent()
+                .map(|dir| dir.join("PhotoCraftData").join("preferences.json"));
+            if let Some(ref ep) = exe_prefs {
+                if ep.exists() {
+                    Language::Auto.resolve(Some(ep))
+                } else {
+                    Language::Auto.resolve(Some(&prefs_path))
+                }
+            } else {
+                Language::Auto.resolve(Some(&prefs_path))
+            }
         } else {
             Language::Auto.resolve(Some(&prefs_path))
         };
@@ -124,6 +136,7 @@ impl PluginManagerApp {
             active_tab: ActiveTab::General,
             manifests,
             current_language: lang,
+            resolved_auto_language: resolved,
             current_theme: theme,
             host: cfg.host,
             port: cfg.port,
@@ -168,10 +181,18 @@ impl PluginManagerApp {
         self
     }
 
-    pub fn t<'a>(&self, en: &'a str, ru: &'a str) -> &'a str {
+    pub fn effective_language(&self) -> Language {
         match self.current_language {
+            Language::Auto => self.resolved_auto_language.safe_ui_language(),
+            manual => manual.safe_ui_language(),
+        }
+    }
+
+    pub fn t<'a>(&self, en: &'a str, ru: &'a str) -> &'a str {
+        match self.effective_language() {
             Language::Ru => ru,
-            _ => en,
+            Language::En => en,
+            other => crate::i18n::lookup(en, other).unwrap_or(en),
         }
     }
 
@@ -293,10 +314,7 @@ impl PluginManagerApp {
             ThemeMode::Light => "light".to_string(),
             ThemeMode::System => "system".to_string(),
         };
-        cfg.language = match self.current_language {
-            Language::Ru => "ru".to_string(),
-            _ => "en".to_string(),
-        };
+        cfg.language = self.current_language.code().to_string();
         cfg.enabled_plugins = self
             .manifests
             .iter()
@@ -484,25 +502,41 @@ impl PluginManagerApp {
                         .size(12.0)
                         .color(palette.text_primary),
                 );
-                let lang_label = match self.current_language {
-                    Language::Ru => "Русский (RU)",
-                    _ => "English (EN)",
+                let current_label = match self.current_language {
+                    Language::Auto => {
+                        let eff = self.resolved_auto_language.safe_ui_language();
+                        if eff == self.resolved_auto_language {
+                            format!("Auto ({})", eff.display_name())
+                        } else {
+                            format!("Auto (PhotoCraft) ({})", Language::En.display_name())
+                        }
+                    }
+                    lang => lang.safe_ui_language().selector_label(),
                 };
                 egui::ComboBox::from_id_salt("general_lang_select")
-                    .selected_text(RichText::new(lang_label).color(palette.text_primary))
-                    .width(180.0)
+                    .selected_text(RichText::new(current_label).color(palette.text_primary))
+                    .width(200.0)
                     .show_ui(ui, |ui| {
                         ui.style_mut().visuals.widgets.inactive.bg_fill = Color32::TRANSPARENT;
+                        let eff = self.resolved_auto_language.safe_ui_language();
+                        let auto_label = if eff == self.resolved_auto_language {
+                            format!("Auto (PhotoCraft) ({})", eff.display_name())
+                        } else {
+                            format!("Auto (PhotoCraft) ({})", Language::En.display_name())
+                        };
                         ui.selectable_value(
                             &mut self.current_language,
-                            Language::En,
-                            "English (EN)",
+                            Language::Auto,
+                            auto_label,
                         );
-                        ui.selectable_value(
-                            &mut self.current_language,
-                            Language::Ru,
-                            "Русский (RU)",
-                        );
+                        ui.separator();
+                        for lang in Language::UI_SUPPORTED {
+                            ui.selectable_value(
+                                &mut self.current_language,
+                                lang,
+                                lang.selector_label(),
+                            );
+                        }
                     });
                 ui.end_row();
 
@@ -785,7 +819,7 @@ impl PluginManagerApp {
             "Документация для этого плагина не найдена.",
         );
         let plugins_dir = self.plugins_dir.clone();
-        let cur_lang = self.current_language;
+        let cur_lang = self.effective_language();
         let mut download_notice = None;
         let mut open_readme = None;
 
@@ -818,7 +852,7 @@ impl PluginManagerApp {
 
                         ui.label(RichText::new(type_str).size(9.0).color(type_color).strong());
                         ui.label(
-                            RichText::new(&manifest.name)
+                            RichText::new(manifest.localized_name(cur_lang.code()))
                                 .size(12.0)
                                 .strong()
                                 .color(palette.text_primary),
@@ -898,7 +932,7 @@ impl PluginManagerApp {
 
                     ui.add_space(2.0);
                     ui.label(
-                        RichText::new(&manifest.description)
+                        RichText::new(manifest.localized_description(cur_lang.code()))
                             .size(11.0)
                             .color(palette.text_muted),
                     );
@@ -2785,7 +2819,8 @@ mod tests {
         let app = PluginManagerApp::new(vec![], prefs_file, is_connected.clone());
 
         assert_eq!(app.active_tab, ActiveTab::General);
-        assert_eq!(app.current_language, Language::En);
+        assert_eq!(app.current_language, Language::Auto);
+        assert_eq!(app.resolved_auto_language, Language::En);
         assert_eq!(app.current_theme, ThemeMode::Dark);
         assert_eq!(app.host, "127.0.0.1");
         assert_eq!(app.port, 18492);
@@ -2977,6 +3012,9 @@ mod tests {
             input: core_contracts::PluginInputSource::ActiveLayer,
             output_mode: core_contracts::PluginOutputMode::InPlace,
             action_id: None,
+            name_ru: None,
+            description_ru: None,
+            locales: Default::default(),
             entrypoint: None,
             ai: None,
             algorithm: None,

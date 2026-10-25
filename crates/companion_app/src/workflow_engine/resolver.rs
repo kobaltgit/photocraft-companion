@@ -14,6 +14,7 @@ pub struct ExecutionContext {
     pub fg_color: Option<String>,
     pub bg_color: Option<String>,
     pub custom_vars: HashMap<String, Value>,
+    pub host_language: Option<String>,
 }
 
 impl ExecutionContext {

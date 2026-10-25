@@ -72,57 +72,68 @@ impl GenericAlgorithmPlugin {
 
         // 2. Run vectorization & SVG rasterization in blocking thread pool
         let config_clone = config.clone();
-        let (svg_string, rendered_img) =
-            tokio::task::spawn_blocking(move || -> Result<(String, RgbaImage)> {
-                let vtracer_img = vtracer::ColorImage {
-                    pixels: input_img.into_raw(),
-                    width: width as usize,
-                    height: height as usize,
-                };
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        std::thread::Builder::new()
+            .name("vtracer_worker".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                let res = (|| -> Result<(String, RgbaImage)> {
+                    let vtracer_img = vtracer::ColorImage {
+                        pixels: input_img.into_raw(),
+                        width: width as usize,
+                        height: height as usize,
+                    };
 
-                let mut vt_config = vtracer::Config::default();
-                match config_clone.color_mode.as_deref() {
-                    Some("binary") => vt_config.color_mode = vtracer::ColorMode::Binary,
-                    _ => vt_config.color_mode = vtracer::ColorMode::Color,
-                }
-                if let Some(speckle) = config_clone.filter_speckle {
-                    vt_config.filter_speckle = speckle;
-                }
-                if let Some(corner) = config_clone.corner_threshold {
-                    vt_config.corner_threshold = corner;
-                }
+                    let mut vt_config = vtracer::Config::default();
+                    match config_clone.color_mode.as_deref() {
+                        Some("binary") => vt_config.color_mode = vtracer::ColorMode::Binary,
+                        _ => vt_config.color_mode = vtracer::ColorMode::Color,
+                    }
+                    if let Some(speckle) = config_clone.filter_speckle {
+                        vt_config.filter_speckle = speckle;
+                    }
+                    if let Some(corner) = config_clone.corner_threshold {
+                        vt_config.corner_threshold = corner;
+                    }
 
-                let svg_file = vtracer::convert(vtracer_img, vt_config).map_err(|e| {
-                    CompanionError::Plugin(format!("VTracer vectorization failed: {e}"))
-                })?;
-                let svg_string = svg_file.to_string();
+                    let svg_file = vtracer::convert(vtracer_img, vt_config).map_err(|e| {
+                        CompanionError::Plugin(format!("VTracer vectorization failed: {e}"))
+                    })?;
+                    let svg_string = svg_file.to_string();
 
-                // Render vector back into raster RGBA image matching source canvas dimensions
-                let opt = usvg::Options::default();
-                let tree = usvg::Tree::from_str(&svg_string, &opt)
-                    .map_err(|e| CompanionError::Plugin(format!("SVG parsing failed: {e}")))?;
+                    let opt = usvg::Options::default();
+                    let tree = usvg::Tree::from_str(&svg_string, &opt)
+                        .map_err(|e| CompanionError::Plugin(format!("SVG parsing failed: {e}")))?;
 
-                let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or_else(|| {
-                    CompanionError::Plugin("Failed to allocate render pixmap".into())
-                })?;
-
-                let sx = width as f32 / tree.size().width();
-                let sy = height as f32 / tree.size().height();
-                let transform = tiny_skia::Transform::from_scale(sx, sy);
-
-                resvg::render(&tree, transform, &mut pixmap.as_mut());
-
-                let rendered =
-                    RgbaImage::from_raw(width, height, pixmap.take()).ok_or_else(|| {
-                        CompanionError::Plugin("Failed to build RgbaImage from rendered SVG".into())
+                    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or_else(|| {
+                        CompanionError::Plugin("Failed to allocate render pixmap".into())
                     })?;
 
-                Ok((svg_string, rendered))
+                    let sx = width as f32 / tree.size().width();
+                    let sy = height as f32 / tree.size().height();
+                    let transform = tiny_skia::Transform::from_scale(sx, sy);
+
+                    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+                    let rendered =
+                        RgbaImage::from_raw(width, height, pixmap.take()).ok_or_else(|| {
+                            CompanionError::Plugin(
+                                "Failed to build RgbaImage from rendered SVG".into(),
+                            )
+                        })?;
+
+                    Ok((svg_string, rendered))
+                })();
+                let _ = tx.send(res);
             })
+            .map_err(|e| {
+                CompanionError::Plugin(format!("Failed to spawn vectorizer thread: {e}"))
+            })?;
+
+        let (svg_string, rendered_img) = rx
             .await
             .map_err(|e| CompanionError::Plugin(format!("Vectorization task panicked: {e}")))?
             .map_err(|e| CompanionError::Plugin(format!("Vectorization error: {e}")))?;
-
         // 3. Copy SVG string to system clipboard if requested
         if config.copy_clipboard {
             let svg_to_clip = svg_string.clone();
@@ -307,6 +318,8 @@ mod tests {
         // Verify layer was renamed
         let renamed = bridge.renamed_layer.lock().unwrap().clone().unwrap();
         assert!(renamed.contains("Logo"));
-        assert!(renamed.contains("Vectorized") || renamed.contains("Векторизация"));
+        let detected_lang = core_contracts::Language::Auto.resolve(None);
+        let expected_suffix = detected_lang.vectorized_suffix();
+        assert!(renamed.contains(expected_suffix) || renamed.contains("Vectorized"));
     }
 }

@@ -313,6 +313,65 @@ my_plugin/
 }
 ```
 
+### 3.5. Интернационализация метаданных и параметров команд (i18n)
+
+PhotoCraft Companion поддерживает автоматическое определение активного языка PhotoCraft (среди всех 22 языков стандарта BCP 47) и динамическую адаптацию плагинов на лету.
+
+#### А. Мультиязычные метаданные плагина (`locales`):
+Для локализации имени и описания плагина в Companion Manager и Toolstrip добавьте словарь `locales`. Также поддерживаются поля обратной совместимости `name_ru` и `description_ru`:
+
+```json
+{
+  "id": "macro.photocraft.plugins.dodge_and_burn",
+  "name": "Pro Dodge & Burn (50% Gray)",
+  "name_ru": "Pro Dodge & Burn (50% Серый)",
+  "description": "Creates a non-destructive 50% Gray Soft Light layer...",
+  "description_ru": "Создает недеструктивный слой 50% серого...",
+  "locales": {
+    "de": {
+      "name": "Pro Dodge & Burn (50% Grau)",
+      "description": "Erstellt eine zerstörungsfreie 50% Grau Weiches Licht-Ebene..."
+    },
+    "fr": {
+      "name": "Pro Dodge & Burn (Gris 50%)",
+      "description": "Crée un calque non destructif Gris 50% en Lumière tamisée..."
+    },
+    "ja": {
+      "name": "プロ Dodge & Burn (50% グレー)",
+      "description": "プロの輪郭強調のための..."
+    },
+    "zh-hans": {
+      "name": "专业双曲线加深减淡 (50% 中性灰)",
+      "description": "创建非破坏性50%柔光中性灰图层..."
+    }
+  }
+}
+```
+
+Для вариаций и суб-действий (`sub_actions`) секция `locales` также поддерживается:
+```json
+"sub_actions": [
+  {
+    "id": "mask",
+    "name": "Create Layer Mask",
+    "name_ru": "Создать маску слоя",
+    "locales": {
+      "de": { "name": "Ebenenmaske erstellen" },
+      "fr": { "name": "Créer un masque de fusion" },
+      "ja": { "name": "レイヤーマスクを作成" }
+    }
+  }
+]
+```
+
+#### Б. Канонические параметры и Smart Parameter Retry:
+* **Золотое правило:** Всегда объявляйте команды и строковые параметры на **каноническом английском языке** (например `"blend": "Soft Light"`, `"channel": "transparency"`).
+* **Умный повтор (Smart Parameter Retry):** PhotoCraft в некоторых языковых локалях (например, немецкой или французской) ожидает переведённые имена параметров (например `"Weiches Licht"` вместо `"Soft Light"`). Движок Companion автоматически:
+  1. Сначала отправляет каноническую команду (`"Soft Light"`).
+  2. Если PhotoCraft отвечает успехом — продолжается пайплайн.
+  3. Если PhotoCraft отклоняет команду с ошибкой параметра — движок переводит значение на активный язык PhotoCraft (все 22 официальных языка PhotoCraft) и бесшовно повторяет команду.
+  Разработчику плагина не нужно писать отдельные ветвления под разные языки PhotoCraft!
+
 ---
 
 ## 4. Движок рабочих процессов (Workflow Engine)

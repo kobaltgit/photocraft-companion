@@ -127,15 +127,16 @@ impl ToolstripApp {
                         is_dark,
                     );
 
+                    let btn_name = btn.name_for_lang(current_lang);
                     let tooltip = if let Some(sub) = active_sub {
                         let sub_name = sub.name_for_lang(current_lang);
-                        if btn.label.ends_with(')') {
-                            format!("{}: {}", btn.label, sub_name)
+                        if btn_name.ends_with(')') {
+                            format!("{}: {}", btn_name, sub_name)
                         } else {
-                            format!("{} ({})", btn.label, sub_name)
+                            format!("{} ({})", btn_name, sub_name)
                         }
                     } else {
-                        btn.label.clone()
+                        btn_name.to_string()
                     };
 
                     let b = if let Some(tex) = maybe_texture {
@@ -745,6 +746,8 @@ mod tests {
                 plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
+                name_ru: None,
+                locales: Default::default(),
             })
             .collect()
     }
@@ -894,6 +897,7 @@ mod tests {
             id: "cutout".to_string(),
             name: "Cutout".to_string(),
             name_ru: None,
+            locales: Default::default(),
             icon: Some("cutout.svg".to_string()),
             post_commands: vec![],
             script: None,
@@ -902,6 +906,7 @@ mod tests {
             id: "mask".to_string(),
             name: "Layer Mask".to_string(),
             name_ru: None,
+            locales: Default::default(),
             icon: Some("mask.svg".to_string()),
             post_commands: vec![],
             script: None,
@@ -915,6 +920,8 @@ mod tests {
             plugin_dir: None,
             sub_actions: vec![sub1, sub2],
             active_sub_action: Some("mask".to_string()),
+            name_ru: None,
+            locales: Default::default(),
         };
 
         let app = ToolstripApp::new(vec![btn], ThemeMode::Dark);
@@ -939,6 +946,7 @@ mod tests {
             id: "mask".to_string(),
             name: "Layer Mask".to_string(),
             name_ru: None,
+            locales: Default::default(),
             icon: Some("mask.svg".to_string()),
             post_commands: vec![],
             script: None,
@@ -952,6 +960,8 @@ mod tests {
             plugin_dir: Some(temp_dir.clone()),
             sub_actions: vec![sub],
             active_sub_action: Some("mask".to_string()),
+            name_ru: None,
+            locales: Default::default(),
         };
 
         let resolved = btn.effective_icon_path();

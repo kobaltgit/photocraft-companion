@@ -1,4 +1,5 @@
 pub mod dynamic_tool;
+pub mod i18n;
 pub mod icons;
 pub mod manager;
 pub mod offline_modal;
@@ -81,6 +82,8 @@ impl OverlayBar {
                     plugin_dir: m.plugin_dir.clone(),
                     sub_actions: m.sub_actions.clone(),
                     active_sub_action,
+                    name_ru: m.name_ru.clone(),
+                    locales: m.locales.clone(),
                 });
             }
         }
@@ -101,6 +104,8 @@ impl OverlayBar {
                 plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
+                name_ru: None,
+                locales: std::collections::HashMap::new(),
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
@@ -110,6 +115,8 @@ impl OverlayBar {
                 plugin_dir: None,
                 sub_actions: Vec::new(),
                 active_sub_action: None,
+                name_ru: None,
+                locales: std::collections::HashMap::new(),
             },
         ]
     }
@@ -155,6 +162,7 @@ pub struct CompanionOverlayApp {
     pub config_path: std::path::PathBuf,
     pub last_saved_vertical: bool,
     pub last_saved_pos: Option<[f32; 2]>,
+    pub last_saved_offline_pos: Option<[f32; 2]>,
     pub last_saved_manager_pos: Option<[f32; 2]>,
     pub last_saved_manager_size: Option<[f32; 2]>,
     pub manager_just_opened: bool,
@@ -183,7 +191,21 @@ impl CompanionOverlayApp {
         let cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
 
         let current_theme = ThemeMode::from_preferences(&prefs_path);
-        let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+        let prefs_for_resolve = if let Some(ref p) = cfg.photocraft_path {
+            let p_exe = p
+                .parent()
+                .map(|dir| dir.join("PhotoCraftData").join("preferences.json"));
+            p_exe.unwrap_or_else(|| prefs_path.clone())
+        } else {
+            prefs_path.clone()
+        };
+        let cfg_lang = core_contracts::Language::from_str_code(&cfg.language);
+        let resolved_auto = core_contracts::Language::Auto.resolve(Some(&prefs_for_resolve));
+        let effective_lang = if cfg_lang == core_contracts::Language::Auto {
+            resolved_auto
+        } else {
+            cfg_lang
+        };
 
         let conn_state_arc = connection_state.unwrap_or_else(|| {
             let initial = if is_connected.load(Ordering::Relaxed) {
@@ -196,7 +218,7 @@ impl CompanionOverlayApp {
 
         let mut toolstrip = ToolstripApp::new(buttons, current_theme)
             .with_orientation(cfg.is_vertical)
-            .with_language(current_lang);
+            .with_language(effective_lang);
 
         for btn in &mut toolstrip.buttons {
             if let Some(sub_id) = cfg.active_sub_actions.get(&btn.action) {
@@ -209,6 +231,8 @@ impl CompanionOverlayApp {
             PluginManagerApp::new(manifests.clone(), &prefs_path, is_connected.clone())
                 .with_connection_state(conn_state_arc.clone());
         manager.config_path = config_path.clone();
+        manager.current_language = cfg_lang;
+        manager.resolved_auto_language = resolved_auto;
         if manager.photocraft_path.is_empty() {
             if let Some(ref p) = cfg.photocraft_path {
                 manager.photocraft_path = p.to_string_lossy().to_string();
@@ -218,7 +242,8 @@ impl CompanionOverlayApp {
             manager = manager.with_token_callback(cb);
         }
 
-        let offline_modal = OfflineModalApp::new(current_lang, current_theme);
+        let mut offline_modal = OfflineModalApp::new(cfg_lang, current_theme);
+        offline_modal.resolved_auto_language = resolved_auto;
 
         let initial_conn = is_connected.load(Ordering::Relaxed);
 
@@ -241,6 +266,7 @@ impl CompanionOverlayApp {
             config_path,
             last_saved_vertical: cfg.is_vertical,
             last_saved_pos: cfg.window_position,
+            last_saved_offline_pos: cfg.offline_window_position,
             last_saved_manager_pos: cfg.manager_window_position,
             last_saved_manager_size: cfg.manager_window_size,
             manager_just_opened: true,
@@ -258,6 +284,7 @@ impl CompanionOverlayApp {
         let mut cfg = core_contracts::CompanionConfig::load_or_default(&self.config_path);
         cfg.is_vertical = self.last_saved_vertical;
         cfg.window_position = self.last_saved_pos;
+        cfg.offline_window_position = self.last_saved_offline_pos;
         cfg.manager_window_position = self.last_saved_manager_pos;
         cfg.manager_window_size = self.last_saved_manager_size;
         if let Err(e) = cfg.save(&self.config_path) {
@@ -284,6 +311,9 @@ impl CompanionOverlayApp {
 
         let connected = self.is_connected.load(Ordering::Relaxed);
         if connected {
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::AlwaysOnTop,
+            ));
             let size = self.toolstrip.calculate_size();
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
             let target_pos = if let Some(pos) = self.last_saved_pos {
@@ -305,9 +335,23 @@ impl CompanionOverlayApp {
                 )));
             }
         } else {
+            let level = if self.offline_modal.is_pinned {
+                egui::WindowLevel::AlwaysOnTop
+            } else {
+                egui::WindowLevel::Normal
+            };
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
             let size = egui::Vec2::new(300.0, 280.0);
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-            let pos = crate::win32_window::calculate_primary_screen_center(size.x, size.y);
+            let pos = if let Some(p) = self.last_saved_offline_pos {
+                if crate::win32_window::is_position_visible_on_screen(p, [size.x, size.y]) {
+                    p
+                } else {
+                    crate::win32_window::calculate_primary_screen_center(size.x, size.y)
+                }
+            } else {
+                crate::win32_window::calculate_primary_screen_center(size.x, size.y)
+            };
             ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                 pos[0], pos[1],
             )));
@@ -404,6 +448,10 @@ impl eframe::App for CompanionOverlayApp {
             self.last_connected_state = connected;
             if !self.is_hidden_to_tray {
                 if connected {
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                            egui::WindowLevel::AlwaysOnTop,
+                        ));
                     let size = self.toolstrip.calculate_size();
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
@@ -428,16 +476,58 @@ impl eframe::App for CompanionOverlayApp {
                             )));
                     }
                 } else {
+                    let level = if self.offline_modal.is_pinned {
+                        egui::WindowLevel::AlwaysOnTop
+                    } else {
+                        egui::WindowLevel::Normal
+                    };
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
                     let size = egui::Vec2::new(300.0, 280.0);
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
-                    let pos = crate::win32_window::calculate_primary_screen_center(size.x, size.y);
+                    let pos = if let Some(p) = self.last_saved_offline_pos {
+                        if crate::win32_window::is_position_visible_on_screen(p, [size.x, size.y]) {
+                            p
+                        } else {
+                            crate::win32_window::calculate_primary_screen_center(size.x, size.y)
+                        }
+                    } else {
+                        crate::win32_window::calculate_primary_screen_center(size.x, size.y)
+                    };
                     ui.ctx()
                         .send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
                             pos[0], pos[1],
                         )));
                 }
             }
+        }
+
+        // Dynamic language sync across toolstrip, offline_modal, and dynamic engine
+        if self.manager.current_language == core_contracts::Language::Auto {
+            let prefs_for_resolve = if !self.manager.photocraft_path.trim().is_empty() {
+                let p = std::path::Path::new(self.manager.photocraft_path.trim());
+                let p_exe = p
+                    .parent()
+                    .map(|dir| dir.join("PhotoCraftData").join("preferences.json"));
+                p_exe.unwrap_or_else(|| self.manager.prefs_path.clone())
+            } else {
+                self.manager.prefs_path.clone()
+            };
+            let detected = core_contracts::Language::Auto.resolve(Some(&prefs_for_resolve));
+            if detected != self.manager.resolved_auto_language {
+                self.manager.resolved_auto_language = detected;
+            }
+        }
+        let eff_lang = self.manager.effective_language();
+        if self.toolstrip.language != eff_lang {
+            self.toolstrip.language = eff_lang;
+        }
+        if self.offline_modal.resolved_auto_language != self.manager.resolved_auto_language {
+            self.offline_modal.resolved_auto_language = self.manager.resolved_auto_language;
+        }
+        if self.offline_modal.current_language != self.manager.current_language {
+            self.offline_modal.current_language = self.manager.current_language;
         }
 
         // Reactive sync: When plugins are toggled in Manager, immediately update toolstrip buttons & resize
@@ -777,6 +867,38 @@ impl eframe::App for CompanionOverlayApp {
                     crate::win32_window::find_photocraft_window_rect().is_some();
                 self.offline_modal.connection_state = *self.connection_state.read().unwrap();
                 self.offline_modal.render(ui, &palette);
+
+                // Auto-save offline window position when drag ends
+                let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
+                if !pointer_down {
+                    if let Some(outer_rect) = ui.ctx().input(|i| i.viewport().outer_rect) {
+                        let min = outer_rect.min;
+                        if min.x.is_finite()
+                            && min.y.is_finite()
+                            && min.x >= -100.0
+                            && min.y >= -100.0
+                            && (min.x.abs() > 0.001 || min.y.abs() > 0.001)
+                        {
+                            let cur_pos = [min.x, min.y];
+                            let needs_save = match self.last_saved_offline_pos {
+                                Some(last) => {
+                                    (last[0] - cur_pos[0]).abs() > 1.0
+                                        || (last[1] - cur_pos[1]).abs() > 1.0
+                                }
+                                None => true,
+                            };
+                            if needs_save {
+                                self.last_saved_offline_pos = Some(cur_pos);
+                                self.save_layout_state();
+                            }
+                        }
+                    }
+                }
+
+                if self.offline_modal.hide_requested {
+                    self.offline_modal.hide_requested = false;
+                    self.hide_toolbar_to_tray(&ctx);
+                }
                 if self.offline_modal.open_manager_requested {
                     self.offline_modal.open_manager_requested = false;
                     self.show_manager = true;
@@ -984,9 +1106,19 @@ pub fn launch_companion_overlay(
             viewport = viewport.with_position(egui::Pos2::new(center[0], center[1]));
         }
     } else {
-        let center =
-            crate::win32_window::calculate_primary_screen_center(initial_size.x, initial_size.y);
-        viewport = viewport.with_position(egui::Pos2::new(center[0], center[1]));
+        let pos = if let Some(p) = app.last_saved_offline_pos {
+            if crate::win32_window::is_position_visible_on_screen(
+                p,
+                [initial_size.x, initial_size.y],
+            ) {
+                p
+            } else {
+                crate::win32_window::calculate_primary_screen_center(initial_size.x, initial_size.y)
+            }
+        } else {
+            crate::win32_window::calculate_primary_screen_center(initial_size.x, initial_size.y)
+        };
+        viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
     }
 
     if let Some(icon) = get_egui_icon_data(is_dark, 32) {
@@ -1152,6 +1284,8 @@ mod tests {
             plugin_dir: None,
             sub_actions: Vec::new(),
             active_sub_action: None,
+            name_ru: None,
+            locales: std::collections::HashMap::new(),
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 

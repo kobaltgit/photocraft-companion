@@ -1,126 +1,152 @@
 {
-  "id": "ui.photocraft.plugins.chromasense",
-  "name": "ChromaSense",
-  "version": "1.0.0",
-  "description": "Accessibility Color Assistant for artists with color vision deficiencies",
-  "author": "kobaltGIT",
-  "plugin_type": "interactive_ui",
-  "icon": "icon.svg",
-  "commands": [],
-  "interactive_ui": {
-    "ipc_subscriptions": [
-      "session.colors"
-    ],
-    "window_title": "ChromaSense A11y",
-    "window_title_ru": "ChromaSense Доступность",
-    "default_width": 350.0,
-    "default_height": 570.0,
-    "script": "logic.rhai",
-    "widgets": [
-      {
-        "type": "color_slot",
-        "id": "color_fg",
-        "label": "Active Color",
-        "label_ru": "Выбранный цвет",
-        "default_hex": "#2563eb",
-        "selectable": true,
-        "target_binding": "edit_target"
-      },
-      {
-        "type": "button",
-        "id": "swap_colors",
-        "label": "Swap Colors",
-        "label_ru": "Поменять цвета",
-        "icon": "swap"
-      },
-      {
-        "type": "color_slot",
-        "id": "color_sim",
-        "label": "Vision Simulation",
-        "label_ru": "Как видит зритель",
-        "default_hex": "#2563eb",
-        "read_only": true
-      },
-      {
-        "type": "color_slot",
-        "id": "color_bg",
-        "label": "Background",
-        "label_ru": "Цвет фона",
-        "default_hex": "#ffffff",
-        "selectable": true,
-        "target_binding": "edit_target"
-      },
-      {
-        "type": "dropdown",
-        "id": "vision_profile",
-        "label": "Vision Profile",
-        "label_ru": "Профиль зрения",
-        "options": [
-          "Normal Vision",
-          "Deuteranopia (Green-blind)",
-          "Protanopia (Red-blind)",
-          "Tritanopia (Blue-blind)"
-        ],
-        "options_ru": [
-          "Обычное зрение",
-          "Дейтеранопия (зелёная слепота)",
-          "Протанопия (красная слепота)",
-          "Тританопия (синяя слепота)"
-        ],
-        "default_index": 0
-      },
-      {
-        "type": "hue_wheel",
-        "id": "compass",
-        "source_color_id": "edit_target",
-        "show_pointer": true
-      },
-      {
-        "type": "label",
-        "text_binding": "semantic_color_name"
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "type": "slider",
-        "id": "red",
-        "label": "Red",
-        "label_ru": "Красный",
-        "min": 0.0,
-        "max": 255.0,
-        "step": 1.0,
-        "default": 37.0
-      },
-      {
-        "type": "slider",
-        "id": "green",
-        "label": "Green",
-        "label_ru": "Зеленый",
-        "min": 0.0,
-        "max": 255.0,
-        "step": 1.0,
-        "default": 99.0
-      },
-      {
-        "type": "slider",
-        "id": "blue",
-        "label": "Blue",
-        "label_ru": "Синий",
-        "min": 0.0,
-        "max": 255.0,
-        "step": 1.0,
-        "default": 235.0
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "type": "banner",
-        "id": "collision_guard",
-        "message_binding": "collision_warning",
-        "style_binding": "collision_style"
-      }
-    ]
-  }
+    "id":  "ui.photocraft.plugins.chromasense",
+    "name":  "ChromaSense",
+    "version":  "1.0.0",
+    "description":  "Accessibility Color Assistant for artists with color vision deficiencies",
+    "author":  "kobaltGIT",
+    "plugin_type":  "interactive_ui",
+    "icon":  "icon.svg",
+    "commands":  [
+
+                 ],
+    "interactive_ui":  {
+                           "ipc_subscriptions":  [
+                                                     "session.colors"
+                                                 ],
+                           "window_title":  "ChromaSense A11y",
+                           "window_title_ru":  "ChromaSense Доступность",
+                           "default_width":  350.0,
+                           "default_height":  570.0,
+                           "script":  "logic.rhai",
+                           "widgets":  [
+                                           {
+                                               "type":  "color_slot",
+                                               "id":  "color_fg",
+                                               "label":  "Active Color",
+                                               "label_ru":  "Выбранный цвет",
+                                               "default_hex":  "#2563eb",
+                                               "selectable":  true,
+                                               "target_binding":  "edit_target"
+                                           },
+                                           {
+                                               "type":  "button",
+                                               "id":  "swap_colors",
+                                               "label":  "Swap Colors",
+                                               "label_ru":  "Поменять цвета",
+                                               "icon":  "swap"
+                                           },
+                                           {
+                                               "type":  "color_slot",
+                                               "id":  "color_sim",
+                                               "label":  "Vision Simulation",
+                                               "label_ru":  "Как видит зритель",
+                                               "default_hex":  "#2563eb",
+                                               "read_only":  true
+                                           },
+                                           {
+                                               "type":  "color_slot",
+                                               "id":  "color_bg",
+                                               "label":  "Background",
+                                               "label_ru":  "Цвет фона",
+                                               "default_hex":  "#ffffff",
+                                               "selectable":  true,
+                                               "target_binding":  "edit_target"
+                                           },
+                                           {
+                                               "type":  "dropdown",
+                                               "id":  "vision_profile",
+                                               "label":  "Vision Profile",
+                                               "label_ru":  "Профиль зрения",
+                                               "options":  [
+                                                               "Normal Vision",
+                                                               "Deuteranopia (Green-blind)",
+                                                               "Protanopia (Red-blind)",
+                                                               "Tritanopia (Blue-blind)"
+                                                           ],
+                                               "options_ru":  [
+                                                                  "Обычное зрение",
+                                                                  "Дейтеранопия (зелёная слепота)",
+                                                                  "Протанопия (красная слепота)",
+                                                                  "Тританопия (синяя слепота)"
+                                                              ],
+                                               "default_index":  0
+                                           },
+                                           {
+                                               "type":  "hue_wheel",
+                                               "id":  "compass",
+                                               "source_color_id":  "edit_target",
+                                               "show_pointer":  true
+                                           },
+                                           {
+                                               "type":  "label",
+                                               "text_binding":  "semantic_color_name"
+                                           },
+                                           {
+                                               "type":  "separator"
+                                           },
+                                           {
+                                               "type":  "slider",
+                                               "id":  "red",
+                                               "label":  "Red",
+                                               "label_ru":  "Красный",
+                                               "min":  0.0,
+                                               "max":  255.0,
+                                               "step":  1.0,
+                                               "default":  37.0
+                                           },
+                                           {
+                                               "type":  "slider",
+                                               "id":  "green",
+                                               "label":  "Green",
+                                               "label_ru":  "Зеленый",
+                                               "min":  0.0,
+                                               "max":  255.0,
+                                               "step":  1.0,
+                                               "default":  99.0
+                                           },
+                                           {
+                                               "type":  "slider",
+                                               "id":  "blue",
+                                               "label":  "Blue",
+                                               "label_ru":  "Синий",
+                                               "min":  0.0,
+                                               "max":  255.0,
+                                               "step":  1.0,
+                                               "default":  235.0
+                                           },
+                                           {
+                                               "type":  "separator"
+                                           },
+                                           {
+                                               "type":  "banner",
+                                               "id":  "collision_guard",
+                                               "message_binding":  "collision_warning",
+                                               "style_binding":  "collision_style"
+                                           }
+                                       ]
+                       },
+    "name_ru":  "ChromaSense — Палитра и A11y Сьют",
+    "description_ru":  "Интерактивный инструмент гармонии цветов и доступности (A11y) для PhotoCraft с проверкой WCAG-контраста и симуляцией дальтонизма.",
+    "locales":  {
+                    "de":  {
+                               "name":  "ChromaSense — Farbpalette \u0026 A11y-Suite",
+                               "description":  "Interaktives Farbharmonie- und Barrierefreiheits-Tool für PhotoCraft mit WCAG-Kontrast und Farbsimulation."
+                           },
+                    "fr":  {
+                               "name":  "ChromaSense — Palette de couleurs et suite d\u0027accessibilité",
+                               "description":  "Outil interactif d\u0027harmonie des couleurs et d\u0027accessibilité pour PhotoCraft avec contraste WCAG et simulation."
+                           },
+                    "es":  {
+                               "name":  "ChromaSense — Paleta de colores y accesibilidad",
+                               "description":  "Herramienta interactiva de armonía de color y accesibilidad para PhotoCraft con contraste WCAG y simulación."
+                           },
+                    "ja":  {
+                               "name":  "ChromaSense — カラーパレット＆アクセシビリティ",
+                               "description":  "WCAGコントラスト検証と色覚シミュレーションを備えたPhotoCraft用インタラクティブカラーパレットツール。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "ChromaSense — 调色板与无障碍套件",
+                                    "description":  "适用于PhotoCraft的交互式色彩和谐与无障碍工具，支持WCAG对比度检查和色觉模拟。"
+                                }
+                }
 }

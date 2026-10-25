@@ -1,21 +1,49 @@
 {
-  "id": "macro.photocraft.plugins.black_and_white",
-  "name": "B&W Film Pop (No-Code)",
-  "version": "1.0.0",
-  "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
-  "author": "kobaltGIT",
-  "plugin_type": "no_code",
-  "icon": "icon.svg",
-  "commands": [
-    {
-      "command": "layer.duplicate",
-      "params": {},
-      "description": "Duplicate source layer"
-    },
-    {
-      "command": "image.adjustments.desaturate",
-      "params": {},
-      "description": "Desaturate layer pixels"
-    }
-  ]
+    "id":  "macro.photocraft.plugins.black_and_white",
+    "name":  "B\u0026W Film Pop (No-Code)",
+    "version":  "1.0.0",
+    "description":  "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "no_code",
+    "icon":  "icon.svg",
+    "commands":  [
+                     {
+                         "command":  "layer.duplicate",
+                         "params":  {
+
+                                    },
+                         "description":  "Duplicate source layer"
+                     },
+                     {
+                         "command":  "image.adjustments.desaturate",
+                         "params":  {
+
+                                    },
+                         "description":  "Desaturate layer pixels"
+                     }
+                 ],
+    "name_ru":  "Кинематографичный контрастный Ч/Б",
+    "description_ru":  "Создает глубокую выразительную черно-белую конверсию с S-образной кривой контраста и тональной проработкой светов и теней.",
+    "locales":  {
+                    "de":  {
+                               "name":  "Kinoreifes kontrastreiches S/W",
+                               "description":  "Erstellt eine dramatische Schwarz-Weiß-Konvertierung mit s-förmiger Kontrastkurve und Tonwertanpassung."
+                           },
+                    "fr":  {
+                               "name":  "Noir \u0026 Blanc cinématographique à fort contraste",
+                               "description":  "Crée une conversion noir et blanc dramatique avec courbe de contraste en S et ajustement tonal."
+                           },
+                    "es":  {
+                               "name":  "B/N cinematográfico de alto contraste",
+                               "description":  "Crea una conversión dramática a blanco y negro con curva de contraste en S y ajuste tonal."
+                           },
+                    "ja":  {
+                               "name":  "シネマティックハイコントラスト白黒",
+                               "description":  "S字カーブと階調補正により、ドラマチックな高コントラスト白黒変換を作成。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "电影感高对比黑白",
+                                    "description":  "通过S型曲线和色调调整创建极富戏剧张力的高对比度黑白效果。"
+                                }
+                }
 }

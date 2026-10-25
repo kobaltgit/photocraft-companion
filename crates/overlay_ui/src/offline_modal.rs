@@ -8,8 +8,11 @@ pub struct OfflineModalApp {
     pub connection_state: ConnectionState,
     pub open_manager_requested: bool,
     pub launch_requested: bool,
+    pub hide_requested: bool,
+    pub is_pinned: bool,
     pub retry_seconds: f32,
     pub is_process_detected: bool,
+    pub resolved_auto_language: Language,
 }
 
 impl OfflineModalApp {
@@ -20,15 +23,26 @@ impl OfflineModalApp {
             connection_state: ConnectionState::Offline,
             open_manager_requested: false,
             launch_requested: false,
+            hide_requested: false,
+            is_pinned: true,
             retry_seconds: 1.5,
             is_process_detected: false,
+            resolved_auto_language: Language::En,
+        }
+    }
+
+    pub fn effective_language(&self) -> Language {
+        match self.current_language {
+            Language::Auto => self.resolved_auto_language.safe_ui_language(),
+            manual => manual.safe_ui_language(),
         }
     }
 
     pub fn t<'a>(&self, en: &'a str, ru: &'a str) -> &'a str {
-        match self.current_language {
+        match self.effective_language() {
             Language::Ru => ru,
-            _ => en,
+            Language::En => en,
+            other => crate::i18n::lookup(en, other).unwrap_or(en),
         }
     }
 
@@ -41,6 +55,86 @@ impl OfflineModalApp {
             Stroke::new(1.0, palette.border_stroke),
             egui::StrokeKind::Inside,
         );
+
+        // Header with Drag Handle, Pin Toggle and Minimize to Tray
+        ui.horizontal(|ui| {
+            ui.add_space(8.0);
+
+            // Left spacer to visually balance right controls
+            ui.allocate_exact_size(Vec2::new(36.0, 20.0), egui::Sense::hover());
+
+            // Centered Drag Handle
+            let available_drag_w = ui.available_width() - 44.0;
+            let (handle_rect, handle_resp) = ui.allocate_exact_size(
+                Vec2::new(available_drag_w.max(20.0), 20.0),
+                egui::Sense::drag(),
+            );
+            if handle_resp.drag_started() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
+            let hc = handle_rect.center();
+            ui.painter().line_segment(
+                [egui::pos2(hc.x - 14.0, hc.y), egui::pos2(hc.x + 14.0, hc.y)],
+                Stroke::new(1.5, palette.border_stroke),
+            );
+
+            // Right header controls: Pin & Minimize
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(6.0);
+
+                // Minimize to tray button
+                let (min_rect, min_resp) =
+                    ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::click());
+                if min_resp.clicked() {
+                    self.hide_requested = true;
+                }
+                let min_hover = min_resp.hovered();
+                let min_color = if min_hover {
+                    palette.text_primary
+                } else {
+                    palette.text_muted
+                };
+                let mc = min_rect.center();
+                ui.painter().line_segment(
+                    [
+                        egui::pos2(mc.x - 4.5, mc.y + 3.0),
+                        egui::pos2(mc.x + 4.5, mc.y + 3.0),
+                    ],
+                    Stroke::new(1.5, min_color),
+                );
+
+                ui.add_space(2.0);
+
+                // Pin (Always on top) button
+                let (pin_rect, pin_resp) =
+                    ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::click());
+                if pin_resp.clicked() {
+                    self.is_pinned = !self.is_pinned;
+                    let level = if self.is_pinned {
+                        egui::WindowLevel::AlwaysOnTop
+                    } else {
+                        egui::WindowLevel::Normal
+                    };
+                    ui.ctx()
+                        .send_viewport_cmd(egui::ViewportCommand::WindowLevel(level));
+                }
+                let pin_hover = pin_resp.hovered();
+                let pin_color = if self.is_pinned {
+                    palette.accent_blue
+                } else if pin_hover {
+                    palette.text_primary
+                } else {
+                    palette.text_muted
+                };
+                let pc = pin_rect.center();
+                ui.painter()
+                    .circle_filled(egui::pos2(pc.x, pc.y - 3.0), 3.0, pin_color);
+                ui.painter().line_segment(
+                    [egui::pos2(pc.x, pc.y), egui::pos2(pc.x, pc.y + 5.0)],
+                    Stroke::new(1.5, pin_color),
+                );
+            });
+        });
 
         let is_auth_req = self.connection_state == ConnectionState::AuthRequired;
         let indicator_color = if is_auth_req {
@@ -213,6 +307,8 @@ mod tests {
         assert_eq!(app.current_theme, ThemeMode::Dark);
         assert!(!app.open_manager_requested);
         assert!(!app.launch_requested);
+        assert!(!app.hide_requested);
+        assert!(app.is_pinned);
         assert_eq!(app.retry_seconds, 1.5);
         assert!(!app.is_process_detected);
     }

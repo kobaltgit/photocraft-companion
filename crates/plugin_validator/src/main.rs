@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+﻿use anyhow::{bail, Context, Result};
 use core_contracts::{PluginManifest, PluginType};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -883,6 +883,9 @@ mod tests {
             output_mode: core_contracts::PluginOutputMode::InPlace,
             models: vec![],
             action_id: None,
+            name_ru: None,
+            description_ru: None,
+            locales: Default::default(),
             entrypoint: None,
             ai: None,
             algorithm: None,
@@ -1012,6 +1015,9 @@ Awesome AI plugin description for tests.
                 sha256: None,
             }],
             action_id: None,
+            name_ru: None,
+            description_ru: None,
+            locales: Default::default(),
             entrypoint: None,
             ai: None,
             algorithm: None,
@@ -1076,6 +1082,9 @@ Awesome AI plugin description for tests.
                 sha256: None,
             }],
             action_id: None,
+            name_ru: None,
+            description_ru: None,
+            locales: Default::default(),
             entrypoint: None,
             ai: None,
             algorithm: None,
@@ -1140,6 +1149,9 @@ Awesome AI plugin description for tests.
                 sha256: None,
             }],
             action_id: None,
+            name_ru: None,
+            description_ru: None,
+            locales: Default::default(),
             entrypoint: None,
             ai: None,
             algorithm: None,

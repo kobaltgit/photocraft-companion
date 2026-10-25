@@ -1,86 +1,149 @@
 {
-  "id": "ai.photocraft.plugins.remove_bg",
-  "name": "AI Remove Background (RMBG-1.4)",
-  "version": "1.1.0",
-  "description": "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
-  "author": "kobaltGIT",
-  "plugin_type": "native_ai",
-  "action_id": "plugin:remove_bg",
-  "icon": "icon.svg",
-  "input": "active_layer",
-  "output_mode": "new_layer",
-  "post_commands": [],
-  "sub_actions": [
-    {
-      "id": "cutout",
-      "name": "Remove Background (Cutout)",
-      "name_ru": "Удаление фона (Вырезка)",
-      "icon": "icon.svg",
-      "post_commands": [
-        {
-          "command": "layer.setProps",
-          "params": {
-            "layer": "$source_layer",
-            "visible": false
-          },
-          "description": "Hide source layer to avoid visual duplicate"
-        }
-      ]
-    },
-    {
-      "id": "mask",
-      "name": "Create Layer Mask",
-      "name_ru": "Создать маску слоя",
-      "icon": "icon_mask.svg",
-      "post_commands": [
-        {
-          "command": "select.loadSelection",
-          "params": {
-            "channel": "transparency",
-            "layer": "$result_layer"
-          },
-          "description": "Load alpha channel of AI result into active selection"
-        },
-        {
-          "command": "layer.delete",
-          "params": {
-            "layer": "$result_layer"
-          },
-          "description": "Clean up temporary AI result layer"
-        },
-        {
-          "command": "layer.select",
-          "params": {
-            "layer": "$source_layer"
-          },
-          "description": "Guarantee source layer is active before mask generation"
-        },
-        {
-          "command": "layer.layerMask.revealSelection",
-          "params": {
-            "layer": "$source_layer"
-          },
-          "description": "Apply non-destructive layer mask on original source layer"
-        },
-        {
-          "command": "select.deselect",
-          "params": {},
-          "description": "Clear active selection marching ants"
-        }
-      ]
-    }
-  ],
-  "ai": {
-    "task": "segmentation_mask"
-  },
-  "models": [
-    {
-      "role": "background_removal",
-      "name": "rmbg-1.4.onnx",
-      "required": true,
-      "size_mb": 168,
-      "url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
-      "sha256": "8cafcf770b06757c4eaced21b1a88e57fd2b66de01b8045f35f01535ba742e0f"
-    }
-  ]
+    "id":  "ai.photocraft.plugins.remove_bg",
+    "name":  "AI Remove Background (RMBG-1.4)",
+    "version":  "1.1.1",
+    "description":  "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "native_ai",
+    "action_id":  "plugin:remove_bg",
+    "icon":  "icon.svg",
+    "input":  "active_layer",
+    "output_mode":  "new_layer",
+    "post_commands":  [
+
+                      ],
+    "sub_actions":  [
+                        {
+                            "id":  "cutout",
+                            "name":  "Remove Background (Cutout)",
+                            "name_ru":  "Удаление фона (Вырезка)",
+                            "icon":  "icon.svg",
+                            "post_commands":  [
+                                                  {
+                                                      "command":  "layer.setProps",
+                                                      "params":  {
+                                                                     "layer":  "$source_layer",
+                                                                     "visible":  false
+                                                                 },
+                                                      "description":  "Hide source layer to avoid visual duplicate"
+                                                  }
+                                              ],
+                            "locales":  {
+                                            "de":  {
+                                                       "name":  "Hintergrund entfernen (Freistellen)"
+                                                   },
+                                            "fr":  {
+                                                       "name":  "Supprimer l\u0027arrière-plan (Détourage)"
+                                                   },
+                                            "es":  {
+                                                       "name":  "Eliminar fondo (Recorte)"
+                                                   },
+                                            "ja":  {
+                                                       "name":  "背景削除 (切り抜き)"
+                                                   },
+                                            "zh-hans":  {
+                                                            "name":  "消除背景 (抠图)"
+                                                        }
+                                        }
+                        },
+                        {
+                            "id":  "mask",
+                            "name":  "Create Layer Mask",
+                            "name_ru":  "Создать маску слоя",
+                            "icon":  "icon_mask.svg",
+                            "post_commands":  [
+                                                  {
+                                                      "command":  "select.loadSelection",
+                                                      "params":  {
+                                                                     "channel":  "transparency",
+                                                                     "layer":  "$result_layer"
+                                                                 },
+                                                      "description":  "Load alpha channel of AI result into active selection"
+                                                  },
+                                                  {
+                                                      "command":  "layer.delete",
+                                                      "params":  {
+                                                                     "layer":  "$result_layer"
+                                                                 },
+                                                      "description":  "Clean up temporary AI result layer"
+                                                  },
+                                                  {
+                                                      "command":  "layer.select",
+                                                      "params":  {
+                                                                     "layer":  "$source_layer"
+                                                                 },
+                                                      "description":  "Guarantee source layer is active before mask generation"
+                                                  },
+                                                  {
+                                                      "command":  "layer.layerMask.revealSelection",
+                                                      "params":  {
+                                                                     "layer":  "$source_layer"
+                                                                 },
+                                                      "description":  "Apply non-destructive layer mask on original source layer"
+                                                  },
+                                                  {
+                                                      "command":  "select.deselect",
+                                                      "ignore_errors":  true,
+                                                      "params":  {
+
+                                                                 },
+                                                      "description":  "Clear active selection marching ants"
+                                                  }
+                                              ],
+                            "locales":  {
+                                            "de":  {
+                                                       "name":  "Ebenenmaske erstellen"
+                                                   },
+                                            "fr":  {
+                                                       "name":  "Créer un masque de fusion"
+                                                   },
+                                            "es":  {
+                                                       "name":  "Crear máscara de capa"
+                                                   },
+                                            "ja":  {
+                                                       "name":  "レイヤーマスクを作成"
+                                                   },
+                                            "zh-hans":  {
+                                                            "name":  "创建图层蒙版"
+                                                        }
+                                        }
+                        }
+                    ],
+    "ai":  {
+               "task":  "segmentation_mask"
+           },
+    "models":  [
+                   {
+                       "role":  "background_removal",
+                       "name":  "rmbg-1.4.onnx",
+                       "required":  true,
+                       "size_mb":  168,
+                       "url":  "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
+                       "sha256":  "8cafcf770b06757c4eaced21b1a88e57fd2b66de01b8045f35f01535ba742e0f"
+                   }
+               ],
+    "name_ru":  "ИИ Удаление фона (RMBG-1.4)",
+    "description_ru":  "Качественное нейросетевое удаление фона для PhotoCraft с помощью модели Bria AI RMBG-1.4 через локальный ONNX Runtime.",
+    "locales":  {
+                    "de":  {
+                               "name":  "KI-Hintergrundentfernung (RMBG-1.4)",
+                               "description":  "Hochpräzise neuronale Hintergrundentfernung für PhotoCraft mit Bria AI RMBG-1.4 via lokaler ONNX Runtime."
+                           },
+                    "fr":  {
+                               "name":  "Suppression d\u0027arrière-plan IA (RMBG-1.4)",
+                               "description":  "Détourage neuronal haute fidélité pour PhotoCraft avec le modèle Bria AI RMBG-1.4 via ONNX Runtime local."
+                           },
+                    "es":  {
+                               "name":  "Eliminar fondo por IA (RMBG-1.4)",
+                               "description":  "Eliminación neuronal de fondos de alta fidelidad para PhotoCraft utilizando el modelo Bria AI RMBG-1.4 a través de ONNX Runtime local."
+                           },
+                    "ja":  {
+                               "name":  "AI背景削除 (RMBG-1.4)",
+                               "description":  "ローカルのONNX Runtimeを介したBria AI RMBG-1.4モデルによるPhotoCraft用の高精度なニューラル背景削除。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "AI背景消除 (RMBG-1.4)",
+                                    "description":  "通过本地ONNX Runtime使用Bria AI RMBG-1.4模型为PhotoCraft提供高精度神经背景去除。"
+                                }
+                }
 }

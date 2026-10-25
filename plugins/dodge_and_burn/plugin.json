@@ -1,70 +1,115 @@
 {
-  "id": "macro.photocraft.plugins.dodge_and_burn",
-  "name": "Pro Dodge & Burn (50% Gray)",
-  "name_ru": "Pro Dodge & Burn (50% Серый)",
-  "version": "1.0.0",
-  "description": "Creates a non-destructive 50% Gray Soft Light layer with a B&W visual aid layer for professional Dodge & Burn contouring.",
-  "description_ru": "Создает недеструктивный слой 50% серого в режиме Soft Light со вспомогательным Ч/Б слоем для профессиональной светотеневой прорисовки объемов.",
-  "author": "kobaltGIT",
-  "plugin_type": "no_code",
-  "action_id": "plugin:dodge_and_burn",
-  "icon": "icon.svg",
-  "commands": [
-    {
-      "command": "tools.setColors",
-      "params": {
-        "foreground": [0.5, 0.5, 0.5, 1.0]
-      },
-      "description": "Set foreground color to 50% neutral gray"
-    },
-    {
-      "command": "layer.new.layer",
-      "params": {},
-      "description": "Create new blank layer"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Dodge & Burn (50% Gray)"
-      },
-      "description": "Name layer Dodge & Burn (50% Gray)"
-    },
-    {
-      "command": "edit.fillForeground",
-      "params": {},
-      "description": "Fill layer with 50% neutral gray"
-    },
-    {
-      "command": "layer.setProps",
-      "params": {
-        "blend": "Soft Light"
-      },
-      "description": "Set blend mode to Soft Light (neutral gray becomes fully invisible)"
-    },
-    {
-      "command": "layer.newAdjustmentLayer.blackWhite",
-      "params": {},
-      "description": "Add Black & White adjustment layer as non-destructive visual aid"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Visual Aid (B&W Helper)"
-      },
-      "description": "Name helper layer Visual Aid (B&W Helper)"
-    },
-    {
-      "command": "layer.selectBelow",
-      "params": {},
-      "description": "Select Dodge & Burn working layer below"
-    },
-    {
-      "command": "tools.setColors",
-      "params": {
-        "foreground": [1.0, 1.0, 1.0, 1.0],
-        "background": [0.0, 0.0, 0.0, 1.0]
-      },
-      "description": "Set brush colors: White (Dodge) foreground, Black (Burn) background"
-    }
-  ]
+    "id":  "macro.photocraft.plugins.dodge_and_burn",
+    "name":  "Pro Dodge \u0026 Burn (50% Gray)",
+    "version":  "1.0.0",
+    "description":  "Creates a non-destructive 50% Gray Soft Light layer with a B\u0026W visual aid layer for professional Dodge \u0026 Burn contouring.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "no_code",
+    "action_id":  "plugin:dodge_and_burn",
+    "icon":  "icon.svg",
+    "commands":  [
+                     {
+                         "command":  "tools.setColors",
+                         "params":  {
+                                        "foreground":  [
+                                                           0.5,
+                                                           0.5,
+                                                           0.5,
+                                                           1.0
+                                                       ]
+                                    },
+                         "description":  "Set foreground color to 50% neutral gray"
+                     },
+                     {
+                         "command":  "layer.new.layer",
+                         "params":  {
+
+                                    },
+                         "description":  "Create new blank layer"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Dodge \u0026 Burn (50% Gray)"
+                                    },
+                         "description":  "Name layer Dodge \u0026 Burn (50% Gray)"
+                     },
+                     {
+                         "command":  "edit.fillForeground",
+                         "params":  {
+
+                                    },
+                         "description":  "Fill layer with 50% neutral gray"
+                     },
+                     {
+                         "command":  "layer.setProps",
+                         "params":  {
+                                        "blend":  "Soft Light"
+                                    },
+                         "description":  "Set blend mode to Soft Light (neutral gray becomes fully invisible)"
+                     },
+                     {
+                         "command":  "layer.newAdjustmentLayer.blackWhite",
+                         "params":  {
+
+                                    },
+                         "description":  "Add Black \u0026 White adjustment layer as non-destructive visual aid"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Visual Aid (B\u0026W Helper)"
+                                    },
+                         "description":  "Name helper layer Visual Aid (B\u0026W Helper)"
+                     },
+                     {
+                         "command":  "layer.selectBelow",
+                         "params":  {
+
+                                    },
+                         "description":  "Select Dodge \u0026 Burn working layer below"
+                     },
+                     {
+                         "command":  "tools.setColors",
+                         "params":  {
+                                        "foreground":  [
+                                                           1.0,
+                                                           1.0,
+                                                           1.0,
+                                                           1.0
+                                                       ],
+                                        "background":  [
+                                                           0.0,
+                                                           0.0,
+                                                           0.0,
+                                                           1.0
+                                                       ]
+                                    },
+                         "description":  "Set brush colors: White (Dodge) foreground, Black (Burn) background"
+                     }
+                 ],
+    "name_ru":  "Pro Dodge \u0026 Burn (50% Серый)",
+    "description_ru":  "Создает недеструктивный слой 50% серого в режиме Soft Light со вспомогательным Ч/Б слоем для профессиональной светотеневой прорисовки объемов.",
+    "locales":  {
+                    "de":  {
+                               "name":  "Pro Dodge \u0026 Burn (50% Grau)",
+                               "description":  "Erstellt eine zerstörungsfreie 50% Grau Weiches Licht-Ebene mit einer S/W-Hilfsebene für professionelles Konturieren."
+                           },
+                    "fr":  {
+                               "name":  "Pro Dodge \u0026 Burn (Gris 50%)",
+                               "description":  "Crée un calque non destructif Gris 50% en Lumière tamisée avec calque d\u0027aide N\u0026B pour le modelé professionnel."
+                           },
+                    "es":  {
+                               "name":  "Pro Dodge \u0026 Burn (Gris al 50%)",
+                               "description":  "Crea una capa no destructiva de gris neutro al 50% en modo Luz suave con capa de ayuda en B/N."
+                           },
+                    "ja":  {
+                               "name":  "プロ Dodge \u0026 Burn (50% グレー)",
+                               "description":  "プロの輪郭強調のための、白黒補助レイヤー付き非破壊50%グレーソフトライトレイヤーを作成。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "专业双曲线加深减淡 (50% 中性灰)",
+                                    "description":  "创建非破坏性50%柔光中性灰图层及黑白辅助观察层，用于专业光影明暗刻画。"
+                                }
+                }
 }

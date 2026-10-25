@@ -1,64 +1,88 @@
 {
-  "id": "macro.photocraft.plugins.frequency_separation",
-  "name": "Frequency Separation (Retouch)",
-  "name_ru": "Частотное разложение (Ретушь)",
-  "version": "1.0.0",
-  "description": "Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching.",
-  "description_ru": "Разделяет портрет на слой текстуры (высокие частоты) и слой тона/цвета (низкие частоты) для профессиональной ретуши кожи.",
-  "author": "kobaltGIT",
-  "plugin_type": "no_code",
-  "action_id": "plugin:frequency_separation",
-  "icon": "icon.svg",
-  "commands": [
-    {
-      "command": "layer.duplicate",
-      "params": {},
-      "description": "Duplicate source layer for low frequency"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "Low Frequency (Color & Tone)"
-      },
-      "description": "Rename to Low Frequency"
-    },
-    {
-      "command": "layer.duplicate",
-      "params": {},
-      "description": "Duplicate for high frequency texture"
-    },
-    {
-      "command": "layer.renameLayer",
-      "params": {
-        "name": "High Frequency (Texture)"
-      },
-      "description": "Rename to High Frequency"
-    },
-    {
-      "command": "filter.other.highPass",
-      "params": {
-        "radius": 4.0
-      },
-      "description": "Extract fine skin microtexture using High Pass filter"
-    },
-    {
-      "command": "layer.setProps",
-      "params": {
-        "blend": "Linear Light"
-      },
-      "description": "Set High Frequency blending to Linear Light"
-    },
-    {
-      "command": "layer.selectBelow",
-      "params": {},
-      "description": "Activate Low Frequency layer for skin tone smoothing"
-    },
-    {
-      "command": "filter.blur.gaussianBlur",
-      "params": {
-        "radius": 4.0
-      },
-      "description": "Smooth colors and tonal transitions on Low Frequency layer"
-    }
-  ]
+    "id":  "macro.photocraft.plugins.frequency_separation",
+    "name":  "Frequency Separation (Retouch)",
+    "version":  "1.0.0",
+    "description":  "Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "no_code",
+    "action_id":  "plugin:frequency_separation",
+    "icon":  "icon.svg",
+    "commands":  [
+                     {
+                         "command":  "layer.duplicate",
+                         "params":  {
+
+                                    },
+                         "description":  "Duplicate source layer for low frequency"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "Low Frequency (Color \u0026 Tone)"
+                                    },
+                         "description":  "Rename to Low Frequency"
+                     },
+                     {
+                         "command":  "layer.duplicate",
+                         "params":  {
+
+                                    },
+                         "description":  "Duplicate for high frequency texture"
+                     },
+                     {
+                         "command":  "layer.renameLayer",
+                         "params":  {
+                                        "name":  "High Frequency (Texture)"
+                                    },
+                         "description":  "Rename to High Frequency"
+                     },
+                     {
+                         "command":  "filter.other.highPass",
+                         "params":  {
+                                        "radius":  4.0
+                                    },
+                         "description":  "Extract fine skin microtexture using High Pass filter"
+                     },
+                     {
+                         "command":  "layer.setProps",
+                         "params":  {
+                                        "blend":  "Linear Light"
+                                    },
+                         "description":  "Set High Frequency blending to Linear Light"
+                     },
+                     {
+                         "command":  "layer.selectBelow",
+                         "params":  {
+
+                                    },
+                         "description":  "Activate Low Frequency layer for skin tone smoothing"
+                     },
+                     {
+                         "command":  "filter.blur.gaussianBlur",
+                         "params":  {
+                                        "radius":  4.0
+                                    },
+                         "description":  "Smooth colors and tonal transitions on Low Frequency layer"
+                     }
+                 ],
+    "name_ru":  "Частотное разложение Pro (8-bit)",
+    "description_ru":  "Разделяет активный слой на высокочастотную (текстура) и низкочастотную (тон и цвет) составляющие для профессиональной портретной ретуши кожи.",
+    "locales":  {
+                    "de":  {
+                               "name":  "Pro Frequenztrennung (8-Bit)",
+                               "description":  "Teilt die aktive Ebene in High-Frequency (Textur) und Low-Frequency (Farbe/Ton) für professionelle Hautretusche."
+                           },
+                    "fr":  {
+                               "name":  "Séparation de fréquences Pro (8 bits)",
+                               "description":  "Sépare le calque actif en haute fréquence (texture) et basse fréquence (couleur/tons) pour la retouche de peau pro."
+                           },
+                    "es":  {
+                               "name":  "Separación de frecuencias Pro (8 bits)",
+                               "description":  "Divide la capa activa en alta frecuencia (textura) y baja frecuencia (color/tono) para retoque de piel profesional."
+                           },
+                    "ja":  {
+                               "name":  "プロ周波数分離 (8-bit)",
+                               "description":  "プロの肌レタッチのために、アクティブレイヤーを高周波（テクスチャ）と低周波（色・階調）に分離。"
+                           }
+                }
 }

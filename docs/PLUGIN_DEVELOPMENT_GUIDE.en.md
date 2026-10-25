@@ -305,6 +305,65 @@ Interactive tool windows, assistants, and palettes in dedicated Viewports with d
 }
 ```
 
+### 3.5. Metadata and Parameter Internationalization (i18n)
+
+PhotoCraft Companion automatically detects the active PhotoCraft host language (across all 22 BCP 47 supported languages) and dynamically adapts plugins on the fly.
+
+#### A. Multilingual Plugin Metadata (`locales`):
+To localize plugin names and descriptions in Companion Manager and Toolstrip, declare a `locales` map in `plugin.json`. Backward-compatible fields `name_ru` and `description_ru` are also supported:
+
+```json
+{
+  "id": "macro.photocraft.plugins.dodge_and_burn",
+  "name": "Pro Dodge & Burn (50% Gray)",
+  "name_ru": "Pro Dodge & Burn (50% Серый)",
+  "description": "Creates a non-destructive 50% Gray Soft Light layer...",
+  "description_ru": "Создает недеструктивный слой 50% серого...",
+  "locales": {
+    "de": {
+      "name": "Pro Dodge & Burn (50% Grau)",
+      "description": "Erstellt eine zerstörungsfreie 50% Grau Weiches Licht-Ebene..."
+    },
+    "fr": {
+      "name": "Pro Dodge & Burn (Gris 50%)",
+      "description": "Crée un calque non destructif Gris 50% en Lumière tamisée..."
+    },
+    "ja": {
+      "name": "プロ Dodge & Burn (50% グレー)",
+      "description": "プロの輪郭強調のための..."
+    },
+    "zh-hans": {
+      "name": "专业双曲线加深减淡 (50% 中性灰)",
+      "description": "创建非破坏性50%柔光中性灰图层..."
+    }
+  }
+}
+```
+
+For sub-actions (`sub_actions`), the `locales` dictionary is also supported:
+```json
+"sub_actions": [
+  {
+    "id": "mask",
+    "name": "Create Layer Mask",
+    "name_ru": "Создать маску слоя",
+    "locales": {
+      "de": { "name": "Ebenenmaske erstellen" },
+      "fr": { "name": "Créer un masque de fusion" },
+      "ja": { "name": "レイヤーマスクを作成" }
+    }
+  }
+]
+```
+
+#### B. Canonical Parameters and Smart Parameter Retry:
+* **The Golden Rule:** Always declare command names and parameter string values using **canonical English** (e.g. `"blend": "Soft Light"`, `"channel": "transparency"`).
+* **Smart Parameter Retry Engine:** When PhotoCraft runs with localized UI (e.g. German, French, Russian), certain internal operations expect localized parameters (such as `"Weiches Licht"` instead of `"Soft Light"`). Companion's workflow runner handles this seamlessly:
+  1. It first submits the canonical English command (`"Soft Light"`).
+  2. If PhotoCraft accepts it, execution proceeds with zero overhead.
+  3. If PhotoCraft returns a parameter rejection error, Companion translates the parameter value into the active host locale (among all 22 supported languages) and retries the command automatically.
+  Plugin creators do not need to maintain language forks or conditional logic for host locales!
+
 ---
 
 ## 4. Workflow Engine & Command Pipelines

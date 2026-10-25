@@ -1,30 +1,54 @@
 {
-  "id": "ai.photocraft.plugins.inpaint",
-  "name": "AI Generative Fill (LaMa)",
-  "version": "1.0.0",
-  "description": "Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU.",
-  "author": "kobaltGIT",
-  "plugin_type": "native_ai",
-  "action_id": "plugin:inpaint",
-  "icon": "icon.svg",
-  "input": "selection",
-  "output_mode": "in_place",
-  "post_commands": [
-    {
-      "command": "layer.mergeDown"
-    }
-  ],
-  "ai": {
-    "task": "inpainting"
-  },
-  "models": [
-    {
-      "role": "inpainting",
-      "name": "lama_inpaint.onnx",
-      "required": true,
-      "size_mb": 208,
-      "url": "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx",
-      "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
-    }
-  ]
+    "id":  "ai.photocraft.plugins.inpaint",
+    "name":  "AI Generative Fill (LaMa)",
+    "version":  "1.0.0",
+    "description":  "Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "native_ai",
+    "action_id":  "plugin:inpaint",
+    "icon":  "icon.svg",
+    "input":  "selection",
+    "output_mode":  "in_place",
+    "post_commands":  [
+                          {
+                              "command":  "layer.mergeDown"
+                          }
+                      ],
+    "ai":  {
+               "task":  "inpainting"
+           },
+    "models":  [
+                   {
+                       "role":  "inpainting",
+                       "name":  "lama_inpaint.onnx",
+                       "required":  true,
+                       "size_mb":  208,
+                       "url":  "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx",
+                       "sha256":  "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+                   }
+               ],
+    "name_ru":  "ИИ Умное удаление объектов (LaMa)",
+    "description_ru":  "Высококачественное контекстное заполнение и бесшовное удаление объектов по выделенной маске с помощью модели LaMa через локальный ONNX Runtime.",
+    "locales":  {
+                    "de":  {
+                               "name":  "KI-Smart-Inpainting (LaMa)",
+                               "description":  "Neuronales inhaltsbasiertes Füllen und Entfernen von Objekten für PhotoCraft mit LaMa via ONNX Runtime."
+                           },
+                    "fr":  {
+                               "name":  "Remplissage intelligent IA (LaMa)",
+                               "description":  "Remplissage neuronal d\u0027après le contenu pour PhotoCraft avec LaMa via ONNX Runtime."
+                           },
+                    "es":  {
+                               "name":  "Relleno inteligente por IA (LaMa)",
+                               "description":  "Relleno neuronal según el contenido y eliminación de objetos para PhotoCraft usando LaMa vía ONNX Runtime."
+                           },
+                    "ja":  {
+                               "name":  "AIスマートインペインティング (LaMa)",
+                               "description":  "ONNX Runtimeを介したLaMaによるPhotoCraft用のニューラルコンテンツに応じた塗りつぶしとオブジェクト削除。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "AI智能修复 (LaMa)",
+                                    "description":  "通过ONNX Runtime使用LaMa为PhotoCraft提供神经内容感知填充与对象消除。"
+                                }
+                }
 }

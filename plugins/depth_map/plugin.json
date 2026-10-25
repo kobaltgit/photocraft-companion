@@ -1,29 +1,55 @@
 {
-  "id": "ai.photocraft.plugins.depth_map",
-  "name": "AI Depth Map (Depth Anything V2)",
-  "version": "1.0.0",
-  "description": "State-of-the-art monocular 3D depth estimation for Lens Blur, bokeh and atmospheric lighting via Depth Anything V2.",
-  "author": "kobaltGIT",
-  "plugin_type": "native_ai",
-  "action_id": "plugin:depth_map",
-  "icon": "icon.svg",
-  "input": "active_layer",
-  "output_mode": "new_layer",
-  "post_commands": [],
-  "ai": {
-    "task": "segmentation_mask",
-    "input_size": 518,
-    "normalize": "image_net",
-    "output_type": "grayscale_layer"
-  },
-  "models": [
-    {
-      "role": "depth_estimation",
-      "name": "depth-anything-v2-small.onnx",
-      "required": true,
-      "size_mb": 99,
-      "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
-      "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
-    }
-  ]
+    "id":  "ai.photocraft.plugins.depth_map",
+    "name":  "AI Depth Map (Depth Anything V2)",
+    "version":  "1.0.0",
+    "description":  "State-of-the-art monocular 3D depth estimation for Lens Blur, bokeh and atmospheric lighting via Depth Anything V2.",
+    "author":  "kobaltGIT",
+    "plugin_type":  "native_ai",
+    "action_id":  "plugin:depth_map",
+    "icon":  "icon.svg",
+    "input":  "active_layer",
+    "output_mode":  "new_layer",
+    "post_commands":  [
+
+                      ],
+    "ai":  {
+               "task":  "segmentation_mask",
+               "input_size":  518,
+               "normalize":  "image_net",
+               "output_type":  "grayscale_layer"
+           },
+    "models":  [
+                   {
+                       "role":  "depth_estimation",
+                       "name":  "depth-anything-v2-small.onnx",
+                       "required":  true,
+                       "size_mb":  99,
+                       "url":  "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+                       "sha256":  "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+                   }
+               ],
+    "name_ru":  "ИИ Карта глубины (Depth Anything V2)",
+    "description_ru":  "Монокулярная оценка глубины сцены на базе модели Depth Anything V2 Small через локальный ONNX Runtime.",
+    "locales":  {
+                    "de":  {
+                               "name":  "KI-Tiefenschätzung (Depth Anything V2)",
+                               "description":  "Monokulare neuronale Tiefenkartierung für PhotoCraft mit Depth Anything V2 Small via ONNX Runtime."
+                           },
+                    "fr":  {
+                               "name":  "Estimation de profondeur IA (Depth Anything V2)",
+                               "description":  "Cartographie de profondeur monoculaire pour PhotoCraft avec Depth Anything V2 Small via ONNX Runtime."
+                           },
+                    "es":  {
+                               "name":  "Estimación de profundidad por IA (Depth Anything V2)",
+                               "description":  "Mapeo de profundidad monocular para PhotoCraft usando Depth Anything V2 Small a través de ONNX Runtime."
+                           },
+                    "ja":  {
+                               "name":  "AI深度推定 (Depth Anything V2)",
+                               "description":  "ONNX Runtimeを介したDepth Anything V2 SmallによるPhotoCraft用の単眼ニューラル深度マップ生成。"
+                           },
+                    "zh-hans":  {
+                                    "name":  "AI深度估计 (Depth Anything V2)",
+                                    "description":  "通过ONNX Runtime使用Depth Anything V2 Small为PhotoCraft提供单目神经深度图生成。"
+                                }
+                }
 }

@@ -5,6 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+/// Localized metadata for a plugin or sub-action
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PluginLocaleInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// Manifest definition for any plugin (No-Code, AI, Script, or External)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
@@ -12,6 +21,12 @@ pub struct PluginManifest {
     pub name: String,
     pub version: String,
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_ru: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_ru: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub locales: std::collections::HashMap<String, PluginLocaleInfo>,
     #[serde(default = "default_author")]
     pub author: String,
     #[serde(default)]
@@ -185,6 +200,58 @@ impl PluginManifest {
     pub fn model_by_role(&self, role: &str) -> Option<&ModelRequirement> {
         self.models.iter().find(|m| m.role.as_deref() == Some(role))
     }
+
+    pub fn localized_name(&self, lang: &str) -> &str {
+        let lang_code = lang.to_ascii_lowercase();
+        if let Some(locale) = self.locales.get(&lang_code) {
+            if let Some(ref name) = locale.name {
+                return name;
+            }
+        }
+        if let Some((base, _)) = lang_code.split_once('-') {
+            if let Some(locale) = self.locales.get(base) {
+                if let Some(ref name) = locale.name {
+                    return name;
+                }
+            }
+        }
+        if lang_code == "ru" || lang_code.starts_with("ru") {
+            if let Some(ref name_ru) = self.name_ru {
+                return name_ru;
+            }
+        }
+        &self.name
+    }
+
+    pub fn localized_description(&self, lang: &str) -> &str {
+        let lang_code = lang.to_ascii_lowercase();
+        if let Some(locale) = self.locales.get(&lang_code) {
+            if let Some(ref desc) = locale.description {
+                return desc;
+            }
+        }
+        if let Some((base, _)) = lang_code.split_once('-') {
+            if let Some(locale) = self.locales.get(base) {
+                if let Some(ref desc) = locale.description {
+                    return desc;
+                }
+            }
+        }
+        if lang_code == "ru" || lang_code.starts_with("ru") {
+            if let Some(ref desc_ru) = self.description_ru {
+                return desc_ru;
+            }
+        }
+        &self.description
+    }
+
+    pub fn name_for_lang(&self, lang: crate::Language) -> &str {
+        self.localized_name(lang.code())
+    }
+
+    pub fn description_for_lang(&self, lang: crate::Language) -> &str {
+        self.localized_description(lang.code())
+    }
 }
 
 impl Default for PluginManifest {
@@ -194,6 +261,9 @@ impl Default for PluginManifest {
             name: String::new(),
             version: "1.0.0".to_string(),
             description: String::new(),
+            name_ru: None,
+            description_ru: None,
+            locales: std::collections::HashMap::new(),
             author: default_author(),
             plugin_type: PluginType::default(),
             icon: None,
@@ -501,6 +571,8 @@ pub struct SubAction {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name_ru: Option<String>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub locales: std::collections::HashMap<String, PluginLocaleInfo>,
     #[serde(default)]
     pub icon: Option<String>,
     #[serde(default)]
@@ -510,12 +582,30 @@ pub struct SubAction {
 }
 
 impl SubAction {
-    pub fn name_for_lang(&self, lang: crate::Language) -> &str {
-        if matches!(lang, crate::Language::Ru) {
-            self.name_ru.as_deref().unwrap_or(&self.name)
-        } else {
-            &self.name
+    pub fn localized_name(&self, lang: &str) -> &str {
+        let lang_code = lang.to_ascii_lowercase();
+        if let Some(locale) = self.locales.get(&lang_code) {
+            if let Some(ref name) = locale.name {
+                return name;
+            }
         }
+        if let Some((base, _)) = lang_code.split_once('-') {
+            if let Some(locale) = self.locales.get(base) {
+                if let Some(ref name) = locale.name {
+                    return name;
+                }
+            }
+        }
+        if lang_code == "ru" || lang_code.starts_with("ru") {
+            if let Some(ref name_ru) = self.name_ru {
+                return name_ru;
+            }
+        }
+        &self.name
+    }
+
+    pub fn name_for_lang(&self, lang: crate::Language) -> &str {
+        self.localized_name(lang.code())
     }
 }
 
@@ -1301,6 +1391,7 @@ mod tests {
     fn test_sub_action_and_action_request() {
         let sub = SubAction {
             id: "mask".to_string(),
+            locales: std::collections::HashMap::new(),
             name: "Layer Mask".to_string(),
             name_ru: Some("Маска слоя".to_string()),
             icon: Some("mask.svg".to_string()),
