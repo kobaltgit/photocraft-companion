@@ -958,8 +958,9 @@ async fn execute_raster_process_action(
             // 3. Composite source layer onto full document canvas or dynamic padding to eliminate clipping
             let doc_info = client.get_document_info().await.ok();
             let render_canvas = if let Some(ref doc) = doc_info {
-                if doc.width > 0 && doc.height > 0 && doc.active_layer_bounds.is_some() {
-                    let b = doc.active_layer_bounds.unwrap();
+                if let (true, true, Some(b)) =
+                    (doc.width > 0, doc.height > 0, doc.active_layer_bounds)
+                {
                     let left = b[0].max(0) as u32;
                     let top = b[1].max(0) as u32;
                     let canvas_w = doc.width.max(left + src.width());

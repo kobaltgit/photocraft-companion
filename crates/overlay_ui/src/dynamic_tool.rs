@@ -786,6 +786,7 @@ impl DynamicToolEngine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_widget_node(
         ui: &mut egui::Ui,
         plugin_id: &str,
@@ -1664,10 +1665,8 @@ pub fn extract_extrude_params(values: &HashMap<String, DynamicValue>) -> Extrude
                 }
             }
         } else if let Some(b) = v.as_bool() {
-            if k_lower.ends_with("shadow_enabled") || k_lower == "shadow_enabled" {
-                if !b {
-                    params.shadow_opacity = 0.0;
-                }
+            if (k_lower.ends_with("shadow_enabled") || k_lower == "shadow_enabled") && !b {
+                params.shadow_opacity = 0.0;
             }
         }
     }

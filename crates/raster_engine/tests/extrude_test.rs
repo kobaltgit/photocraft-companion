@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default)]
+
 use image::{Rgba, RgbaImage};
 use raster_engine::{
     calculate_content_bounds, calculate_preview_scale, render_extrude_2_5d, render_extrude_preview,

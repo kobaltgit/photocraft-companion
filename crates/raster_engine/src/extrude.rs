@@ -92,7 +92,9 @@ pub fn render_extrude_split(
             let px = src.get_pixel(x, y);
             if px[3] > 0 {
                 let color = if let Some(fc) = params.front_color {
-                    let a = ((px[3] as f32 * (fc[3] as f32 / 255.0)).round() as u8).min(255);
+                    let a = (px[3] as f32 * (fc[3] as f32 / 255.0))
+                        .round()
+                        .clamp(0.0, 255.0) as u8;
                     Rgba([fc[0], fc[1], fc[2], a])
                 } else {
                     *px
