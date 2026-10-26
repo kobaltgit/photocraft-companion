@@ -3,7 +3,9 @@ use core_contracts::{
     BannerStyle, InteractiveUiConfig, Language, PluginIpcAction, PluginManifest, WidgetNode,
 };
 use eframe::egui::{self, Color32, Sense, Stroke, Vec2};
+use raster_engine::{self, ExtrudeParams};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, warn};
@@ -139,6 +141,24 @@ impl DynamicWindowState {
             WidgetNode::HueWheel { id, .. } => {
                 values.insert(id.clone(), DynamicValue::Number(0.0));
             }
+            WidgetNode::VectorPad {
+                id,
+                default_angle_deg,
+                default_distance,
+                ..
+            } => {
+                values.insert(
+                    format!("{}_angle", id),
+                    DynamicValue::Number(*default_angle_deg),
+                );
+                values.insert(
+                    format!("{}_distance", id),
+                    DynamicValue::Number(*default_distance),
+                );
+            }
+            WidgetNode::ImagePreview { id, .. } => {
+                values.insert(format!("{}_preview", id), DynamicValue::Bool(true));
+            }
             WidgetNode::Row { items } => {
                 for item in items {
                     Self::init_widget_values(item, values);
@@ -232,6 +252,8 @@ pub struct DynamicToolEngine {
     current_language: Language,
     lang_arc: Arc<RwLock<Language>>,
     echo_guard: Arc<std::sync::Mutex<Option<(String, String)>>>,
+    pub preview_thumbnails: HashMap<String, (image::RgbaImage, f32)>,
+    pub preview_textures: HashMap<String, (egui::TextureHandle, u64)>,
 }
 
 impl DynamicToolEngine {
@@ -301,7 +323,7 @@ impl DynamicToolEngine {
                 let _ = tx_bare.send(action);
             });
 
-            let tx_colors = tx;
+            let tx_colors = tx.clone();
             let echo_guard_colors = echo_guard.clone();
             rhai_engine.register_fn(
                 "set_colors",
@@ -320,6 +342,26 @@ impl DynamicToolEngine {
                         }),
                     };
                     let _ = tx_colors.send(action);
+                },
+            );
+
+            let tx_raster = tx;
+            rhai_engine.register_fn(
+                "execute_raster_process",
+                move |task: rhai::ImmutableString, params: rhai::Map| {
+                    let json_params = rhai::serde::from_dynamic::<serde_json::Value>(
+                        &rhai::Dynamic::from(params),
+                    )
+                    .unwrap_or(serde_json::Value::Null);
+
+                    let action = PluginIpcAction::new(
+                        "raster.process",
+                        serde_json::json!({
+                            "task": task.to_string(),
+                            "params": json_params,
+                        }),
+                    );
+                    let _ = tx_raster.send(action);
                 },
             );
         }
@@ -470,6 +512,8 @@ impl DynamicToolEngine {
             current_language: language,
             lang_arc,
             echo_guard,
+            preview_thumbnails: HashMap::new(),
+            preview_textures: HashMap::new(),
         };
 
         // Run initial state pass for all loaded scripts
@@ -510,10 +554,37 @@ impl DynamicToolEngine {
         self.states.contains_key(plugin_id)
     }
 
+    pub fn set_preview_image(&mut self, plugin_id: &str, img: image::RgbaImage, scale: f32) {
+        self.preview_thumbnails
+            .insert(plugin_id.to_string(), (img, scale));
+        self.preview_textures.remove(plugin_id);
+    }
+
+    pub fn get_preview_image(&self, plugin_id: &str) -> Option<&(image::RgbaImage, f32)> {
+        self.preview_thumbnails.get(plugin_id)
+    }
+
+    pub fn first_open_window_with_subscription(&self, topic: &str) -> Option<String> {
+        for (id, state) in &self.states {
+            if state.is_open {
+                if let Some(manifest) = self.manifests.get(id) {
+                    if let Some(ui_cfg) = &manifest.interactive_ui {
+                        if ui_cfg.ipc_subscriptions.iter().any(|s| s == topic) {
+                            return Some(id.clone());
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
     pub fn toggle_window(&mut self, plugin_id: &str) {
         if let Some(state) = self.states.get_mut(plugin_id) {
             state.is_open = !state.is_open;
             if state.is_open {
+                self.preview_thumbnails.remove(plugin_id);
+                self.preview_textures.remove(plugin_id);
                 self.execute_script_state_change(plugin_id);
             }
         }
@@ -687,10 +758,13 @@ impl DynamicToolEngine {
                                 for widget in &config.widgets {
                                     if Self::render_widget_node(
                                         ui,
+                                        &plugin_id,
                                         widget,
                                         state,
                                         palette,
                                         self.current_language,
+                                        &mut self.preview_thumbnails,
+                                        &mut self.preview_textures,
                                     ) {
                                         state_changed = true;
                                     }
@@ -714,10 +788,13 @@ impl DynamicToolEngine {
 
     fn render_widget_node(
         ui: &mut egui::Ui,
+        plugin_id: &str,
         node: &WidgetNode,
         state: &mut DynamicWindowState,
         palette: &ThemePalette,
         lang: Language,
+        preview_thumbnails: &mut HashMap<String, (image::RgbaImage, f32)>,
+        preview_textures: &mut HashMap<String, (egui::TextureHandle, u64)>,
     ) -> bool {
         let mut changed = false;
 
@@ -744,45 +821,49 @@ impl DynamicToolEngine {
                     .unwrap_or(false);
 
                 ui.horizontal(|ui| {
-                    let sense = if *selectable {
-                        Sense::click()
-                    } else {
-                        Sense::hover()
-                    };
-                    let (rect, response) = ui.allocate_exact_size(Vec2::new(24.0, 24.0), sense);
-
-                    if *selectable {
-                        let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
-                        if response.clicked() {
-                            if let Some(tb) = target_binding {
-                                state
-                                    .values
-                                    .insert(tb.clone(), DynamicValue::String(id.clone()));
-                                changed = true;
-                            }
-                        }
-                    }
-
-                    ui.painter().rect_filled(rect, 4.0, parsed_color);
-                    if is_selected {
-                        // High-contrast active accent focus outline inside the swatch bounds (never clipped)
-                        ui.painter().rect_stroke(
-                            rect,
-                            4.0,
-                            Stroke::new(2.0, palette.accent_blue),
-                            egui::StrokeKind::Inside,
-                        );
-                    } else {
+                    if *read_only {
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::new(20.0, 20.0), Sense::hover());
+                        ui.painter().rect_filled(rect, 4.0, parsed_color);
                         ui.painter().rect_stroke(
                             rect,
                             4.0,
                             Stroke::new(1.0, palette.border_stroke),
                             egui::StrokeKind::Inside,
                         );
+                    } else {
+                        let mut srgba = parsed_color;
+                        if egui::color_picker::color_edit_button_srgba(
+                            ui,
+                            &mut srgba,
+                            egui::color_picker::Alpha::Opaque,
+                        )
+                        .changed()
+                        {
+                            current_hex =
+                                format!("#{:02x}{:02x}{:02x}", srgba.r(), srgba.g(), srgba.b());
+                            state
+                                .values
+                                .insert(id.clone(), DynamicValue::String(current_hex.clone()));
+                            changed = true;
+                        }
                     }
 
-                    let label_resp = ui.label(node.label_for_lang(lang));
-                    if *selectable && label_resp.interact(Sense::click()).clicked() {
+                    let label_text = node.label_for_lang(lang);
+                    let label_color = if is_selected {
+                        palette.accent_blue
+                    } else {
+                        palette.text_primary
+                    };
+                    let label_resp = ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(label_text)
+                                .size(12.0)
+                                .color(label_color),
+                        )
+                        .sense(Sense::click()),
+                    );
+                    if *selectable && label_resp.clicked() {
                         if let Some(tb) = target_binding {
                             state
                                 .values
@@ -790,28 +871,6 @@ impl DynamicToolEngine {
                             changed = true;
                         }
                     }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if *read_only {
-                            ui.add(egui::Label::new(
-                                egui::RichText::new(&current_hex)
-                                    .monospace()
-                                    .color(palette.text_muted),
-                            ));
-                        } else {
-                            let response = ui.add(
-                                egui::TextEdit::singleline(&mut current_hex)
-                                    .desired_width(75.0)
-                                    .font(egui::TextStyle::Monospace),
-                            );
-                            if response.changed() {
-                                state
-                                    .values
-                                    .insert(id.clone(), DynamicValue::String(current_hex));
-                                changed = true;
-                            }
-                        }
-                    });
                 });
             }
 
@@ -1022,18 +1081,388 @@ impl DynamicToolEngine {
                 });
             }
 
+            WidgetNode::VectorPad {
+                id,
+                max_distance,
+                default_angle_deg,
+                default_distance,
+                ..
+            } => {
+                let angle_key = format!("{}_angle", id);
+                let distance_key = format!("{}_distance", id);
+
+                let mut current_angle = state
+                    .values
+                    .get(&angle_key)
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(*default_angle_deg);
+                let mut current_distance = state
+                    .values
+                    .get(&distance_key)
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(*default_distance);
+
+                let label_text = node.label_for_lang(lang);
+                if !label_text.is_empty() {
+                    ui.label(label_text);
+                }
+
+                ui.vertical_centered(|ui| {
+                    let pad_diameter = 130.0;
+                    let pad_size = Vec2::splat(pad_diameter);
+                    let (rect, response) =
+                        ui.allocate_exact_size(pad_size, Sense::click_and_drag());
+                    let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+
+                    let center = rect.center();
+                    let radius = (pad_diameter * 0.5) - 4.0;
+
+                    if response.dragged() || response.clicked() {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let delta = pos - center;
+                            let dist_px = (delta.x * delta.x + delta.y * delta.y).sqrt();
+                            let norm = (dist_px / radius).clamp(0.0, 1.0);
+                            let new_dist = ((norm as f64 * *max_distance) * 10.0).round() / 10.0;
+
+                            let mut rad = delta.y.atan2(delta.x);
+                            if rad < 0.0 {
+                                rad += std::f32::consts::TAU;
+                            }
+                            let mut deg = (rad.to_degrees() as f64).round();
+                            if deg >= 360.0 {
+                                deg -= 360.0;
+                            }
+
+                            if (deg - current_angle).abs() > 0.01
+                                || (new_dist - current_distance).abs() > 0.01
+                            {
+                                current_angle = deg;
+                                current_distance = new_dist;
+                                state
+                                    .values
+                                    .insert(angle_key.clone(), DynamicValue::Number(current_angle));
+                                state.values.insert(
+                                    distance_key.clone(),
+                                    DynamicValue::Number(current_distance),
+                                );
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    let painter = ui.painter();
+
+                    // 1. Circular viewfinder background and border
+                    painter.circle_filled(center, radius, palette.panel_fill);
+                    painter.circle_stroke(center, radius, Stroke::new(1.0, palette.border_stroke));
+                    painter.circle_stroke(
+                        center,
+                        radius * 0.33,
+                        Stroke::new(0.5, palette.border_stroke.gamma_multiply(0.4)),
+                    );
+                    painter.circle_stroke(
+                        center,
+                        radius * 0.66,
+                        Stroke::new(0.5, palette.border_stroke.gamma_multiply(0.4)),
+                    );
+
+                    // 2. Crosshair guide lines
+                    let cross_stroke = Stroke::new(1.0, palette.border_stroke.gamma_multiply(0.6));
+                    painter.line_segment(
+                        [
+                            egui::pos2(center.x - radius, center.y),
+                            egui::pos2(center.x + radius, center.y),
+                        ],
+                        cross_stroke,
+                    );
+                    painter.line_segment(
+                        [
+                            egui::pos2(center.x, center.y - radius),
+                            egui::pos2(center.x, center.y + radius),
+                        ],
+                        cross_stroke,
+                    );
+
+                    // Center pivot point
+                    painter.circle_filled(center, 2.5, palette.text_muted);
+
+                    // 3. Thrust vector line and handle marker with accent color
+                    let rad = (current_angle as f32).to_radians();
+                    let dist_ratio = if *max_distance > 0.0 {
+                        (current_distance / *max_distance).clamp(0.0, 1.0) as f32
+                    } else {
+                        0.0
+                    };
+                    let handle_pos =
+                        center + Vec2::new(rad.cos(), rad.sin()) * (radius * dist_ratio);
+
+                    painter
+                        .line_segment([center, handle_pos], Stroke::new(2.0, palette.accent_blue));
+                    painter.circle_filled(handle_pos, 5.0, palette.accent_blue);
+                    painter.circle_stroke(handle_pos, 5.0, Stroke::new(1.5, Color32::WHITE));
+
+                    // 4. Numeric readout of angle and distance below the viewfinder (No prohibited unicode)
+                    let readout = format!("{:.0} deg, {:.0} px", current_angle, current_distance);
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(readout)
+                            .size(11.0)
+                            .monospace()
+                            .color(palette.text_muted),
+                    );
+                });
+            }
+
+            WidgetNode::ImagePreview { height, .. } => {
+                let preview_h = (*height as f32).max(60.0);
+                let preview_w = ui.available_width();
+                let (rect, _resp) =
+                    ui.allocate_exact_size(Vec2::new(preview_w, preview_h), Sense::hover());
+
+                // 1. Checkerboard transparency background
+                let cell_size = 10.0;
+                let cols = (rect.width() / cell_size).ceil() as usize;
+                let rows = (rect.height() / cell_size).ceil() as usize;
+                for r in 0..rows {
+                    for c in 0..cols {
+                        let is_even = (r + c) % 2 == 0;
+                        let c_color = if is_even {
+                            Color32::from_rgb(38, 40, 46)
+                        } else {
+                            Color32::from_rgb(26, 28, 32)
+                        };
+                        let x0 = rect.min.x + c as f32 * cell_size;
+                        let y0 = rect.min.y + r as f32 * cell_size;
+                        let x1 = (x0 + cell_size).min(rect.max.x);
+                        let y1 = (y0 + cell_size).min(rect.max.y);
+                        if x0 < x1 && y0 < y1 {
+                            let cell_rect =
+                                egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1));
+                            ui.painter().rect_filled(cell_rect, 0.0, c_color);
+                        }
+                    }
+                }
+
+                // 2. Render preview or vector placeholder
+                if let Some((thumbnail, scale_k)) = preview_thumbnails.get(plugin_id) {
+                    let raw_params = extract_extrude_params(&state.values);
+                    let scaled_params = raw_params.scaled(*scale_k);
+                    let hash = hash_extrude_params(&scaled_params, *scale_k);
+
+                    let needs_render = match preview_textures.get(plugin_id) {
+                        Some((_, cached_hash)) => *cached_hash != hash,
+                        None => true,
+                    };
+
+                    if needs_render {
+                        let rendered =
+                            raster_engine::render_extrude_preview(thumbnail, &scaled_params);
+                        let (rw, rh) = rendered.dimensions();
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                            [rw as usize, rh as usize],
+                            rendered.as_raw(),
+                        );
+                        let tex_handle = ui.ctx().load_texture(
+                            format!("preview_texture_{}", plugin_id),
+                            color_image,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        preview_textures.insert(plugin_id.to_string(), (tex_handle, hash));
+                    }
+
+                    if let Some((handle, _)) = preview_textures.get(plugin_id) {
+                        let img_size = handle.size_vec2();
+                        if img_size.x > 0.0 && img_size.y > 0.0 {
+                            let padding = 8.0;
+                            let avail_w = (rect.width() - padding * 2.0).max(1.0);
+                            let avail_h = (rect.height() - padding * 2.0).max(1.0);
+                            let fit_scale = (avail_w / img_size.x).min(avail_h / img_size.y);
+                            let final_size = img_size * fit_scale;
+                            let draw_rect = egui::Rect::from_center_size(rect.center(), final_size);
+
+                            ui.painter().image(
+                                handle.id(),
+                                draw_rect,
+                                egui::Rect::from_min_max(
+                                    egui::pos2(0.0, 0.0),
+                                    egui::pos2(1.0, 1.0),
+                                ),
+                                Color32::WHITE,
+                            );
+                        }
+                    }
+                } else {
+                    // Vector placeholder: "No active layer loaded" / "Слой не загружен"
+                    let center = rect.center();
+                    let doc_w = 26.0;
+                    let doc_h = 32.0;
+                    let doc_rect = egui::Rect::from_center_size(
+                        center - Vec2::new(0.0, 12.0),
+                        Vec2::new(doc_w, doc_h),
+                    );
+                    ui.painter().rect_stroke(
+                        doc_rect,
+                        2.0,
+                        Stroke::new(1.2, palette.text_muted.gamma_multiply(0.4)),
+                        egui::StrokeKind::Inside,
+                    );
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(doc_rect.min.x + 5.0, doc_rect.min.y + 8.0),
+                            egui::pos2(doc_rect.max.x - 5.0, doc_rect.min.y + 8.0),
+                        ],
+                        Stroke::new(1.0, palette.text_muted.gamma_multiply(0.3)),
+                    );
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(doc_rect.min.x + 5.0, doc_rect.min.y + 14.0),
+                            egui::pos2(doc_rect.max.x - 5.0, doc_rect.min.y + 14.0),
+                        ],
+                        Stroke::new(1.0, palette.text_muted.gamma_multiply(0.3)),
+                    );
+                    ui.painter().line_segment(
+                        [
+                            egui::pos2(doc_rect.min.x + 5.0, doc_rect.min.y + 20.0),
+                            egui::pos2(doc_rect.max.x - 10.0, doc_rect.min.y + 20.0),
+                        ],
+                        Stroke::new(1.0, palette.text_muted.gamma_multiply(0.3)),
+                    );
+
+                    let placeholder_text = match lang {
+                        Language::Ru => "Слой не загружен",
+                        _ => "No active layer loaded",
+                    };
+                    let font_id = egui::FontId::proportional(12.0);
+                    ui.painter().text(
+                        center + Vec2::new(0.0, 18.0),
+                        egui::Align2::CENTER_CENTER,
+                        placeholder_text,
+                        font_id,
+                        palette.text_muted,
+                    );
+                }
+
+                // 3. Border frame
+                ui.painter().rect_stroke(
+                    rect,
+                    4.0,
+                    Stroke::new(1.0, palette.border_stroke),
+                    egui::StrokeKind::Inside,
+                );
+
+                // 4. Interactive Vector Refresh Button (Reload active layer from PhotoCraft)
+                let refresh_btn_size = Vec2::new(22.0, 22.0);
+                let refresh_rect = egui::Rect::from_min_size(
+                    egui::pos2(rect.max.x - refresh_btn_size.x - 6.0, rect.min.y + 6.0),
+                    refresh_btn_size,
+                );
+                let refresh_id = ui.make_persistent_id(format!("{}_preview_refresh", plugin_id));
+                let refresh_resp = ui.interact(refresh_rect, refresh_id, egui::Sense::click());
+
+                let is_hovered = refresh_resp.hovered();
+                let bg_col = if is_hovered {
+                    palette.button_secondary_hover
+                } else {
+                    palette.card_fill
+                };
+                ui.painter().rect_filled(refresh_rect, 3.0, bg_col);
+                ui.painter().rect_stroke(
+                    refresh_rect,
+                    3.0,
+                    Stroke::new(
+                        1.0,
+                        if is_hovered {
+                            palette.accent_hover
+                        } else {
+                            palette.border_stroke
+                        },
+                    ),
+                    egui::StrokeKind::Inside,
+                );
+
+                // Vector refresh icon (circular arc + arrow)
+                let c = refresh_rect.center();
+                let r = 5.0;
+                let stroke = Stroke::new(
+                    1.4,
+                    if is_hovered {
+                        palette.accent_blue
+                    } else {
+                        palette.text_muted
+                    },
+                );
+                let points: Vec<egui::Pos2> = (0..=12)
+                    .map(|i| {
+                        let angle = std::f32::consts::PI * 0.25
+                            + (i as f32 / 12.0) * (std::f32::consts::PI * 1.5);
+                        c + Vec2::new(angle.cos() * r, angle.sin() * r)
+                    })
+                    .collect();
+                for w in points.windows(2) {
+                    ui.painter().line_segment([w[0], w[1]], stroke);
+                }
+                if let Some(&last) = points.last() {
+                    let arrow1 = last + Vec2::new(-2.5, -2.0);
+                    let arrow2 = last + Vec2::new(2.5, -1.0);
+                    ui.painter().line_segment([last, arrow1], stroke);
+                    ui.painter().line_segment([last, arrow2], stroke);
+                }
+
+                let tooltip_text = match lang {
+                    Language::Ru => "Обновить слой из PhotoCraft",
+                    _ => "Refresh layer from PhotoCraft",
+                };
+                let clicked = refresh_resp.clicked();
+                refresh_resp.on_hover_text(tooltip_text);
+
+                if clicked {
+                    preview_thumbnails.remove(plugin_id);
+                    preview_textures.remove(plugin_id);
+                    ui.ctx().request_repaint();
+                    changed = true;
+                }
+            }
+
             WidgetNode::Separator => {
                 ui.separator();
             }
 
             WidgetNode::Row { items } => {
-                ui.horizontal(|ui| {
-                    for item in items {
-                        if Self::render_widget_node(ui, item, state, palette, lang) {
-                            changed = true;
+                if items.len() > 1 {
+                    ui.columns(items.len(), |columns| {
+                        for (i, item) in items.iter().enumerate() {
+                            if Self::render_widget_node(
+                                &mut columns[i],
+                                plugin_id,
+                                item,
+                                state,
+                                palette,
+                                lang,
+                                preview_thumbnails,
+                                preview_textures,
+                            ) {
+                                changed = true;
+                            }
                         }
-                    }
-                });
+                    });
+                } else {
+                    ui.horizontal(|ui| {
+                        for item in items {
+                            if Self::render_widget_node(
+                                ui,
+                                plugin_id,
+                                item,
+                                state,
+                                palette,
+                                lang,
+                                preview_thumbnails,
+                                preview_textures,
+                            ) {
+                                changed = true;
+                            }
+                        }
+                    });
+                }
             }
         }
 
@@ -1176,6 +1605,95 @@ pub fn parse_hex_color(hex: &str) -> Option<Color32> {
     } else {
         None
     }
+}
+
+pub fn extract_extrude_params(values: &HashMap<String, DynamicValue>) -> ExtrudeParams {
+    let mut params = ExtrudeParams::default();
+
+    for (k, v) in values {
+        let k_lower = k.to_lowercase();
+        if let Some(num) = v.as_f64() {
+            if k_lower.ends_with("_light_angle")
+                || k_lower == "light_angle"
+                || k_lower == "light_angle_deg"
+            {
+                params.light_angle_deg = num as f32;
+            } else if k_lower.ends_with("_light_intensity") || k_lower == "light_intensity" {
+                params.light_intensity = num as f32;
+            } else if k_lower.ends_with("_angle") || k_lower == "angle" || k_lower == "angle_deg" {
+                params.angle_deg = num as f32;
+            } else if k_lower.ends_with("_distance") || k_lower == "distance" {
+                params.distance = num as f32;
+            } else if k_lower.ends_with("_bevel_radius") || k_lower == "bevel_radius" {
+                params.bevel_radius = num as f32;
+            } else if k_lower.ends_with("_bevel_highlight")
+                || k_lower == "bevel_highlight"
+                || k_lower == "highlight"
+            {
+                params.bevel_highlight = num as f32;
+            } else if k_lower.ends_with("_shadow_blur") || k_lower == "shadow_blur" {
+                params.shadow_blur = num as f32;
+            } else if k_lower.ends_with("_shadow_opacity") || k_lower == "shadow_opacity" {
+                params.shadow_opacity = num as f32;
+            } else if k_lower.ends_with("_shadow_distance") || k_lower == "shadow_distance" {
+                params.shadow_distance = num as f32;
+            } else if k_lower.ends_with("_perspective") || k_lower == "perspective" {
+                params.perspective = num as f32;
+            }
+        } else if let Some(s) = v.as_str() {
+            if (k_lower.ends_with("_start_color")
+                || k_lower.ends_with("body_start")
+                || k_lower.ends_with("_start"))
+                && s.starts_with('#')
+            {
+                if let Some(c) = parse_hex_color(s) {
+                    params.body_gradient_start = image::Rgba([c.r(), c.g(), c.b(), 255]);
+                }
+            } else if (k_lower.ends_with("_end_color")
+                || k_lower.ends_with("body_end")
+                || k_lower.ends_with("_end"))
+                && s.starts_with('#')
+            {
+                if let Some(c) = parse_hex_color(s) {
+                    params.body_gradient_end = image::Rgba([c.r(), c.g(), c.b(), 255]);
+                }
+            } else if (k_lower.ends_with("front_color") || k_lower == "front") && s.starts_with('#')
+            {
+                if let Some(c) = parse_hex_color(s) {
+                    params.front_color = Some(image::Rgba([c.r(), c.g(), c.b(), 255]));
+                }
+            }
+        } else if let Some(b) = v.as_bool() {
+            if k_lower.ends_with("shadow_enabled") || k_lower == "shadow_enabled" {
+                if !b {
+                    params.shadow_opacity = 0.0;
+                }
+            }
+        }
+    }
+
+    params
+}
+
+pub fn hash_extrude_params(p: &ExtrudeParams, scale: f32) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    p.angle_deg.to_bits().hash(&mut hasher);
+    p.distance.to_bits().hash(&mut hasher);
+    if let Some(fc) = p.front_color {
+        fc.0.hash(&mut hasher);
+    }
+    p.body_gradient_start.0.hash(&mut hasher);
+    p.body_gradient_end.0.hash(&mut hasher);
+    p.bevel_radius.to_bits().hash(&mut hasher);
+    p.bevel_highlight.to_bits().hash(&mut hasher);
+    p.light_angle_deg.to_bits().hash(&mut hasher);
+    p.light_intensity.to_bits().hash(&mut hasher);
+    p.shadow_blur.to_bits().hash(&mut hasher);
+    p.shadow_opacity.to_bits().hash(&mut hasher);
+    p.shadow_distance.to_bits().hash(&mut hasher);
+    p.perspective.to_bits().hash(&mut hasher);
+    scale.to_bits().hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Helper: calculates hue in degrees (0.0..360.0) from Color32
@@ -2843,5 +3361,179 @@ mod tests {
             err_msg.contains("Too many operations") || err_msg.contains("operations"),
             "Error should indicate operation limit exceeded, got: {err_msg}"
         );
+    }
+
+    #[test]
+    fn test_vector_pad_and_preview_initialization() {
+        let cfg = InteractiveUiConfig {
+            window_title: "3D Extrude".to_string(),
+            widgets: vec![
+                WidgetNode::VectorPad {
+                    id: "extrude_vector".to_string(),
+                    label: "Vector".to_string(),
+                    label_ru: Some("Вектор".to_string()),
+                    max_distance: 100.0,
+                    default_angle_deg: 135.0,
+                    default_distance: 24.0,
+                },
+                WidgetNode::ImagePreview {
+                    id: "preview_pane".to_string(),
+                    height: 180.0,
+                },
+            ],
+            ..Default::default()
+        };
+
+        let state = DynamicWindowState::new(&cfg);
+        assert_eq!(
+            state.values.get("extrude_vector_angle").unwrap().as_f64(),
+            Some(135.0)
+        );
+        assert_eq!(
+            state
+                .values
+                .get("extrude_vector_distance")
+                .unwrap()
+                .as_f64(),
+            Some(24.0)
+        );
+        assert_eq!(
+            state.values.get("preview_pane_preview").unwrap().as_bool(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn test_dynamic_tool_preview_storage_methods() {
+        let mut engine = DynamicToolEngine::new(&[], None);
+        assert!(engine.get_preview_image("plugin.test").is_none());
+
+        let test_img = image::RgbaImage::new(32, 32);
+        engine.set_preview_image("plugin.test", test_img.clone(), 0.5);
+
+        let preview = engine.get_preview_image("plugin.test");
+        assert!(preview.is_some());
+        let (stored_img, scale) = preview.unwrap();
+        assert_eq!(*scale, 0.5);
+        assert_eq!(stored_img.dimensions(), (32, 32));
+    }
+
+    #[test]
+    fn test_execute_raster_process_rhai_ipc() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let engine = DynamicToolEngine::new(&[], Some(tx));
+
+        let script = r#"
+            let params = #{
+                task: "extrude",
+                angle: 120.0,
+                distance: 35.0
+            };
+            execute_raster_process("extrude", params);
+        "#;
+
+        engine.rhai_engine.eval::<()>(script).unwrap();
+
+        let action = rx.try_recv().expect("Expected PluginIpcAction");
+        assert_eq!(action.command, "raster.process");
+        assert_eq!(action.params["task"], "extrude");
+        assert_eq!(action.params["params"]["distance"], 35.0);
+    }
+
+    #[test]
+    fn test_extract_extrude_params_and_hashing() {
+        let mut values = HashMap::new();
+        values.insert("vector_angle".to_string(), DynamicValue::Number(45.0));
+        values.insert("vector_distance".to_string(), DynamicValue::Number(30.0));
+        values.insert(
+            "body_start_color".to_string(),
+            DynamicValue::String("#ff0000".to_string()),
+        );
+        values.insert(
+            "body_end_color".to_string(),
+            DynamicValue::String("#00ff00".to_string()),
+        );
+
+        let params = extract_extrude_params(&values);
+        assert_eq!(params.angle_deg, 45.0);
+        assert_eq!(params.distance, 30.0);
+        assert_eq!(params.body_gradient_start, image::Rgba([255, 0, 0, 255]));
+        assert_eq!(params.body_gradient_end, image::Rgba([0, 255, 0, 255]));
+
+        let hash1 = hash_extrude_params(&params, 1.0);
+        let hash2 = hash_extrude_params(&params, 1.0);
+        let hash_scaled = hash_extrude_params(&params, 0.5);
+        assert_eq!(hash1, hash2);
+        assert_ne!(hash1, hash_scaled);
+    }
+
+    #[test]
+    fn test_popcraft_3d_rhai_script_state_change() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let engine = DynamicToolEngine::new(&[], Some(tx));
+
+        let script = include_str!("../../../plugins/popcraft_3d/script.rhai");
+        let ast = engine
+            .rhai_engine
+            .compile(script)
+            .expect("Script must compile");
+
+        let mut scope = rhai::Scope::new();
+        let mut state_map = rhai::Map::new();
+        state_map.insert("action_preset_youtube".into(), rhai::Dynamic::from(true));
+        state_map.insert("extrude_pad_distance".into(), rhai::Dynamic::from(10.0));
+
+        let res_map: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (state_map,))
+            .expect("on_state_changed must succeed");
+
+        assert_eq!(
+            res_map.get("action_preset_youtube").unwrap().as_bool(),
+            Ok(false)
+        );
+        assert_eq!(
+            res_map.get("extrude_pad_angle").unwrap().as_float(),
+            Ok(120.0)
+        );
+        assert_eq!(res_map.get("shadow_enabled").unwrap().as_bool(), Ok(true));
+        assert_eq!(res_map.get("perspective").unwrap().as_float(), Ok(0.25));
+        assert_eq!(
+            res_map
+                .get("body_start_color")
+                .unwrap()
+                .clone()
+                .into_string(),
+            Ok("#f59e0b".to_string())
+        );
+
+        // Test Apply trigger with shadow disabled and perspective set
+        let mut apply_map = rhai::Map::new();
+        apply_map.insert("action_apply".into(), rhai::Dynamic::from(true));
+        apply_map.insert("shadow_enabled".into(), rhai::Dynamic::from(false));
+        apply_map.insert("perspective".into(), rhai::Dynamic::from(0.3));
+        apply_map.insert("extrude_pad_angle".into(), rhai::Dynamic::from(45.0));
+        apply_map.insert("extrude_pad_distance".into(), rhai::Dynamic::from(20.0));
+        apply_map.insert(
+            "body_start_color".into(),
+            rhai::Dynamic::from("#ff0000".to_string()),
+        );
+        apply_map.insert(
+            "body_end_color".into(),
+            rhai::Dynamic::from("#0000ff".to_string()),
+        );
+        apply_map.insert("output_mode".into(), rhai::Dynamic::from(0 as rhai::INT));
+
+        let _: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (apply_map,))
+            .expect("Apply must succeed");
+
+        let action = rx.try_recv().expect("Apply must send IPC action");
+        assert_eq!(action.command, "raster.process");
+        assert_eq!(action.params["task"], "extrude_2_5d");
+        assert_eq!(action.params["params"]["angle_deg"], 45.0);
+        assert_eq!(action.params["params"]["shadow_opacity"], 0.0);
+        assert_eq!(action.params["params"]["perspective"], 0.3);
     }
 }

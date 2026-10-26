@@ -1006,3 +1006,26 @@
   - [x] Модернизация метода `Language::Auto.resolve()`: при значении `"language": "auto"` в конфигурации PhotoCraft или при первом старте компаньон безошибочно подхватывает язык системы, идентичный языку PhotoCraft.
   - [x] Написание модульных тестов `test_from_bcp47_tag_strip_regions` и `test_system_language` в `crates/core_contracts/src/i18n.rs`.
   - [x] 100% соблюдение Definition of Done: успешный запуск тестов воркспейса с флагом `-j 1`, чистота форматирования `cargo fmt --all -- --check` (0 расхождений), прохождение тестов регламентов разработки и линтеров UI.
+
+
+- [x] **Фаза 87: Интерактивный 2.5D растровый движок raster_engine и студийный плагин PopCraft 3D**
+  - [x] Разработка полностью изолированного чистого Rust-крейта `crates/raster_engine` (`image`, `rayon`) для высокоскоростного субпиксельного 2.5D выдавливания (extrusion), градиентного затенения боковин (directional depth shading), вычисления контурной фаски (bevel highlight) и многопроходного гауссова размытия тени (separable horizontal/vertical Gaussian drop shadow).
+  - [x] Добавление декларативных виджетов `VectorPad` (круговой интерактивный векторный контроллер направления и амплитуды выноса) и `ImagePreview` (живой холст предпросмотра) в `core_contracts::WidgetNode`.
+  - [x] Введение универсального топика подписки IPC `core_contracts::IPC_SUB_ACTIVE_LAYER_IMAGE` (`active_layer.image`) для асинхронного захвата и кэширования миниатюры активного слоя.
+  - [x] Реализация интерактивного рендеринга и превью в `overlay_ui`: аппаратная отрисовка `VectorPad` на примитивах Painter (видоискатель, перекрестие, динамический маркер, градиентный луч, угловой сектор без запрещенных глифов Unicode), 60 FPS предпросмотр в `ImagePreview` с масштабированием и кэшированием текстуры по хешу параметров.
+  - [x] Регистрация функции `execute_raster_process` в Rhai-скриптах и диспетчеризация действия `raster.process` в `companion_app/src/main.rs` с поддержкой режимов `Merged Flat Layer` и `Split Layers` (послойная вставка Тень + Объём + Фасад с микропаузами 40 мс для защиты от гонок буфера).
+  - [x] Создание плагина `plugins/popcraft_3d` (`plugin.json`, чисто векторная иконка `icon.svg`, реактивный контроллер пресетов `script.rhai`, подробный двуязычный `README.md` с 3 практическими сценариями).
+  - [x] 100% Zero-Core Hardcoding: отсутствие каких-либо специфичных проверок ID `popcraft_3d` или sniffing в крейтах ядра, расширение линтера `dev_regulations_lint_test` правилом строгой изоляции `raster_engine`.
+  - [x] Успешная валидация экосистемы через `plugin_validator` (11/11 плагинов OK), сборка `dist/popcraft_3d.pcpl`, обновление `dist/registry.json`, `README.md` и `README.ru.md`.
+  - [x] 100% прохождение всех тестов воркспейса (`cargo test --workspace -j 1`), линтеров архитектурной чистоты, регламентов, i18n и Vector-First UI.
+
+- [x] **Фаза 88: Трёхмерная перспектива, полноэкранная проекция без обрезки слоёв, выравнивание по TOBIDASE и релиз v1.3.1 (BUG-084, BUG-085)**
+  - [x] Реализация полноценной 3D-перспективы: сужение срезов экструзии к точке схода $\text{scale} = 1.0 - t \cdot \text{perspective}$ с центрированием относительно контента в `crates/raster_engine/src/extrude.rs`.
+  - [x] Добавление слайдера «Perspective» / «Перспектива» ($0.0 \dots 0.8$, шаг $0.05$) в `plugins/popcraft_3d/plugin.json`, реактивная поддержка в пресетах `script.rhai` и в окне превью на лету.
+  - [x] Устранение обрезки слоёв при вставке в PhotoCraft: добавление `active_layer_bounds` в `DocumentInfo`, считывание из `document.inspect` и проекция активного слоя на полный холст документа $(doc.width \times doc.height)$ со смещением $(x_0, y_0)$ перед экструзией.
+  - [x] Исправление утечки аккумулятора в `separable_box_blur`, добавление тумблера «Включить тень» (`shadow_enabled`) и теста `test_shadow_no_accumulator_leak_and_disabled_bypass`.
+  - [x] Инвалидация кэша миниатюр в `DynamicToolEngine::toggle_window` и добавление компактной векторной кнопки ручного обновления слоя в шапку `ImagePreview`.
+  - [x] Замена текстовых hex-полей цвета на нативный колорпикер `egui::color_picker::color_edit_button_srgba`.
+  - [x] Синхронизация версий во всех 5 файлах релиза (`1.3.1`): `Cargo.toml`, `package_release.ps1`, `package_release.sh`, `installer.iss`, `Info.plist`.
+  - [x] Подготовка авторелиза: создание двуязычного `docs/RELEASE_NOTES_v1.3.1.md`.
+  - [x] 100% Definition of Done: 196 тестов воркспейса (`cargo test --workspace -j 1`) успешно пройдены, `cargo fmt --all -- --check` чистый (0 расхождений), `plugin_validator` проверил 11/11 плагинов, собрал `dist/popcraft_3d.pcpl`.

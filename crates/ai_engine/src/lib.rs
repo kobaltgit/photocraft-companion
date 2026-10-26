@@ -1396,6 +1396,7 @@ mod tests {
                 active_layer_name: Some("Layer 1".to_string()),
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             })
         }
     }

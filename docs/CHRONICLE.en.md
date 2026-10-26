@@ -3148,3 +3148,95 @@ We aligned Companion's auto-resolution pipeline with the host editor:
 - Registered and closed `BUG-083` in `docs/BUGS_AND_ISSUES.md`, and checked off Phase 86 in `docs/CHECKLIST.md`.
 
 
+
+
+---
+
+## [2026-10-26 18:05] Chapter 93: Interactive 2.5D raster_engine and PopCraft 3D Studio Plugin
+
+*Time: October 26, 2026, 18:05 (~45 minutes)*
+
+### 1. Background & Creative Challenge
+Creating impactful extruded typography, comic-style title cards, and YouTube thumbnail text in 2D image editors traditionally required manually duplicating layers with 1-pixel nudges, tedious hand-painted bevels and drop shadows, or exporting assets to external 3D suites like Blender.
+We set out to give PhotoCraft users the power to generate professional 2.5D typography and pop-out graphics with a single click, controlled via an intuitive 60 FPS live interactive viewport right inside the Companion overlay.
+
+### 2. Architectural Design: Zero-Core Hardcoding & New raster_engine Crate
+Adhering to our strict Zero-Core Hardcoding doctrine, we avoided baking any plugin-specific logic into the application core. Instead, we architected a modular, extensible pipeline:
+1. **New Independent Crate `crates/raster_engine`:**
+   - High-performance, pure Rust pixel manipulation engine powered by `image` and `rayon`.
+   - Sub-pixel directional extrusion (`extrude.rs`) with an adaptive stepping factor of `0.5`.
+   - Gradient directional depth shading (`shading.rs`) transitioning smoothly from front face to base.
+   - Contour bevel highlight extraction (`bevel.rs`) using a Sobel operator to synthesize realistic metallic or polished edge highlights.
+   - Separable two-pass Gaussian drop shadow blur (`shadow.rs`) yielding cinematic soft shadows with zero performance drop.
+   - Strict crate isolation: dependencies on `photocraft_bridge`, `ai_engine`, `overlay_ui`, or `companion_app` are strictly forbidden.
+2. **Declarative Contract Extensions (`crates/core_contracts`):**
+   - Introduced `WidgetNode::VectorPad` — a circular interactive angle (0..360°) and distance controller.
+   - Introduced `WidgetNode::ImagePreview` — an interactive canvas delivering real-time preview feedback.
+   - Introduced the generic IPC subscription topic `IPC_SUB_ACTIVE_LAYER_IMAGE` (`active_layer.image`).
+3. **Overlay UI Implementation (`crates/overlay_ui`):**
+   - Vector-First hardware rendering of `VectorPad` via egui Painter (viewfinder circle, crosshairs, draggable indicator, gradient ray, angle sector) strictly avoiding non-standard Unicode or emoji glyphs.
+   - Real-time 60 FPS thumbnail preview in `ImagePreview` with transparency checkerboard and egui texture caching keyed by a 64-bit parameter/scale hash.
+   - Exported `execute_raster_process` helper to Rhai scripts.
+4. **Generic IPC Action Dispatcher in `crates/companion_app`:**
+   - Generic `raster.process` action handler with support for `extrude_2_5d`.
+   - Support for both `Merged Flat Layer` (instant single-layer paste) and `Split Layers` (three independent layers in exact bottom-to-top Z-order: Shadow, Body, Front with 40ms safety pauses).
+   - Live layer thumbnail fetching when any window subscribing to `active_layer.image` is active.
+
+### 3. PopCraft 3D Official Plugin (`plugins/popcraft_3d`)
+Built upon this generic infrastructure, the official PopCraft 3D studio plugin was deployed:
+- Declarative `plugin.json` manifest with property bindings, preset actions, and output mode selection.
+- Pure vector `icon.svg` passing all validation checks.
+- Reactive `script.rhai` controller featuring 4 presets ("YouTube Pop", "Retro Comic", "Cyber Neon", "Gold Metal") and extrusion execution.
+- Comprehensive bilingual `README.md` complete with 3 detailed practical workflows.
+
+### 4. Verification & Definition of Done
+- Formatting verified clean: `cargo fmt --all -- --check` returned 0 differences.
+- All 192 workspace tests (`cargo test --workspace -j 1`) passed at 100%.
+- Integrity linters `architecture_integrity_test` and `dev_regulations_lint_test` confirmed strict crate isolation and zero core hardcoding.
+- UI linters `i18n_lint_test` and `vector_first_lint_test` completed cleanly.
+- `plugin_validator` validated all 11 catalog plugins, packaged `dist/popcraft_3d.pcpl`, and synchronized the registry.
+- Phase 87 checked off in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-26 21:15] Chapter 94: Modernizing PopCraft 3D to TOBIDASE Standards, 3D Perspective, Layer Clipping Resolution, and v1.3.1 Release
+
+*Time: October 26, 2026, 21:15 (~40 minutes)*
+
+### 1. Background & Creative Challenge
+Following the initial release of PopCraft 3D and testing against real-world typography workflows in PhotoCraft, several practical gaps surfaced:
+- Users desired the expressive depth of popular plugins like TOBIDASE (receding 3D Japanese lettering), whereas the initial implementation only supported parallel isometric extrusion.
+- Extrusions directed upwards or sideways were truncated at the original layer bounds because PhotoCraft's `edit.copy` extracts only the bounding box of non-empty pixels.
+- Specifying custom colors for side faces and highlights required typing raw hex codes, and drop shadow box-blur accumulator leakage created a faint dark border artifact.
+
+### 2. True 3D Perspective & Native Color Palette
+1. **Perspective Tapering in `crates/raster_engine` (`extrude.rs`):**
+   - Added `perspective: f32` ($0.0 \dots 0.8$) to `ExtrudeParams`.
+   - Implemented slice scale tapering: $\text{scale} = 1.0 - t \cdot \text{perspective}$, where $t \in [0.0, 1.0]$ represents layer depth.
+   - Slices are centered relative to the source content, yielding authentic vanishing-point perspective.
+2. **Native Color Slots:**
+   - Switched hex text fields in `crates/overlay_ui/src/dynamic_tool.rs` to native `egui::color_picker::color_edit_button_srgba` widgets.
+3. **Drop Shadow Toggle & Accumulator Leak Fix (BUG-084):**
+   - Corrected sliding window bounds in `separable_box_blur` (`shadow.rs`), eliminating spurious edge bleeding.
+   - Introduced `shadow_enabled: bool` toggle allowing instant disabling of shadows for flat graphic styles.
+
+### 3. Eliminating Layer Clipping (Full-Canvas Bounding Projection)
+1. **Contract Extension in `DocumentInfo` (`crates/core_contracts`):**
+   - Added `active_layer_bounds: Option<[i32; 4]>` ($[x_0, y_0, x_1, y_1]$).
+   - In `crates/photocraft_bridge/src/lib.rs`, `inspect_document` parses layer bounds from `layer.get("bounds")`.
+2. **Canvas Projection in `companion_app/src/main.rs`:**
+   - Prior to extrusion, the active layer bitmap is blitted onto a full-sized $(doc.width \times doc.height)$ canvas at $(x_0, y_0)$.
+   - Resulting extruded layers are pasted into PhotoCraft with $(0, 0)$ offset, perfectly aligning with canvas coordinates and eliminating boundary clipping.
+
+### 4. Preview Cache Invalidation & Vector Refresh Button (BUG-085)
+- In `DynamicToolEngine::toggle_window`, thumbnail and texture caches are invalidated upon opening.
+- Added a compact vector refresh button in the header of `ImagePreview` to re-fetch the active layer on demand.
+
+### 5. Release v1.3.1 Preparation & Definition of Done
+- Synchronized version `1.3.1` across all 5 release files: `Cargo.toml`, `scripts/package_release.ps1`, `scripts/package_release.sh`, `packaging/windows/installer.iss`, `packaging/macos/Info.plist`.
+- Authored bilingual release notes in `docs/RELEASE_NOTES_v1.3.1.md`.
+- `cargo fmt --all -- --check` clean (0 diffs).
+- All 196 workspace tests (`cargo test --workspace -j 1`) passed with 100% success.
+- Architecture integrity, dev regulations, Vector-First UI, and localization linters verified clean.
+- `plugin_validator` validated all 11 catalog plugins.
+- Phase 88 in `docs/CHECKLIST.md` and defects `BUG-084`, `BUG-085` in `docs/BUGS_AND_ISSUES.md` fully marked resolved.

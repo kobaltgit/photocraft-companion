@@ -637,6 +637,10 @@ fn main() -> anyhow::Result<()> {
                 if let Err(e) = client_ipc.set_colors(fg, bg).await {
                     tracing::warn!("Failed to set colors via IPC: {e}");
                 }
+            } else if action.command == "raster.process" {
+                if let Err(e) = execute_raster_process_action(&client_ipc, &action.params).await {
+                    tracing::error!("Failed to execute raster.process: {e}");
+                }
             } else if let Err(e) = client_ipc
                 .execute_command(&action.command, action.params)
                 .await
@@ -793,6 +797,52 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
             }
+
+            let subscribed_image_plugin = {
+                if let Ok(engine) = dynamic_engine_colors.lock() {
+                    engine.first_open_window_with_subscription(
+                        core_contracts::IPC_SUB_ACTIVE_LAYER_IMAGE,
+                    )
+                } else {
+                    None
+                }
+            };
+
+            if let Some(plugin_id) = subscribed_image_plugin {
+                let needs_thumb = {
+                    if let Ok(engine) = dynamic_engine_colors.lock() {
+                        engine.get_preview_image(&plugin_id).is_none()
+                    } else {
+                        false
+                    }
+                };
+
+                if needs_thumb {
+                    if let Ok(img) = client_colors.copy_active_layer_image().await {
+                        let orig_w = img.width();
+                        let orig_h = img.height();
+                        if orig_w > 0 && orig_h > 0 {
+                            let scale = raster_engine::calculate_preview_scale(orig_w, orig_h, 512);
+                            let target_w = ((orig_w as f32 * scale).round() as u32).max(1);
+                            let target_h = ((orig_h as f32 * scale).round() as u32).max(1);
+                            let thumbnail = image::imageops::resize(
+                                &img,
+                                target_w,
+                                target_h,
+                                image::imageops::FilterType::Triangle,
+                            );
+                            if let Ok(mut engine) = dynamic_engine_colors.lock() {
+                                engine.set_preview_image(&plugin_id, thumbnail, scale);
+                            }
+                            if let Ok(guard) = ctx_holder_colors.lock() {
+                                if let Some(ctx) = guard.as_ref() {
+                                    ctx.request_repaint();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     });
 
@@ -814,6 +864,167 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     Ok(())
+}
+
+fn parse_hex_rgba(hex: &str) -> std::result::Result<image::Rgba<u8>, ()> {
+    let clean = hex.trim().trim_start_matches('#');
+    match clean.len() {
+        6 => {
+            let r = u8::from_str_radix(&clean[0..2], 16).map_err(|_| ())?;
+            let g = u8::from_str_radix(&clean[2..4], 16).map_err(|_| ())?;
+            let b = u8::from_str_radix(&clean[4..6], 16).map_err(|_| ())?;
+            Ok(image::Rgba([r, g, b, 255]))
+        }
+        8 => {
+            let r = u8::from_str_radix(&clean[0..2], 16).map_err(|_| ())?;
+            let g = u8::from_str_radix(&clean[2..4], 16).map_err(|_| ())?;
+            let b = u8::from_str_radix(&clean[4..6], 16).map_err(|_| ())?;
+            let a = u8::from_str_radix(&clean[6..8], 16).map_err(|_| ())?;
+            Ok(image::Rgba([r, g, b, a]))
+        }
+        _ => Err(()),
+    }
+}
+
+async fn execute_raster_process_action(
+    client: &photocraft_bridge::PhotoCraftClient,
+    params: &serde_json::Value,
+) -> core_contracts::Result<()> {
+    let task = params.get("task").and_then(|v| v.as_str()).unwrap_or("");
+    match task {
+        "extrude_2_5d" => {
+            // 1. Fetch active layer image
+            let src = client.copy_active_layer_image().await?;
+            if src.width() == 0 || src.height() == 0 {
+                return Err(core_contracts::CompanionError::Plugin(
+                    "Active layer has empty dimensions".to_string(),
+                ));
+            }
+
+            // 2. Parse extrusion params
+            let p_val = params.get("params").unwrap_or(params);
+            let mut extrude_params = raster_engine::ExtrudeParams::default();
+
+            if let Some(angle) = p_val.get("angle_deg").and_then(|v| v.as_f64()) {
+                extrude_params.angle_deg = angle as f32;
+            }
+            if let Some(dist) = p_val.get("distance").and_then(|v| v.as_f64()) {
+                extrude_params.distance = dist as f32;
+            }
+            if let Some(front_hex) = p_val.get("front_color").and_then(|v| v.as_str()) {
+                if let Ok(c) = parse_hex_rgba(front_hex) {
+                    extrude_params.front_color = Some(c);
+                }
+            }
+            if let Some(start_hex) = p_val.get("body_start_color").and_then(|v| v.as_str()) {
+                if let Ok(c) = parse_hex_rgba(start_hex) {
+                    extrude_params.body_gradient_start = c;
+                }
+            }
+            if let Some(end_hex) = p_val.get("body_end_color").and_then(|v| v.as_str()) {
+                if let Ok(c) = parse_hex_rgba(end_hex) {
+                    extrude_params.body_gradient_end = c;
+                }
+            }
+            if let Some(bevel) = p_val.get("bevel_radius").and_then(|v| v.as_f64()) {
+                extrude_params.bevel_radius = bevel as f32;
+            }
+            if let Some(highlight) = p_val.get("bevel_highlight").and_then(|v| v.as_f64()) {
+                extrude_params.bevel_highlight = highlight as f32;
+            }
+            if let Some(shadow_blur) = p_val.get("shadow_blur").and_then(|v| v.as_f64()) {
+                extrude_params.shadow_blur = shadow_blur as f32;
+            }
+            if let Some(shadow_opacity) = p_val.get("shadow_opacity").and_then(|v| v.as_f64()) {
+                extrude_params.shadow_opacity = shadow_opacity as f32;
+            }
+            if let Some(shadow_dist) = p_val.get("shadow_distance").and_then(|v| v.as_f64()) {
+                extrude_params.shadow_distance = shadow_dist as f32;
+            }
+            if let Some(light_angle) = p_val
+                .get("light_angle_deg")
+                .or_else(|| p_val.get("light_angle"))
+                .and_then(|v| v.as_f64())
+            {
+                extrude_params.light_angle_deg = light_angle as f32;
+            }
+            if let Some(light_int) = p_val.get("light_intensity").and_then(|v| v.as_f64()) {
+                extrude_params.light_intensity = light_int as f32;
+            }
+            if let Some(persp) = p_val.get("perspective").and_then(|v| v.as_f64()) {
+                extrude_params.perspective = persp as f32;
+            }
+
+            // 3. Composite source layer onto full document canvas or dynamic padding to eliminate clipping
+            let doc_info = client.get_document_info().await.ok();
+            let render_canvas = if let Some(ref doc) = doc_info {
+                if doc.width > 0 && doc.height > 0 && doc.active_layer_bounds.is_some() {
+                    let b = doc.active_layer_bounds.unwrap();
+                    let left = b[0].max(0) as u32;
+                    let top = b[1].max(0) as u32;
+                    let canvas_w = doc.width.max(left + src.width());
+                    let canvas_h = doc.height.max(top + src.height());
+                    let mut canvas = image::RgbaImage::new(canvas_w, canvas_h);
+                    image::imageops::overlay(&mut canvas, &src, left as i64, top as i64);
+                    canvas
+                } else {
+                    pad_source_for_extrusion(&src, &extrude_params)
+                }
+            } else {
+                pad_source_for_extrusion(&src, &extrude_params)
+            };
+
+            let is_split = p_val
+                .get("output_mode")
+                .and_then(|v| v.as_str())
+                .map(|m| m == "split" || m == "split_layers")
+                .unwrap_or(false);
+
+            if is_split {
+                extrude_params.output_mode = raster_engine::ExtrudeOutputMode::SplitLayers;
+                let (front, body, shadow) =
+                    raster_engine::render_extrude_split(&render_canvas, &extrude_params);
+
+                // Insert in bottom-to-top Z-order with 40ms micro-pause
+                if let Some(sh) = shadow {
+                    client.paste_image_in_place(&sh).await?;
+                    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                }
+                client.paste_image_in_place(&body).await?;
+                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                client.paste_image_in_place(&front).await?;
+            } else {
+                let merged = raster_engine::render_extrude_2_5d(&render_canvas, &extrude_params);
+                client.paste_image_in_place(&merged).await?;
+            }
+
+            Ok(())
+        }
+        unknown => Err(core_contracts::CompanionError::Plugin(format!(
+            "Unsupported raster task: '{unknown}'"
+        ))),
+    }
+}
+
+fn pad_source_for_extrusion(
+    src: &image::RgbaImage,
+    params: &raster_engine::ExtrudeParams,
+) -> image::RgbaImage {
+    let rad = params.angle_deg.to_radians();
+    let total_dist = params.distance + params.shadow_distance;
+    let sx = rad.cos() * total_dist;
+    let sy = rad.sin() * total_dist;
+    let blur_pad = (params.shadow_blur * 2.0 + params.bevel_radius + 20.0).ceil() as u32;
+    let pad_left = blur_pad + (if sx < 0.0 { sx.abs().ceil() as u32 } else { 0 });
+    let pad_right = blur_pad + (if sx > 0.0 { sx.ceil() as u32 } else { 0 });
+    let pad_top = blur_pad + (if sy < 0.0 { sy.abs().ceil() as u32 } else { 0 });
+    let pad_bottom = blur_pad + (if sy > 0.0 { sy.ceil() as u32 } else { 0 });
+
+    let total_w = src.width() + pad_left + pad_right;
+    let total_h = src.height() + pad_top + pad_bottom;
+    let mut padded = image::RgbaImage::new(total_w, total_h);
+    image::imageops::overlay(&mut padded, src, pad_left as i64, pad_top as i64);
+    padded
 }
 
 #[cfg(test)]

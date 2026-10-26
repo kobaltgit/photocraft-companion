@@ -379,6 +379,7 @@ mod tests {
                 active_layer_name: Some("Layer 1".to_string()),
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             })
         }
     }
@@ -427,6 +428,7 @@ mod tests {
                 active_layer_name: Some("L1".to_string()),
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
@@ -478,6 +480,7 @@ mod tests {
                 active_layer_name: None,
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins/test"),
@@ -554,6 +557,7 @@ mod tests {
                 active_layer_name: None,
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             },
             models_dir: PathBuf::from("models"),
             plugin_dir: PathBuf::from("plugins"),
