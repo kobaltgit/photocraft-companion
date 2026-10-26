@@ -1,0 +1,179 @@
+{
+  "id": "ui.photocraft.plugins.popcraft_3d",
+  "name": "PopCraft 3D",
+  "name_ru": "ПопКрафт 3D",
+  "version": "1.0.0",
+  "description": "Interactive 2.5D typography and graphic pop-out tool with vector angle pad, extrude depth, bevel contour and drop shadow.",
+  "description_ru": "Интерактивный инструмент создания объёмного 2.5D-текста и графики с управлением направлением, глубиной, фаской и мягкой тенью.",
+  "author": "kobaltGIT",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "interactive_ui": {
+    "ipc_subscriptions": [
+      "active_layer.image"
+    ],
+    "window_title": "PopCraft 3D Studio",
+    "window_title_ru": "PopCraft 3D Студия",
+    "default_width": 430.0,
+    "default_height": 680.0,
+    "script": "script.rhai",
+    "widgets": [
+      {
+        "type": "image_preview",
+        "id": "preview_canvas",
+        "height": 160.0
+      },
+      {
+        "type": "vector_pad",
+        "id": "extrude_pad",
+        "label": "Extrusion Direction & Depth",
+        "label_ru": "Направление и вынос",
+        "max_distance": 100.0,
+        "default_angle_deg": 135.0,
+        "default_distance": 24.0
+      },
+      {
+        "type": "slider",
+        "id": "perspective",
+        "label": "Perspective",
+        "label_ru": "Перспектива",
+        "min": 0.0,
+        "max": 0.8,
+        "step": 0.05,
+        "default": 0.0
+      },
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "color_slot",
+            "id": "body_start_color",
+            "label": "Front Depth",
+            "label_ru": "Верх граней",
+            "default_hex": "#f59e0b",
+            "selectable": true,
+            "target_binding": "edit_target"
+          },
+          {
+            "type": "color_slot",
+            "id": "body_end_color",
+            "label": "Back Depth",
+            "label_ru": "Низ граней",
+            "default_hex": "#78350f",
+            "selectable": true,
+            "target_binding": "edit_target"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "button",
+            "id": "preset_youtube",
+            "label": "YouTube Pop",
+            "label_ru": "YouTube Поп"
+          },
+          {
+            "type": "button",
+            "id": "preset_retro",
+            "label": "Retro Comic",
+            "label_ru": "Ретро Комикс"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "button",
+            "id": "preset_neon",
+            "label": "Cyber Neon",
+            "label_ru": "Кибер Неон"
+          },
+          {
+            "type": "button",
+            "id": "preset_gold",
+            "label": "Gold Metal",
+            "label_ru": "Золотой металл"
+          }
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "slider",
+        "id": "light_angle",
+        "label": "Light Angle",
+        "label_ru": "Направление света",
+        "min": 0.0,
+        "max": 360.0,
+        "step": 5.0,
+        "default": 45.0
+      },
+      {
+        "type": "slider",
+        "id": "bevel_highlight",
+        "label": "Highlight",
+        "label_ru": "Блик",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "default": 0.6
+      },
+      {
+        "type": "slider",
+        "id": "bevel_radius",
+        "label": "Bevel",
+        "label_ru": "Фаска",
+        "min": 0.0,
+        "max": 6.0,
+        "step": 0.5,
+        "default": 1.5
+      },
+      {
+        "type": "toggle",
+        "id": "shadow_enabled",
+        "label": "Drop Shadow",
+        "label_ru": "Включить тень",
+        "default": true
+      },
+      {
+        "type": "slider",
+        "id": "shadow_blur",
+        "label": "Shadow Blur",
+        "label_ru": "Размытие тени",
+        "min": 0.0,
+        "max": 30.0,
+        "step": 1.0,
+        "default": 10.0
+      },
+      {
+        "type": "dropdown",
+        "id": "output_mode",
+        "label": "Output",
+        "label_ru": "Режим вывода",
+        "options": [
+          "Merged Flat Layer",
+          "Split Layers (Front + Body + Shadow)"
+        ],
+        "options_ru": [
+          "Единый слой",
+          "Раздельные слои (Фасад + Объём + Тень)"
+        ],
+        "default_index": 0
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "button",
+        "id": "apply",
+        "label": "Apply to PhotoCraft",
+        "label_ru": "Применить в PhotoCraft"
+      }
+    ]
+  }
+}

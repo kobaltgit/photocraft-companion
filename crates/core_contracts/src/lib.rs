@@ -95,7 +95,7 @@ pub use plugin::{
     BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode,
     Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginLocaleInfo,
     PluginManifest, PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, SubAction,
-    WidgetNode, IPC_SUB_SESSION_COLORS,
+    WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;
@@ -118,4 +118,6 @@ pub struct DocumentInfo {
     pub has_selection: bool,
     #[serde(default)]
     pub selection_bounds: Option<[i32; 4]>,
+    #[serde(default)]
+    pub active_layer_bounds: Option<[i32; 4]>,
 }

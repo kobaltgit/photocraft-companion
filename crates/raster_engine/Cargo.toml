@@ -1,0 +1,15 @@
+[package]
+name = "raster_engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+image = { workspace = true }
+rayon = { workspace = true, optional = true }
+
+[features]
+default = ["rayon"]
+rayon = ["dep:rayon"]

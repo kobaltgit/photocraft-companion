@@ -1316,6 +1316,7 @@ impl PhotoCraftClient {
         let active_layer = inspect.get("activeLayer").and_then(|v| v.as_u64());
 
         let mut active_layer_name = None;
+        let mut active_layer_bounds = None;
         if let (Some(active_id), Some(layers)) = (
             active_layer,
             inspect.get("layers").and_then(|l| l.as_array()),
@@ -1326,6 +1327,16 @@ impl PhotoCraftClient {
                         .get("name")
                         .and_then(|n| n.as_str())
                         .map(|s| s.to_string());
+                    if let Some(arr) = layer.get("bounds").and_then(|b| b.as_array()) {
+                        if arr.len() == 4 {
+                            active_layer_bounds = Some([
+                                arr[0].as_i64().unwrap_or(0) as i32,
+                                arr[1].as_i64().unwrap_or(0) as i32,
+                                arr[2].as_i64().unwrap_or(0) as i32,
+                                arr[3].as_i64().unwrap_or(0) as i32,
+                            ]);
+                        }
+                    }
                     break;
                 }
             }
@@ -1359,6 +1370,7 @@ impl PhotoCraftClient {
             active_layer_name,
             has_selection,
             selection_bounds,
+            active_layer_bounds,
         })
     }
 

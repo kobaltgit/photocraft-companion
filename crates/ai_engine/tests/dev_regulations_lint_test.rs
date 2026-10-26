@@ -192,6 +192,7 @@ fn test_crate_dependency_isolation() {
         "overlay_ui",
         "companion_app",
         "plugin_validator",
+        "raster_engine",
     ] {
         assert!(
             !core_deps.contains(&forbidden.to_string()),
@@ -207,6 +208,7 @@ fn test_crate_dependency_isolation() {
         "overlay_ui",
         "companion_app",
         "plugin_validator",
+        "raster_engine",
     ] {
         assert!(
             !bridge_deps.contains(&forbidden.to_string()),
@@ -221,6 +223,7 @@ fn test_crate_dependency_isolation() {
         "overlay_ui",
         "companion_app",
         "plugin_validator",
+        "raster_engine",
     ] {
         assert!(
             !ai_deps.contains(&forbidden.to_string()),
@@ -239,6 +242,21 @@ fn test_crate_dependency_isolation() {
         assert!(
             !ui_deps.contains(&forbidden.to_string()),
             "Violation: overlay_ui must not depend on '{forbidden}'"
+        );
+    }
+
+    // raster_engine MUST NOT depend on bridge, ai, overlay, companion, or validator
+    let raster_deps = extract_dependencies(&crates_dir.join("raster_engine").join("Cargo.toml"));
+    for forbidden in &[
+        "photocraft_bridge",
+        "ai_engine",
+        "overlay_ui",
+        "companion_app",
+        "plugin_validator",
+    ] {
+        assert!(
+            !raster_deps.contains(&forbidden.to_string()),
+            "Violation: raster_engine must not depend on '{forbidden}'"
         );
     }
 }

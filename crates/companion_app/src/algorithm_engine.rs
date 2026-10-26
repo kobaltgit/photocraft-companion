@@ -260,6 +260,7 @@ mod tests {
                 active_layer_name: Some("Logo".to_string()),
                 has_selection: false,
                 selection_bounds: None,
+                ..Default::default()
             })
         }
     }

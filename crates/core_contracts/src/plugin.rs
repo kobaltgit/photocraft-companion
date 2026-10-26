@@ -292,6 +292,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_max_distance() -> f64 {
+    100.0
+}
+
+fn default_preview_height() -> f64 {
+    220.0
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginType {
@@ -389,6 +397,23 @@ pub enum WidgetNode {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         style_binding: Option<String>,
     },
+    VectorPad {
+        id: String,
+        label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
+        #[serde(default = "default_max_distance")]
+        max_distance: f64,
+        #[serde(default)]
+        default_angle_deg: f64,
+        #[serde(default)]
+        default_distance: f64,
+    },
+    ImagePreview {
+        id: String,
+        #[serde(default = "default_preview_height")]
+        height: f64,
+    },
     Label {
         text_binding: String,
     },
@@ -416,6 +441,9 @@ impl WidgetNode {
                 label, label_ru, ..
             }
             | WidgetNode::Button {
+                label, label_ru, ..
+            }
+            | WidgetNode::VectorPad {
                 label, label_ru, ..
             } => {
                 if is_ru {
@@ -467,6 +495,9 @@ pub struct InteractiveUiConfig {
 
 /// Standard IPC subscription topic for listening to active session colors in PhotoCraft
 pub const IPC_SUB_SESSION_COLORS: &str = "session.colors";
+
+/// Standard IPC subscription topic for requesting active layer image updates in PhotoCraft
+pub const IPC_SUB_ACTIVE_LAYER_IMAGE: &str = "active_layer.image";
 
 impl InteractiveUiConfig {
     pub fn window_title_for_lang(&self, lang: crate::Language) -> &str {
@@ -1143,6 +1174,18 @@ mod tests {
                 WidgetNode::Separator,
                 WidgetNode::Label {
                     text_binding: "summary_text".to_string(),
+                },
+                WidgetNode::VectorPad {
+                    id: "vector_pad".to_string(),
+                    label: "Extrusion Vector".to_string(),
+                    label_ru: None,
+                    max_distance: 80.0,
+                    default_angle_deg: 45.0,
+                    default_distance: 20.0,
+                },
+                WidgetNode::ImagePreview {
+                    id: "preview_canvas".to_string(),
+                    height: 200.0,
                 },
                 WidgetNode::Row {
                     items: vec![

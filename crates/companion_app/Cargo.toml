@@ -10,6 +10,7 @@ core_contracts = { path = "../core_contracts" }
 photocraft_bridge = { path = "../photocraft_bridge" }
 ai_engine = { path = "../ai_engine" }
 overlay_ui = { path = "../overlay_ui" }
+raster_engine = { path = "../raster_engine" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
