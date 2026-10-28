@@ -99,14 +99,14 @@
       <g transform="translate(0, 0)">
         <rect width="115" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#334155" stroke-width="1" />
         <text x="16" y="27" font-size="12" font-weight="600" fill="#64748b">Age:</text>
-        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">15 days</text>
+        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">16 days</text>
       </g>
 
       <!-- Star Counter Badge -->
       <g transform="translate(130, 0)">
         <rect width="170" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#38bdf8" stroke-opacity="0.4" stroke-width="1" />
         <text x="20" y="27" font-size="13" font-weight="600" fill="#94a3b8">Total Stars:</text>
-        <text x="105" y="28" font-size="18" font-weight="700" fill="#38bdf8">18</text>
+        <text x="105" y="28" font-size="18" font-weight="700" fill="#38bdf8">20</text>
       </g>
     </g>
   </g>
@@ -135,69 +135,69 @@
     
     <text x="70.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 12</text>
 
-    <text x="360.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 15</text>
+    <text x="360.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 16</text>
 
-    <text x="650.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 19</text>
+    <text x="650.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 20</text>
 
-    <text x="940.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 23</text>
+    <text x="940.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 24</text>
 
-    <text x="1230.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 27</text>
+    <text x="1230.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 28</text>
   </g>
 
   <!-- Release Vertical Markers (Clean, vertical labels) -->
   <g>
     
     <!-- Release: v1.0.0 -->
-    <line x1="184.8" y1="100" x2="184.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="180.8" y="138.0" transform="rotate(-90 180.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.0</text>
+    <line x1="177.9" y1="100" x2="177.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="173.9" y="138.0" transform="rotate(-90 173.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.0</text>
 
     <!-- Release: v1.0.3 -->
-    <line x1="274.0" y1="100" x2="274.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="270.0" y="138.0" transform="rotate(-90 270.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.3</text>
+    <line x1="261.6" y1="100" x2="261.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="257.6" y="138.0" transform="rotate(-90 257.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.3</text>
 
     <!-- Release: v1.0.6 -->
-    <line x1="351.9" y1="100" x2="351.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="347.9" y="138.0" transform="rotate(-90 347.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.6</text>
+    <line x1="334.8" y1="100" x2="334.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="330.8" y="138.0" transform="rotate(-90 330.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.6</text>
 
     <!-- Release: v1.0.7 -->
-    <line x1="425.8" y1="100" x2="425.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="421.8" y="138.0" transform="rotate(-90 421.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.7</text>
+    <line x1="404.3" y1="100" x2="404.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="400.3" y="138.0" transform="rotate(-90 400.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.7</text>
 
     <!-- Release: v1.0.8 -->
-    <line x1="608.8" y1="100" x2="608.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="604.8" y="138.0" transform="rotate(-90 604.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.8</text>
+    <line x1="576.2" y1="100" x2="576.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="572.2" y="138.0" transform="rotate(-90 572.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.8</text>
 
     <!-- Release: v1.2.0 -->
-    <line x1="728.0" y1="100" x2="728.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="724.0" y="138.0" transform="rotate(-90 724.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.0</text>
+    <line x1="688.2" y1="100" x2="688.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="684.2" y="138.0" transform="rotate(-90 684.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.0</text>
 
     <!-- Release: v1.2.2 -->
-    <line x1="771.9" y1="100" x2="771.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="767.9" y="138.0" transform="rotate(-90 767.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.2</text>
+    <line x1="729.5" y1="100" x2="729.5" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="725.5" y="138.0" transform="rotate(-90 725.5,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.2</text>
 
     <!-- Release: v1.2.3 -->
-    <line x1="885.6" y1="100" x2="885.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="881.6" y="138.0" transform="rotate(-90 881.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.3</text>
+    <line x1="836.3" y1="100" x2="836.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="832.3" y="138.0" transform="rotate(-90 832.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.3</text>
 
     <!-- Release: v1.2.4 -->
-    <line x1="923.8" y1="100" x2="923.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="919.8" y="138.0" transform="rotate(-90 919.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.4</text>
+    <line x1="872.2" y1="100" x2="872.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="868.2" y="138.0" transform="rotate(-90 868.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.4</text>
 
     <!-- Release: v1.3.0 -->
-    <line x1="1096.2" y1="100" x2="1096.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1092.2" y="138.0" transform="rotate(-90 1092.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.0</text>
+    <line x1="1034.1" y1="100" x2="1034.1" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1030.1" y="138.0" transform="rotate(-90 1030.1,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.0</text>
 
     <!-- Release: v1.3.1 -->
-    <line x1="1210.3" y1="100" x2="1210.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1206.3" y="138.0" transform="rotate(-90 1206.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.1</text>
+    <line x1="1141.3" y1="100" x2="1141.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1137.3" y="138.0" transform="rotate(-90 1137.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.1</text>
   </g>
 
   <!-- Chart Area Gradient Fill -->
-  <path d="M 70.0,460.0 C 70.0,457.4 40.8,449.7 70.0,444.5 C 99.2,439.3 203.5,434.2 245.2,429.0 C 286.8,423.8 304.8,418.7 319.8,413.5 C 334.7,408.3 318.8,403.2 334.6,398.0 C 350.3,392.8 382.1,387.7 414.2,382.5 C 446.4,377.3 490.6,372.2 527.7,367.0 C 564.8,361.8 614.2,356.7 636.9,351.5 C 659.6,346.3 631.2,341.2 664.0,336.0 C 696.7,330.8 799.9,325.7 833.4,320.5 C 866.9,315.3 856.1,310.2 864.9,305.0 C 873.8,299.8 877.9,294.7 886.3,289.5 C 894.8,284.3 909.3,279.2 915.7,274.0 C 922.1,268.8 917.4,263.7 924.9,258.5 C 932.5,253.3 928.8,248.2 961.2,243.0 C 993.5,237.8 1085.7,232.7 1119.1,227.5 C 1152.4,222.3 1148.2,217.2 1161.4,212.0 C 1174.5,206.8 1186.4,201.7 1197.9,196.5 C 1209.3,191.3 1224.6,183.6 1230.0,181.0 L 1230.0,460.0 L 70.0,460.0 Z" fill="url(#area-gradient)" />
+  <path d="M 70.0,460.0 C 70.0,457.4 42.6,449.7 70.0,444.5 C 97.4,439.3 195.5,434.2 234.6,429.0 C 273.7,423.8 290.6,418.7 304.6,413.5 C 318.7,408.3 303.8,403.2 318.6,398.0 C 333.4,392.8 363.2,387.7 393.4,382.5 C 423.7,377.3 465.2,372.2 500.0,367.0 C 534.9,361.8 581.3,356.7 602.6,351.5 C 623.9,346.3 597.3,341.2 628.0,336.0 C 658.8,330.8 755.8,325.7 787.2,320.5 C 818.7,315.3 808.6,310.2 816.9,305.0 C 825.2,299.8 829.0,294.7 837.0,289.5 C 844.9,284.3 858.5,279.2 864.5,274.0 C 870.6,268.8 866.1,263.7 873.2,258.5 C 880.4,253.3 876.9,248.2 907.3,243.0 C 937.7,237.8 1024.3,232.7 1055.6,227.5 C 1087.0,222.3 1083.0,217.2 1095.3,212.0 C 1107.7,206.8 1118.9,201.7 1129.6,196.5 C 1140.4,191.3 1145.2,186.2 1159.8,181.0 C 1174.5,175.8 1205.8,170.7 1217.5,165.5 C 1229.2,160.3 1227.9,152.6 1230.0,150.0 L 1230.0,460.0 L 70.0,460.0 Z" fill="url(#area-gradient)" />
 
   <!-- Chart Glow & Main Spline Line -->
-  <path d="M 70.0,460.0 C 70.0,457.4 40.8,449.7 70.0,444.5 C 99.2,439.3 203.5,434.2 245.2,429.0 C 286.8,423.8 304.8,418.7 319.8,413.5 C 334.7,408.3 318.8,403.2 334.6,398.0 C 350.3,392.8 382.1,387.7 414.2,382.5 C 446.4,377.3 490.6,372.2 527.7,367.0 C 564.8,361.8 614.2,356.7 636.9,351.5 C 659.6,346.3 631.2,341.2 664.0,336.0 C 696.7,330.8 799.9,325.7 833.4,320.5 C 866.9,315.3 856.1,310.2 864.9,305.0 C 873.8,299.8 877.9,294.7 886.3,289.5 C 894.8,284.3 909.3,279.2 915.7,274.0 C 922.1,268.8 917.4,263.7 924.9,258.5 C 932.5,253.3 928.8,248.2 961.2,243.0 C 993.5,237.8 1085.7,232.7 1119.1,227.5 C 1152.4,222.3 1148.2,217.2 1161.4,212.0 C 1174.5,206.8 1186.4,201.7 1197.9,196.5 C 1209.3,191.3 1224.6,183.6 1230.0,181.0" fill="none" stroke="url(#curve-gradient)" stroke-width="5" filter="url(#glow-line)" opacity="0.6" />
-  <path d="M 70.0,460.0 C 70.0,457.4 40.8,449.7 70.0,444.5 C 99.2,439.3 203.5,434.2 245.2,429.0 C 286.8,423.8 304.8,418.7 319.8,413.5 C 334.7,408.3 318.8,403.2 334.6,398.0 C 350.3,392.8 382.1,387.7 414.2,382.5 C 446.4,377.3 490.6,372.2 527.7,367.0 C 564.8,361.8 614.2,356.7 636.9,351.5 C 659.6,346.3 631.2,341.2 664.0,336.0 C 696.7,330.8 799.9,325.7 833.4,320.5 C 866.9,315.3 856.1,310.2 864.9,305.0 C 873.8,299.8 877.9,294.7 886.3,289.5 C 894.8,284.3 909.3,279.2 915.7,274.0 C 922.1,268.8 917.4,263.7 924.9,258.5 C 932.5,253.3 928.8,248.2 961.2,243.0 C 993.5,237.8 1085.7,232.7 1119.1,227.5 C 1152.4,222.3 1148.2,217.2 1161.4,212.0 C 1174.5,206.8 1186.4,201.7 1197.9,196.5 C 1209.3,191.3 1224.6,183.6 1230.0,181.0" fill="none" stroke="url(#curve-gradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 70.0,460.0 C 70.0,457.4 42.6,449.7 70.0,444.5 C 97.4,439.3 195.5,434.2 234.6,429.0 C 273.7,423.8 290.6,418.7 304.6,413.5 C 318.7,408.3 303.8,403.2 318.6,398.0 C 333.4,392.8 363.2,387.7 393.4,382.5 C 423.7,377.3 465.2,372.2 500.0,367.0 C 534.9,361.8 581.3,356.7 602.6,351.5 C 623.9,346.3 597.3,341.2 628.0,336.0 C 658.8,330.8 755.8,325.7 787.2,320.5 C 818.7,315.3 808.6,310.2 816.9,305.0 C 825.2,299.8 829.0,294.7 837.0,289.5 C 844.9,284.3 858.5,279.2 864.5,274.0 C 870.6,268.8 866.1,263.7 873.2,258.5 C 880.4,253.3 876.9,248.2 907.3,243.0 C 937.7,237.8 1024.3,232.7 1055.6,227.5 C 1087.0,222.3 1083.0,217.2 1095.3,212.0 C 1107.7,206.8 1118.9,201.7 1129.6,196.5 C 1140.4,191.3 1145.2,186.2 1159.8,181.0 C 1174.5,175.8 1205.8,170.7 1217.5,165.5 C 1229.2,160.3 1227.9,152.6 1230.0,150.0" fill="none" stroke="url(#curve-gradient)" stroke-width="5" filter="url(#glow-line)" opacity="0.6" />
+  <path d="M 70.0,460.0 C 70.0,457.4 42.6,449.7 70.0,444.5 C 97.4,439.3 195.5,434.2 234.6,429.0 C 273.7,423.8 290.6,418.7 304.6,413.5 C 318.7,408.3 303.8,403.2 318.6,398.0 C 333.4,392.8 363.2,387.7 393.4,382.5 C 423.7,377.3 465.2,372.2 500.0,367.0 C 534.9,361.8 581.3,356.7 602.6,351.5 C 623.9,346.3 597.3,341.2 628.0,336.0 C 658.8,330.8 755.8,325.7 787.2,320.5 C 818.7,315.3 808.6,310.2 816.9,305.0 C 825.2,299.8 829.0,294.7 837.0,289.5 C 844.9,284.3 858.5,279.2 864.5,274.0 C 870.6,268.8 866.1,263.7 873.2,258.5 C 880.4,253.3 876.9,248.2 907.3,243.0 C 937.7,237.8 1024.3,232.7 1055.6,227.5 C 1087.0,222.3 1083.0,217.2 1095.3,212.0 C 1107.7,206.8 1118.9,201.7 1129.6,196.5 C 1140.4,191.3 1145.2,186.2 1159.8,181.0 C 1174.5,175.8 1205.8,170.7 1217.5,165.5 C 1229.2,160.3 1227.9,152.6 1230.0,150.0" fill="none" stroke="url(#curve-gradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- Data Point Knots -->
   <g>
@@ -206,44 +206,48 @@
 
     <circle cx="70.0" cy="444.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="245.2" cy="429.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="234.6" cy="429.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="319.8" cy="413.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="304.6" cy="413.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="334.6" cy="398.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="318.6" cy="398.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="414.2" cy="382.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="393.4" cy="382.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="527.7" cy="367.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="500.0" cy="367.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="636.9" cy="351.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="602.6" cy="351.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="664.0" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="628.0" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="833.4" cy="320.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="787.2" cy="320.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="864.9" cy="305.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="816.9" cy="305.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="886.3" cy="289.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="837.0" cy="289.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="915.7" cy="274.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="864.5" cy="274.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="924.9" cy="258.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="873.2" cy="258.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="961.2" cy="243.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="907.3" cy="243.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1119.1" cy="227.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1055.6" cy="227.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1161.4" cy="212.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1095.3" cy="212.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1197.9" cy="196.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1129.6" cy="196.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1230.0" cy="181.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1159.8" cy="181.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1217.5" cy="165.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+
+    <circle cx="1230.0" cy="150.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
   </g>
 
   <!-- Final Milestone Glowing Pulse (Last Point) -->
   
-  <g transform="translate(1230.0, 181.0)">
+  <g transform="translate(1230.0, 150.0)">
     <circle r="7" fill="#38bdf8" fill-opacity="0.3">
       <animate attributeName="r" values="6;11;6" dur="2.5s" repeatCount="indefinite" />
       <animate attributeName="fill-opacity" values="0.4;0.05;0.4" dur="2.5s" repeatCount="indefinite" />
