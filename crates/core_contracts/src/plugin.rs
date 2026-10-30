@@ -422,6 +422,43 @@ pub enum WidgetNode {
         #[serde(default)]
         items: Vec<WidgetNode>,
     },
+    ModifierStack {
+        id: String,
+        label: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_ru: Option<String>,
+        items: Vec<ModifierItemConfig>,
+        #[serde(default)]
+        allow_reordering: bool,
+    },
+}
+
+/// Configuration for an individual item in a ModifierStack widget
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModifierItemConfig {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label_ru: Option<String>,
+    pub min: f64,
+    pub max: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    pub default: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
+impl ModifierItemConfig {
+    pub fn label_for_lang(&self, lang: crate::Language) -> &str {
+        if matches!(lang, crate::Language::Ru) {
+            self.label_ru.as_deref().unwrap_or(&self.label)
+        } else {
+            &self.label
+        }
+    }
 }
 
 impl WidgetNode {
@@ -444,6 +481,9 @@ impl WidgetNode {
                 label, label_ru, ..
             }
             | WidgetNode::VectorPad {
+                label, label_ru, ..
+            }
+            | WidgetNode::ModifierStack {
                 label, label_ru, ..
             } => {
                 if is_ru {
@@ -498,6 +538,9 @@ pub const IPC_SUB_SESSION_COLORS: &str = "session.colors";
 
 /// Standard IPC subscription topic for requesting active layer image updates in PhotoCraft
 pub const IPC_SUB_ACTIVE_LAYER_IMAGE: &str = "active_layer.image";
+
+/// Standard IPC subscription topic for listening to selection state in PhotoCraft
+pub const IPC_SUB_SELECTION_STATE: &str = "document.selection";
 
 impl InteractiveUiConfig {
     pub fn window_title_for_lang(&self, lang: crate::Language) -> &str {

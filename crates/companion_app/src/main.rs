@@ -749,11 +749,10 @@ fn main() -> anyhow::Result<()> {
 
     // Initialize DynamicToolEngine and UI repaint context holder at composition root
     let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
-    let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new_with_language(
-        &manifests,
-        Some(ipc_action_tx.clone()),
-        current_lang,
-    )));
+    let mut dyn_engine =
+        DynamicToolEngine::new_with_language(&manifests, Some(ipc_action_tx.clone()), current_lang);
+    dyn_engine.set_config_path(config_path.clone());
+    let dynamic_engine = Arc::new(std::sync::Mutex::new(dyn_engine));
     let egui_ctx_holder = Arc::new(std::sync::Mutex::new(None::<overlay_ui::egui::Context>));
 
     // Background poller for live active session colors (PhotoCraft -> Plugins)
@@ -768,6 +767,27 @@ fn main() -> anyhow::Result<()> {
             interval.tick().await;
             if !is_conn_colors.load(Ordering::Relaxed) {
                 continue;
+            }
+
+            if let Ok(doc) = client_colors.get_document_info().await {
+                let updated_sel = {
+                    if let Ok(mut engine) = dynamic_engine_colors.lock() {
+                        let prev = engine.has_selection;
+                        engine.has_selection = doc.has_selection;
+                        let dispatched = engine
+                            .dispatch_selection_state(doc.has_selection, doc.selection_bounds);
+                        dispatched || (prev != doc.has_selection)
+                    } else {
+                        false
+                    }
+                };
+                if updated_sel {
+                    if let Ok(guard) = ctx_holder_colors.lock() {
+                        if let Some(ctx) = guard.as_ref() {
+                            ctx.request_repaint();
+                        }
+                    }
+                }
             }
 
             let needs_sync = {

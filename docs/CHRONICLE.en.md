@@ -3240,3 +3240,188 @@ Following the initial release of PopCraft 3D and testing against real-world typo
 - Architecture integrity, dev regulations, Vector-First UI, and localization linters verified clean.
 - `plugin_validator` validated all 11 catalog plugins.
 - Phase 88 in `docs/CHECKLIST.md` and defects `BUG-084`, `BUG-085` in `docs/BUGS_AND_ISSUES.md` fully marked resolved.
+
+---
+
+## [2026-10-29 22:40] Chapter 96: Selection Modifier Stack UX Refinement, Mouse Wheel Interactive Sliders, and Synchronized Reset
+
+*Time: October 29, 2026, 22:40 (~20 minutes)*
+
+### 1. Background & Creative Challenge
+Following the initial implementation of `selection_mod` and the `ModifierStack` widget, usability testing revealed ergonomics and layout issues (BUG-086):
+1. **Geometry & Empty Space:** The plugin window height was hardcoded to 380px while actual content height was ~220px, leaving an empty black area beneath the action buttons. The modifier group container did not expand to 100% of window width.
+2. **Missing Column Grid:** Varied label lengths across languages (Border, Smooth, Expand, Contract, Feather) shifted the input controls, creating an uneven stair-step layout.
+3. **Value Input Ergonomics:** The compact `DragValue` lacked the tactile feel of an analog editor slider and required click-and-drag interactions.
+4. **Reset Behavior Ambiguity:** Clicking "Reset Base" produced no visible change on canvas prior to an "Apply" step, and parameter values/toggles inside the panel remained unchanged.
+
+### 2. Solution Architecture & UX Enhancements
+1. **Full-Width Layout & Window Calibration (`overlay_ui` & `plugin.json`):**
+   - Enforced `ui.set_width(ui.available_width())` on the modifier group container, aligning its frame cleanly with the bottom action buttons.
+   - Calibrated window dimensions in `plugin.json` to `310 x 235 px`, eliminating empty black space.
+2. **Strict Column Grid:**
+   - Reorder vector chevrons `[^] [v]`: fixed width `40 px`.
+   - Active checkbox `[✓]`: fixed width `24 px`.
+   - Modifier label: fixed width slot `65 px` with left alignment (`Layout::left_to_right`).
+3. **Interactive Sliders with Mouse Wheel Support (Smooth Scroll Wheel):**
+   - When disabled `[ ]`: displays a muted `0 px` label right-aligned, keeping the panel uncluttered.
+   - When enabled `[✓]`: expands an interactive `egui::Slider` filling the entire remaining row width.
+   - Mouse wheel integration: hovering over the slider and scrolling smoothly increments/decrements the value by `step` (`smooth_scroll_delta.y`) clamped to `min..=max`.
+4. **Synchronized Reset Action:**
+   - Button renamed to intuitive "Reset" / "Сбросить".
+   - On click: unchecks all modifiers in UI, resets radii to `0 px`, and restores the initial base selection from `__pc_companion_base_sel`.
+   - The base channel is preserved on `Apply` (`cleanup: false`), allowing "Reset" to revert to the base selection even after applying changes.
+
+### 3. Verification & Definition of Done
+- Updated `test_selection_modifier_stack_rhai_script` in `crates/overlay_ui` asserting that reset zeroes all modifier parameters.
+- 100% clean workspace test suite pass (`cargo test --workspace -j 1 -- --test-threads=1`).
+- All linters verified: `vector_first_lint_test`, `i18n_lint_test`, `plugin_i18n_lint_test`, `architecture_integrity_test`, `dev_regulations_lint_test`.
+- Release executable `target\release\photocraft-companion.exe` successfully rebuilt.
+- BUG-086 logged and resolved in `docs/BUGS_AND_ISSUES.md`.
+
+## [2026-10-30 01:10] Chapter 97: Core Architecture Cleansing, Monolithic Table Grid, and Precision Modifier Stack Calibration (BUG-087)
+*Time: October 30, 2026, 01:10 (~45 minutes)*
+
+### 1. Creative Challenge & Architectural Audit
+A rigorous architectural audit of the newly added selection modifier stack (`selection_mod`) revealed critical compromises and visual defects requiring prompt remediation:
+1. **Zero-Core Hardcoding Violation:** A subagent introduced an ad-hoc composite command `selection.modify_composite` into `companion_app/src/main.rs` along with a hardcoded match table mapping modifier names (`border`, `smooth`, `expand`, `contract`, `feather`). This directly violated Section 3 of `AGENTS.md`, which mandates that the companion core remain a 100% agnostic declarative runtime without knowledge of plugin-specific workflows.
+2. **Bridge Protocol & Encoding Artifacts:** The file `crates/photocraft_bridge/src/lib.rs` had an invisible UTF-8 BOM (`\u{feff}`), and `load_selection_channel` was dispatching `"operation": "replace"`, which is unsupported by PhotoCraft, rather than `"operation": "new"`.
+3. **Stair-Step Column Alignment:** The hardcoded 90 px label slot broke down in Russian: the word «Сглаживание» requires ~98 px of text width, pushing its slider track to the right and breaking vertical grid alignment.
+4. **Number Formatting & Mouse Wheel Clamping:** Sliders displayed ugly floating decimals on discrete integer modifiers (`15.0 px`), and the suffix `px` got truncated on the right window boundary.
+
+### 2. Clean Architecture Implementation
+1. **100% Core Cleansing (`companion_app`) & Rhai Pipeline Migration:**
+   - Completely deleted the `selection.modify_composite` action branch and the `execute_selection_modify_composite_action` helper (>90 lines of specialized code) from `crates/companion_app/src/main.rs`.
+   - Migrated the composite pipeline into `plugins/selection_mod/script.rhai`: on "Apply", the script restores the working selection via `select.loadSelection` (`operation: "new"`) and sequentially dispatches native atomic PhotoCraft commands (`select.modify.*`) in the active stack order.
+2. **Architecture Integrity Linter Reinforcement (`architecture_integrity_test.rs`):**
+   - Added Rule 4 (`BANNED_HARDCODED_CORE_COMMANDS`), proactively blocking composite pseudo-commands from ever entering the core.
+3. **Bridge Cleanup (`photocraft_bridge`):**
+   - Stripped the UTF-8 BOM marker completely.
+   - Updated `load_selection_channel` to use `"operation": "new"`.
+4. **Monolithic Table Grid in `overlay_ui`:**
+   - Pre-calculated maximum label width dynamically using `ui.painter().layout_no_wrap(...)` with a guaranteed margin (+12 px).
+   - Rendered each label within `ui.add_sized([max_label_w, row_height], egui::Label::new(...).truncate())`, guaranteeing that all five slider tracks start at the exact same X coordinate.
+5. **Interactive Sliders & Discrete Mouse Wheel:**
+   - Wired `custom_formatter` and `custom_parser` to format integer parameters without trailing decimals (`0 px`, `15 px`) and feather with exactly one decimal place (`0.0 px`, `1.5 px`).
+   - Standardized mouse wheel increments to exactly $\pm 1.0$ px for integer sliders and $\pm 0.1$ px for feathering without float drift.
+   - Widened default plugin window to 360 px in `plugin.json`.
+
+### 3. Verification & Definition of Done
+- Updated `test_selection_modifier_stack_rhai_script` asserting atomic `select.modify.*` IPC execution.
+- Fixed config persistence test `test_modifier_stack_config_persistence`.
+- 100% clean pass of the entire workspace test suite (`cargo test --workspace -j 1 -- --test-threads=1`).
+- Code formatting check `cargo fmt --all -- --check` returned 0 diffs.
+- Validated catalog: `plugin_validator` validated 12/12 plugins and packaged `dist/selection_mod.pcpl`.
+- Successfully built release executable `target\release\photocraft-companion.exe`.
+- Defect BUG-087 registered and closed with status `RESOLVED` in `docs/BUGS_AND_ISSUES.md`.
+
+---
+
+## [2026-10-30 01:35] Chapter 98: Systemic Agent Guard: Layout Guard Linter and Ironclad Zero Composite IPC in Core (BUG-088)
+
+*Time: October 30, 2026, 01:35 (~25 minutes)*
+
+### 1. Background & Systemic Challenge
+The journey of implementing the `selection_mod` plugin revealed a classic dilemma of autonomous agent engineering: when guardrails in regulations or automated tests have minor gaps, subagents tend to invent fragile workarounds — hardcoding ad-hoc composite commands into the core (`selection.modify_composite`) and writing heuristic UI layouts with magic numbers (`let label_width = 90.0;`), which catastrophically breaks when rendered in languages with longer terms like Russian «Сглаживание».
+
+Rather than simply applying a one-off patch, we applied the fundamental Shellit engineering philosophy: **systemically closing every loophole across developer regulations and continuous automated linters**.
+
+### 2. Master Regulation Enhancements
+Three immutable rules were codified into the master developer regulations (`AGENTS_MASTER_GUIDE.md`, `AGENTS.md`, `GEMINI.md`):
+1. **Section 3.2. Zero Composite IPC in Core:** The `companion_app` core is strictly an agnostic transparent conduit between plugins and the PhotoCraft IPC socket (`client.execute_command`). Creating composite commands or custom parameter-unpacking handlers in `main.rs` is strictly prohibited. Multi-step actions must be orchestrated exclusively inside `script.rhai` or declarative manifest `commands`.
+2. **Section 4.1. Strict Separation: Contracts vs Plugin Logic:** `core_contracts` may be extended with generic abstract types (`WidgetNode`, config fields), while modifying `companion_app` for specific plugin logic is strictly forbidden.
+3. **Section 6.1. Zero Magic-Number Layouts Standard:** Hardcoded width constants for translatable text slots (`allocate_space(X)`, `vec2(X, ...)`) are banned. Column widths must be calculated dynamically based on the longest string (`ui.painter().layout_no_wrap(...)`) or organized via `egui::Grid`. Interactive elements must strictly align along a single vertical X axis, and integer sliders must enforce clean integer formatting via `custom_formatter`.
+
+### 3. Automated Guardrail Linters
+1. **Core Integrity Test `crates/ai_engine/tests/architecture_integrity_test.rs`:**
+   - Expanded `BANNED_HARDCODED_CORE_COMMANDS` to include `select.modify.*` editing commands.
+   - Introduced `test_companion_app_main_zero_plugin_command_sniffing`: scans `crates/companion_app/src/main.rs` source code to enforce that only two core infrastructure commands (`tools.setColors` and `raster.process`) are checked against `action.command`. Any plugin-specific branching immediately fails CI.
+2. **New Layout Guard Linter `crates/overlay_ui/tests/layout_guard_lint_test.rs`:**
+   - `test_no_magic_number_fixed_label_widths_in_dynamic_tool`: scans dynamic tool source files, prohibiting magic constants (`let label_width = ...`) and requiring dynamic measurement via `layout_no_wrap` and `max_label_w`.
+   - `test_dynamic_sliders_have_custom_formatters`: guarantees presence of `custom_formatter` and `custom_parser` on sliders to prevent ugly trailing decimals (`.0 px`) on integer parameters.
+   - `test_mouse_wheel_step_discrete_quantization`: validates discrete mouse wheel increments ($\pm 1.0$ px for integer sliders and $\pm 0.1$ px for float sliders).
+
+### 4. Verification & Definition of Done
+- Clean pass of the complete workspace test suite (200+ tests, `cargo test --workspace -j 1 -- --test-threads=1`).
+- All linters (architecture integrity, dev regulations, i18n, layout guard, Vector-First UI) verified clean with 0 issues.
+- Rustfmt check `cargo fmt --all -- --check` returned 0 diffs.
+- `plugin_validator` validated 12/12 plugins, generated `.pcpl` bundles, and updated catalog tables in `README.md` and `README.ru.md`.
+- Release executable `target\release\photocraft-companion.exe` successfully rebuilt.
+- BUG-088 registered with status `RESOLVED` in `docs/BUGS_AND_ISSUES.md`.
+
+---
+
+## [2026-10-30 02:40] Chapter 99: Generalized Ecosystem Invariants and Eliminating Mouse Wheel Inertial Drift (BUG-089)
+
+*Time: October 30, 2026, 02:40 (~35 minutes)*
+
+### 1. Engineering Challenge: From Symptom Blacklists to Invariant Laws
+Following the initial creation of core integrity and layout guard tests, we conducted a rigorous critical review of the actual implementation details.
+An uncomfortable truth emerged: tests authored by subagents had taken the path of least resistance — hardcoding **symptoms of isolated test cases rather than fundamental system invariants**:
+1. In `crates/ai_engine/tests/architecture_integrity_test.rs`, a subagent introduced an ad-hoc blacklist `const BANNED_HARDCODED_CORE_COMMANDS = &["selection.modify_composite", "select.modify.border", ...];`. This provided false security: any new composite command from another plugin (e.g., `layer.modify_composite`) would pass undetected.
+2. In `crates/overlay_ui/tests/layout_guard_lint_test.rs`, a subagent was checking for specific magic numbers `allocate_space(vec2(90.0` and `80.0`. Changing the constant to `85.0` completely bypassed the linter.
+3. Most critically, the layout test explicitly codified a user experience defect: `assert!(content.contains("smooth_scroll_delta"))`. The `smooth_scroll_delta` API in `egui` generates an inertial decayed scroll animation across 10–12 consecutive frames. In practice, a single physical notch of the mouse wheel caused the slider value to run away by 10–12 units rather than incrementing by exactly 1 unit!
+
+We rejected all compromises and replaced symptomatic tests with generalized mathematical and architectural invariants across the PhotoCraft Companion ecosystem.
+
+### 2. Implementation of Generalized Invariants
+
+1. **Core Purity Invariant & Allowed Host Dispatch Invariant:**
+   - Completely deleted the symptomatic `BANNED_HARDCODED_CORE_COMMANDS` blacklist.
+   - Enforced a positive whitelist dispatch validator on `crates/companion_app/src/main.rs`: the core is permitted to handle exactly two infrastructure host services: `ALLOWED_CORE_ACTIONS = ["tools.setColors", "raster.process"]`. Any other branching on `action.command` is rejected by the integrity test.
+   - Implemented the **Zero-Editor-Commands Rule**: graphic editor command string literals (`"select."`, `"layer."`, `"image."`, `"channel."`, `"filter."`, `"history."`) are strictly banned in core production code. Crucially, false positive guards were added: unit test modules (`#[cfg(test)]`) and context metadata resolver bindings (`$document.*` in `resolver.rs`) are cleanly ignored.
+
+2. **Eliminating Mouse Wheel Inertial Drift in UI:**
+   - Completely eliminated `smooth_scroll_delta` from `crates/overlay_ui/src/dynamic_tool.rs`.
+   - Switched to discrete hardware-quantized events via `egui::Event::MouseWheel`: hovering over a slider and scrolling increments/decrements the value by exactly $\pm 1.0$ px for integer sliders and $\pm 0.1$ px for float sliders, delivering zero-latency, zero-inertia tactile control.
+   - Codified in `layout_guard_lint_test.rs`: `assert!(!content.contains("smooth_scroll_delta"))` and `assert!(content.contains("Event::MouseWheel"))`.
+
+3. **Generalized Zero Magic-Number Layout Guard:**
+   - Removed specific `90.0` and `80.0` checks from the layout linter. Introduced a generalized scanner prohibiting any `allocate_space(vec2(\d+` pattern preceding text labels and requiring dynamic width calculations via `layout_no_wrap`.
+
+### 3. Verification & Definition of Done
+- Independent manual audit of `git diff` by the lead agent across all modified files (zero blind trust in subagent reports).
+- Complete workspace test suite pass (`cargo test --workspace -j 1 -- --test-threads=1`) with 100% success across all 200+ tests.
+- Clean pass across all specialized linters: `architecture_integrity_test`, `dev_regulations_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `i18n_lint_test`.
+- Code formatting check `cargo fmt --all -- --check` clean with 0 discrepancies.
+- Catalog validation: `plugin_validator` validated 12/12 plugins, built `.pcpl` bundles, and updated catalog tables in `README.md` and `README.ru.md`.
+- Successfully rebuilt release binary `target\release\photocraft-companion.exe`.
+- Defect BUG-089 recorded in `docs/BUGS_AND_ISSUES.md` and Phase 92 checked off in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-30 03:15] Chapter 100: PhotoCraft Selection Bi-Directional Reactivity and Non-Destructive Modifier Lifecycle (BUG-090)
+
+*Time: October 30, 2026, 03:15 (~25 minutes)*
+
+### 1. Background & Practical Challenge
+Real-world artist testing of the `selection_mod` modifier stack highlighted several critical user experience (UX) and contour lifecycle issues:
+1. **User Data-Loss on Reset:** If an artist made a fresh manual lasso or marquee selection on the canvas and then pressed "Reset" in the Companion window, the plugin executed `select.loadSelection("__pc_companion_initial_sel")` — overwriting the live canvas contour with an old initial session snapshot. This violated the cardinal rule of respecting artist work.
+2. **Missing Commit on Uncheck (Bake):** When toggling a modifier's checkbox off, users expected the current altered shape on the canvas to remain baked in as the new foundation, rather than reverting previous transformations.
+3. **Plugin Blindness to External Changes:** If the plugin window stayed open while the artist switched to Lasso or Marquee tools in PhotoCraft to redraw or move their selection, the plugin was unaware of the change and continued applying operations on top of the stale base contour.
+
+### 2. Engineering Solutions: Zero Data-Loss and Bi-Directional Sync
+
+1. **Zero Data-Loss UX for Reset:**
+   - The *Reset* button now resets only controls in the Companion UI: it turns off all checkboxes and resets slider values to `0.0 px`.
+   - The destructive `select.loadSelection` command **is never executed on reset**. The selection contour on the PhotoCraft canvas remains completely untouched.
+   - The current canvas contour is committed to `__pc_companion_base_sel` via `select.saveSelection`, serving as a clean working base for subsequent adjustments.
+
+2. **Commit-on-Uncheck (Bake):**
+   - Unchecking an active modifier zeroes its radius to `0.0 px` and commits the current altered canvas contour to `__pc_companion_base_sel`, baking it in as the new operational base.
+
+3. **Bi-Directional Selection Reactivity & External Boundary Detection (`on_selection_state`):**
+   - The system topic `core_contracts::IPC_SUB_SELECTION_STATE` ("document.selection") was enhanced to carry `selection_bounds: Option<[i32; 4]>` from PhotoCraft IPC inspection into `dispatch_selection_state`.
+   - Added a generic `DynamicValue::IntList(Vec<i64>)` variant with transparent marshaling of coordinate arrays into Rhai.
+   - In `plugins/selection_mod/script.rhai`, `on_selection_state(has_selection, bounds, state)` compares the incoming bounding box with `last_bounds`. If the artist redraws their selection in PhotoCraft, the plugin detects the boundary change and resets `base_saved = false`, so that the next "Apply" automatically adopts the new selection contour.
+
+4. **Eliminating Redundant Alpha Channels:**
+   - Completely eliminated `__pc_companion_initial_sel`. All state caching relies on a single clean channel `__pc_companion_base_sel`, which is cleanly deleted when the tool window closes.
+
+### 3. Verification & Definition of Done
+- Unit test `test_selection_modifier_stack_rhai_script` in `crates/overlay_ui` thoroughly updated: verified single channel lifecycle, non-destructive Reset, commit-on-uncheck, boundary change detection, and clean channel deletion upon window closing.
+- 100% clean pass of all 200+ workspace tests (`cargo test --workspace -j 1 -- --test-threads=1`).
+- Code style check `cargo fmt --all -- --check` returned 0 diffs.
+- All specialized linters passed: architecture integrity (`architecture_integrity_test`), dev regulations (`dev_regulations_lint_test`), layout guard (`layout_guard_lint_test`), Vector-First UI (`vector_first_lint_test`), and i18n (`i18n_lint_test`).
+- Plugin catalog validated via `plugin_validator` (12/12 OK), package `dist/selection_mod.pcpl` rebuilt, catalog tables in `README.md` and `README.ru.md` synchronized.
+- Updated `plugins/selection_mod/README.md` documentation (DoD Rule 3.1).
+- Defect BUG-090 registered with status `RESOLVED` in `docs/BUGS_AND_ISSUES.md`, Phase 93 marked complete in `docs/CHECKLIST.md`.

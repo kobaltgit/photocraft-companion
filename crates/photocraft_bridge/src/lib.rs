@@ -1617,6 +1617,27 @@ impl PhotoCraftClient {
         self.execute_command("tools.setColors", Value::Object(params))
             .await
     }
+
+    /// Save active selection to a named alpha channel
+    pub async fn save_selection_channel(&self, name: &str) -> Result<Value> {
+        self.execute_command("select.saveSelection", json!({ "name": name }))
+            .await
+    }
+
+    /// Load selection from a named alpha channel
+    pub async fn load_selection_channel(&self, name: &str) -> Result<Value> {
+        self.execute_command(
+            "select.loadSelection",
+            json!({ "channel": name, "operation": "new" }),
+        )
+        .await
+    }
+
+    /// Delete a named alpha channel
+    pub async fn delete_selection_channel(&self, name: &str) -> Result<Value> {
+        self.execute_command("channel.delete", json!({ "channel": name }))
+            .await
+    }
 }
 
 #[async_trait::async_trait]

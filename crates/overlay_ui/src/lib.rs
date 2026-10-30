@@ -74,6 +74,15 @@ impl OverlayBar {
                     _ => None,
                 };
                 let active_sub_action = m.sub_actions.first().map(|s| s.id.clone());
+                let requires_selection = m.input == core_contracts::PluginInputSource::Selection
+                    || m.interactive_ui
+                        .as_ref()
+                        .map(|ui| {
+                            ui.ipc_subscriptions
+                                .iter()
+                                .any(|s| s == core_contracts::IPC_SUB_SELECTION_STATE)
+                        })
+                        .unwrap_or(false);
                 buttons.push(ButtonConfig {
                     label: m.name.clone(),
                     action: m.id.clone(),
@@ -84,6 +93,7 @@ impl OverlayBar {
                     active_sub_action,
                     name_ru: m.name_ru.clone(),
                     locales: m.locales.clone(),
+                    requires_selection,
                 });
             }
         }
@@ -106,6 +116,7 @@ impl OverlayBar {
                 active_sub_action: None,
                 name_ru: None,
                 locales: std::collections::HashMap::new(),
+                requires_selection: false,
             },
             ButtonConfig {
                 label: "B&W Film Pop".to_string(),
@@ -117,6 +128,7 @@ impl OverlayBar {
                 active_sub_action: None,
                 name_ru: None,
                 locales: std::collections::HashMap::new(),
+                requires_selection: false,
             },
         ]
     }
@@ -246,6 +258,10 @@ impl CompanionOverlayApp {
         offline_modal.resolved_auto_language = resolved_auto;
 
         let initial_conn = is_connected.load(Ordering::Relaxed);
+
+        if let Ok(mut engine) = dynamic_engine.lock() {
+            engine.set_config_path(config_path.clone());
+        }
 
         Self {
             toolstrip,
@@ -607,6 +623,12 @@ impl eframe::App for CompanionOverlayApp {
             }
 
             if connected {
+                let has_sel = if let Ok(engine) = self.dynamic_engine.lock() {
+                    engine.has_selection
+                } else {
+                    false
+                };
+                self.toolstrip.has_selection = has_sel;
                 self.toolstrip.render(ui, &palette);
                 self.toolstrip.render_sub_actions_flyout(&ctx, &palette);
 
@@ -1286,6 +1308,7 @@ mod tests {
             active_sub_action: None,
             name_ru: None,
             locales: std::collections::HashMap::new(),
+            requires_selection: false,
         }];
         std::fs::write(&bar_file, serde_json::to_string(&sample_buttons).unwrap()).unwrap();
 

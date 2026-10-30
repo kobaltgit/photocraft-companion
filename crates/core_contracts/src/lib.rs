@@ -43,6 +43,8 @@ pub struct ButtonConfig {
     pub name_ru: Option<String>,
     #[serde(default)]
     pub locales: std::collections::HashMap<String, PluginLocaleInfo>,
+    #[serde(default)]
+    pub requires_selection: bool,
 }
 
 impl ButtonConfig {
@@ -92,10 +94,11 @@ pub use host_i18n::{is_translatable_param, normalize_term, to_canonical, to_host
 pub mod plugin;
 pub use plugin::{
     ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
-    BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, NormalizationMode,
-    Plugin, PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginLocaleInfo,
-    PluginManifest, PluginOutputMode, PluginResult, PluginType, SharedExecutionStatus, SubAction,
-    WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_SESSION_COLORS,
+    BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, ModifierItemConfig,
+    NormalizationMode, Plugin, PluginCommandStep, PluginContext, PluginInputSource,
+    PluginIpcAction, PluginLocaleInfo, PluginManifest, PluginOutputMode, PluginResult, PluginType,
+    SharedExecutionStatus, SubAction, WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE,
+    IPC_SUB_SELECTION_STATE, IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;

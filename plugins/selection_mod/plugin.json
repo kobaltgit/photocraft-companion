@@ -1,0 +1,48 @@
+{
+  "id": "ui.photocraft.plugins.selection_mod",
+  "name": "Selection Modifiers",
+  "name_ru": "Модификаторы выделения",
+  "version": "1.0.0",
+  "description": "Non-destructive selection modifier stack with reorderable operations (Border, Smooth, Expand, Contract, Feather).",
+  "description_ru": "Неразрушающий стек модификаторов выделения с настройкой порядка операций (Граница, Сглаживание, Расширение, Сжатие, Растушевка).",
+  "author": "CharlieGoesMax & kobaltGIT",
+  "plugin_type": "interactive_ui",
+  "input": "selection",
+  "icon": "icon.svg",
+  "interactive_ui": {
+    "ipc_subscriptions": [
+      "document.selection"
+    ],
+    "window_title": "Selection Modifiers",
+    "window_title_ru": "Стек модификаторов выделения",
+    "default_width": 360.0,
+    "default_height": 235.0,
+    "script": "script.rhai",
+    "widgets": [
+      {
+        "type": "modifier_stack",
+        "id": "modifiers",
+        "label": "Modifiers Stack",
+        "label_ru": "Стек операций",
+        "allow_reordering": true,
+        "items": [
+          { "id": "border", "label": "Border", "label_ru": "Граница", "min": 0.0, "max": 100.0, "default": 0.0, "unit": "px", "enabled": false },
+          { "id": "smooth", "label": "Smooth", "label_ru": "Сглаживание", "min": 0.0, "max": 50.0, "default": 0.0, "unit": "px", "enabled": false },
+          { "id": "expand", "label": "Expand", "label_ru": "Расширить", "min": 0.0, "max": 100.0, "default": 0.0, "unit": "px", "enabled": false },
+          { "id": "contract", "label": "Contract", "label_ru": "Сжать", "min": 0.0, "max": 100.0, "default": 0.0, "unit": "px", "enabled": false },
+          { "id": "feather", "label": "Feather", "label_ru": "Растушевка", "min": 0.0, "max": 100.0, "step": 0.1, "default": 0.0, "unit": "px", "enabled": false }
+        ]
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "row",
+        "items": [
+          { "type": "button", "id": "apply", "label": "Apply (1 Undo)", "label_ru": "Применить" },
+          { "type": "button", "id": "reset", "label": "Reset", "label_ru": "Сбросить" }
+        ]
+      }
+    ]
+  }
+}

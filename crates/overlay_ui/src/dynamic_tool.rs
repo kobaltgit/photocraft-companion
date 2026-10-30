@@ -18,6 +18,8 @@ pub enum DynamicValue {
     Bool(bool),
     Index(usize),
     BannerStyle(BannerStyle),
+    StringList(Vec<String>),
+    IntList(Vec<i64>),
 }
 
 impl DynamicValue {
@@ -52,6 +54,20 @@ impl DynamicValue {
     pub fn as_banner_style(&self) -> Option<BannerStyle> {
         match self {
             DynamicValue::BannerStyle(s) => Some(*s),
+            _ => None,
+        }
+    }
+
+    pub fn as_string_list(&self) -> Option<&[String]> {
+        match self {
+            DynamicValue::StringList(list) => Some(list.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn as_int_list(&self) -> Option<&[i64]> {
+        match self {
+            DynamicValue::IntList(list) => Some(list.as_slice()),
             _ => None,
         }
     }
@@ -164,6 +180,26 @@ impl DynamicWindowState {
                     Self::init_widget_values(item, values);
                 }
             }
+            WidgetNode::ModifierStack { id, items, .. } => {
+                let order: Vec<String> = items.iter().map(|it| it.id.clone()).collect();
+                values.insert(
+                    format!("{}_order", id),
+                    DynamicValue::StringList(order.clone()),
+                );
+                values.insert(id.clone(), DynamicValue::StringList(order));
+                for it in items {
+                    values.insert(format!("{}_enabled", it.id), DynamicValue::Bool(it.enabled));
+                    values.insert(format!("{}_value", it.id), DynamicValue::Number(it.default));
+                    values.insert(
+                        format!("{}_{}_enabled", id, it.id),
+                        DynamicValue::Bool(it.enabled),
+                    );
+                    values.insert(
+                        format!("{}_{}_value", id, it.id),
+                        DynamicValue::Number(it.default),
+                    );
+                }
+            }
             WidgetNode::Separator => {}
         }
     }
@@ -193,6 +229,20 @@ impl DynamicWindowState {
                         BannerStyle::Success => "success",
                     };
                     map.insert(key, rhai::Dynamic::from(s_str.to_string()));
+                }
+                DynamicValue::StringList(list) => {
+                    let arr: rhai::Array = list
+                        .iter()
+                        .map(|s| rhai::Dynamic::from(s.clone()))
+                        .collect();
+                    map.insert(key, rhai::Dynamic::from_array(arr));
+                }
+                DynamicValue::IntList(list) => {
+                    let arr: rhai::Array = list
+                        .iter()
+                        .map(|&n| rhai::Dynamic::from(n as rhai::INT))
+                        .collect();
+                    map.insert(key, rhai::Dynamic::from_array(arr));
                 }
             }
         }
@@ -236,6 +286,31 @@ impl DynamicWindowState {
                 if let Ok(b) = v.as_bool() {
                     self.values.insert(key, DynamicValue::Bool(b));
                 }
+            } else if v.is_array() {
+                if let Ok(arr) = v.clone().into_typed_array::<i64>() {
+                    self.values.insert(key, DynamicValue::IntList(arr));
+                } else if let Ok(arr) = v.clone().into_typed_array::<String>() {
+                    self.values.insert(key, DynamicValue::StringList(arr));
+                } else if let Ok(arr) = v.into_array() {
+                    let all_ints = !arr.is_empty() && arr.iter().all(|x| x.is_int());
+                    if all_ints {
+                        let list: Vec<i64> =
+                            arr.into_iter().filter_map(|x| x.as_int().ok()).collect();
+                        self.values.insert(key, DynamicValue::IntList(list));
+                    } else {
+                        let mut list = Vec::new();
+                        for item in arr {
+                            if let Ok(s) = item.clone().into_string() {
+                                list.push(s);
+                            } else {
+                                list.push(item.to_string());
+                            }
+                        }
+                        self.values.insert(key, DynamicValue::StringList(list));
+                    }
+                }
+            } else if v.is_unit() {
+                self.values.remove(&key);
             }
         }
     }
@@ -254,6 +329,8 @@ pub struct DynamicToolEngine {
     echo_guard: Arc<std::sync::Mutex<Option<(String, String)>>>,
     pub preview_thumbnails: HashMap<String, (image::RgbaImage, f32)>,
     pub preview_textures: HashMap<String, (egui::TextureHandle, u64)>,
+    pub has_selection: bool,
+    pub config_path: Option<std::path::PathBuf>,
 }
 
 impl DynamicToolEngine {
@@ -514,12 +591,80 @@ impl DynamicToolEngine {
             echo_guard,
             preview_thumbnails: HashMap::new(),
             preview_textures: HashMap::new(),
+            has_selection: false,
+            config_path: None,
         };
 
         // Run initial state pass for all loaded scripts
         engine.run_all_initial_scripts();
 
         engine
+    }
+
+    pub fn set_config_path(&mut self, path: std::path::PathBuf) {
+        let cfg = core_contracts::CompanionConfig::load_or_default(&path);
+        self.apply_saved_modifier_stack_orders(&cfg);
+        self.config_path = Some(path);
+    }
+
+    pub fn with_config_path(mut self, path: std::path::PathBuf) -> Self {
+        self.set_config_path(path);
+        self
+    }
+
+    pub fn apply_saved_modifier_stack_orders(&mut self, config: &core_contracts::CompanionConfig) {
+        for (plugin_id, manifest) in &self.manifests {
+            if let Some(ref ui_cfg) = manifest.interactive_ui {
+                if let Some(state) = self.states.get_mut(plugin_id) {
+                    for widget in &ui_cfg.widgets {
+                        Self::apply_saved_order_to_widget(plugin_id, widget, state, config);
+                    }
+                }
+            }
+        }
+    }
+
+    fn apply_saved_order_to_widget(
+        plugin_id: &str,
+        widget: &WidgetNode,
+        state: &mut DynamicWindowState,
+        config: &core_contracts::CompanionConfig,
+    ) {
+        match widget {
+            WidgetNode::ModifierStack { id, items, .. } => {
+                let qualified_key = format!("{}:{}", plugin_id, id);
+                if let Some(saved) = config
+                    .modifier_stack_orders
+                    .get(&qualified_key)
+                    .or_else(|| config.modifier_stack_orders.get(id))
+                {
+                    let mut order: Vec<String> = Vec::new();
+                    for item_id in saved {
+                        if items.iter().any(|it| &it.id == item_id) && !order.contains(item_id) {
+                            order.push(item_id.clone());
+                        }
+                    }
+                    for it in items {
+                        if !order.contains(&it.id) {
+                            order.push(it.id.clone());
+                        }
+                    }
+                    state.values.insert(
+                        format!("{}_order", id),
+                        DynamicValue::StringList(order.clone()),
+                    );
+                    state
+                        .values
+                        .insert(id.clone(), DynamicValue::StringList(order));
+                }
+            }
+            WidgetNode::Row { items } => {
+                for item in items {
+                    Self::apply_saved_order_to_widget(plugin_id, item, state, config);
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn current_language(&self) -> Language {
@@ -582,11 +727,17 @@ impl DynamicToolEngine {
     pub fn toggle_window(&mut self, plugin_id: &str) {
         if let Some(state) = self.states.get_mut(plugin_id) {
             state.is_open = !state.is_open;
+            state
+                .values
+                .insert("is_open".to_string(), DynamicValue::Bool(state.is_open));
             if state.is_open {
                 self.preview_thumbnails.remove(plugin_id);
                 self.preview_textures.remove(plugin_id);
-                self.execute_script_state_change(plugin_id);
+                state
+                    .values
+                    .insert("base_saved".to_string(), DynamicValue::Bool(false));
             }
+            self.execute_script_state_change(plugin_id);
         }
     }
 
@@ -666,6 +817,102 @@ impl DynamicToolEngine {
         any_updated
     }
 
+    /// Dispatch selection state (has_selection, selection_bounds) to all open windows subscribed to document.selection
+    /// Returns true if at least one window state was updated and needs UI repaint.
+    pub fn dispatch_selection_state(
+        &mut self,
+        has_selection: bool,
+        selection_bounds: Option<[i32; 4]>,
+    ) -> bool {
+        let mut any_updated = false;
+        for (id, state) in &mut self.states {
+            if !state.is_open {
+                continue;
+            }
+            let is_subscribed = self
+                .manifests
+                .get(id)
+                .and_then(|m| m.interactive_ui.as_ref())
+                .map(|u| {
+                    u.ipc_subscriptions
+                        .iter()
+                        .any(|s| s == core_contracts::IPC_SUB_SELECTION_STATE)
+                })
+                .unwrap_or(false);
+
+            if is_subscribed {
+                let prev_has = state.values.get("has_selection").and_then(|v| v.as_bool());
+                let prev_bounds = state
+                    .values
+                    .get("selection_bounds")
+                    .and_then(|v| v.as_int_list());
+                let new_bounds_vec: Option<Vec<i64>> = selection_bounds
+                    .map(|b| vec![b[0] as i64, b[1] as i64, b[2] as i64, b[3] as i64]);
+
+                let has_changed = prev_has != Some(has_selection);
+                let bounds_changed = match (&prev_bounds, &new_bounds_vec) {
+                    (Some(pb), Some(nb)) => *pb != nb.as_slice(),
+                    (None, None) => false,
+                    _ => true,
+                };
+
+                if has_changed || bounds_changed {
+                    state.values.insert(
+                        "has_selection".to_string(),
+                        DynamicValue::Bool(has_selection),
+                    );
+                    if let Some(b) = new_bounds_vec {
+                        state
+                            .values
+                            .insert("selection_bounds".to_string(), DynamicValue::IntList(b));
+                    } else {
+                        state.values.remove("selection_bounds");
+                    }
+                    any_updated = true;
+
+                    if let Some(ast) = self.rhai_asts.get(id) {
+                        let rhai_state = state.to_rhai_map();
+                        let bounds_dynamic: rhai::Dynamic = match selection_bounds {
+                            Some(b) => {
+                                let arr: rhai::Array = b
+                                    .iter()
+                                    .map(|&n| rhai::Dynamic::from(n as rhai::INT))
+                                    .collect();
+                                rhai::Dynamic::from_array(arr)
+                            }
+                            None => rhai::Dynamic::UNIT,
+                        };
+
+                        let res: std::result::Result<rhai::Map, _> = self.rhai_engine.call_fn(
+                            &mut rhai::Scope::new(),
+                            ast,
+                            "on_selection_state",
+                            (has_selection, bounds_dynamic, rhai_state.clone()),
+                        );
+
+                        let final_res = match res {
+                            Ok(updated) => Ok(updated),
+                            Err(_) => {
+                                // Backward compatibility fallback to 2 arguments: (has_selection, rhai_state)
+                                self.rhai_engine.call_fn(
+                                    &mut rhai::Scope::new(),
+                                    ast,
+                                    "on_selection_state",
+                                    (has_selection, rhai_state),
+                                )
+                            }
+                        };
+
+                        if let Ok(updated_state) = final_res {
+                            state.update_from_rhai_map(updated_state);
+                        }
+                    }
+                }
+            }
+        }
+        any_updated
+    }
+
     /// Generates a deterministic ViewportId for an interactive plugin floating window
     pub fn viewport_id_for_plugin(plugin_id: &str) -> egui::ViewportId {
         egui::ViewportId::from_hash_of(format!("dynamic_plugin_window_{}", plugin_id))
@@ -732,7 +979,7 @@ impl DynamicToolEngine {
             let vp = egui::ViewportBuilder::default()
                 .with_title(&win_title)
                 .with_inner_size([default_w, default_h])
-                .with_min_inner_size([280.0, 260.0])
+                .with_min_inner_size([260.0, 180.0])
                 .with_resizable(true)
                 .with_always_on_top();
 
@@ -750,33 +997,46 @@ impl DynamicToolEngine {
                             .inner_margin(egui::Margin::symmetric(14, 12)),
                     )
                     .show(sub_ctx, |ui| {
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            ui.add_space(2.0);
-                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 8.0);
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                ui.add_space(2.0);
+                                ui.spacing_mut().item_spacing = Vec2::new(6.0, 8.0);
 
-                            if let Some(state) = self.states.get_mut(&plugin_id) {
-                                for widget in &config.widgets {
-                                    if Self::render_widget_node(
-                                        ui,
-                                        &plugin_id,
-                                        widget,
-                                        state,
-                                        palette,
-                                        self.current_language,
-                                        &mut self.preview_thumbnails,
-                                        &mut self.preview_textures,
-                                    ) {
-                                        state_changed = true;
+                                if let Some(state) = self.states.get_mut(&plugin_id) {
+                                    for widget in &config.widgets {
+                                        if Self::render_widget_node(
+                                            ui,
+                                            &plugin_id,
+                                            widget,
+                                            state,
+                                            palette,
+                                            self.current_language,
+                                            &mut self.preview_thumbnails,
+                                            &mut self.preview_textures,
+                                            self.config_path.as_deref(),
+                                        ) {
+                                            state_changed = true;
+                                        }
                                     }
                                 }
-                            }
-                        });
+                            });
                     });
             });
 
             if !is_open {
+                let mut closed = false;
                 if let Some(state) = self.states.get_mut(&plugin_id) {
-                    state.is_open = false;
+                    if state.is_open {
+                        state.is_open = false;
+                        state
+                            .values
+                            .insert("is_open".to_string(), DynamicValue::Bool(false));
+                        closed = true;
+                    }
+                }
+                if closed {
+                    self.execute_script_state_change(&plugin_id);
                 }
             }
 
@@ -796,6 +1056,7 @@ impl DynamicToolEngine {
         lang: Language,
         preview_thumbnails: &mut HashMap<String, (image::RgbaImage, f32)>,
         preview_textures: &mut HashMap<String, (egui::TextureHandle, u64)>,
+        config_path: Option<&std::path::Path>,
     ) -> bool {
         let mut changed = false;
 
@@ -966,13 +1227,55 @@ impl DynamicToolEngine {
                 };
 
                 ui.horizontal(|ui| {
-                    ui.add_sized([50.0, 18.0], egui::Label::new(node.label_for_lang(lang)));
-                    let mut slider = egui::Slider::new(&mut current_val, *min..=*max);
-                    if let Some(s) = step {
-                        slider = slider.step_by(*s);
+                    ui.label(node.label_for_lang(lang));
+                    let step_val = step.unwrap_or(1.0);
+                    let is_integer = step_val >= 1.0;
+                    let mut slider = egui::Slider::new(&mut current_val, *min..=*max)
+                        .step_by(step_val)
+                        .show_value(true);
+
+                    if is_integer {
+                        slider = slider
+                            .custom_formatter(|v, _| format!("{:.0}", v))
+                            .custom_parser(|s| s.trim().parse::<f64>().ok());
+                    } else {
+                        slider = slider
+                            .custom_formatter(|v, _| format!("{:.1}", v))
+                            .custom_parser(|s| s.trim().parse::<f64>().ok());
                     }
+
                     let resp = ui.add(slider);
-                    if resp.changed() {
+                    let mut slider_changed = resp.changed();
+
+                    let mut wheel_ticks: f32 = 0.0;
+                    ui.input(|i| {
+                        for event in &i.events {
+                            if let egui::Event::MouseWheel { delta, .. } = event {
+                                if delta.y > 0.0 {
+                                    wheel_ticks += 1.0;
+                                } else if delta.y < 0.0 {
+                                    wheel_ticks -= 1.0;
+                                }
+                            }
+                        }
+                    });
+
+                    if wheel_ticks != 0.0 && resp.hovered() {
+                        let wheel_step = if is_integer { 1.0 } else { 0.1 };
+                        let new_val =
+                            (current_val + (wheel_ticks as f64) * wheel_step).clamp(*min, *max);
+                        let new_val = if is_integer {
+                            new_val.round()
+                        } else {
+                            (new_val * 10.0).round() / 10.0
+                        };
+                        if (new_val - current_val).abs() > f64::EPSILON {
+                            current_val = new_val;
+                            slider_changed = true;
+                        }
+                    }
+
+                    if slider_changed {
                         state
                             .values
                             .insert(id.clone(), DynamicValue::Number(current_val));
@@ -1441,6 +1744,7 @@ impl DynamicToolEngine {
                                 lang,
                                 preview_thumbnails,
                                 preview_textures,
+                                config_path,
                             ) {
                                 changed = true;
                             }
@@ -1458,12 +1762,299 @@ impl DynamicToolEngine {
                                 lang,
                                 preview_thumbnails,
                                 preview_textures,
+                                config_path,
                             ) {
                                 changed = true;
                             }
                         }
                     });
                 }
+            }
+
+            WidgetNode::ModifierStack {
+                id,
+                label: _,
+                label_ru: _,
+                items,
+                allow_reordering,
+            } => {
+                ui.set_width(ui.available_width());
+                ui.group(|ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(
+                        egui::RichText::new(node.label_for_lang(lang))
+                            .strong()
+                            .size(13.0)
+                            .color(palette.text_primary),
+                    );
+                    ui.add_space(2.0);
+
+                    let order_key = format!("{}_order", id);
+                    let mut current_order: Vec<String> = match state.values.get(&order_key) {
+                        Some(DynamicValue::StringList(list)) => list.clone(),
+                        _ => items.iter().map(|it| it.id.clone()).collect(),
+                    };
+
+                    let mut swap_pair = None;
+
+                    let font_id = egui::FontId::proportional(12.0);
+                    let max_label_w = items
+                        .iter()
+                        .map(|it| {
+                            ui.painter()
+                                .layout_no_wrap(
+                                    it.label_for_lang(lang).to_string(),
+                                    font_id.clone(),
+                                    palette.text_primary,
+                                )
+                                .size()
+                                .x
+                        })
+                        .fold(80.0_f32, |a, b| a.max(b))
+                        + 12.0;
+
+                    for (idx, item_id) in current_order.iter().enumerate() {
+                        if let Some(item_cfg) = items.iter().find(|it| &it.id == item_id) {
+                            ui.horizontal(|ui| {
+                                if *allow_reordering {
+                                    // Move Up Vector Button
+                                    let up_enabled = idx > 0;
+                                    let up_resp = ui.add_enabled(
+                                        up_enabled,
+                                        egui::Button::new("")
+                                            .min_size(Vec2::new(18.0, 18.0))
+                                            .corner_radius(2.0),
+                                    );
+                                    let c = up_resp.rect.center();
+                                    let stroke_color = if up_enabled {
+                                        if up_resp.hovered() {
+                                            palette.accent_hover
+                                        } else {
+                                            palette.text_primary
+                                        }
+                                    } else {
+                                        palette.text_muted
+                                    };
+                                    let stroke = Stroke::new(1.2, stroke_color);
+                                    ui.painter().line_segment(
+                                        [
+                                            egui::pos2(c.x - 3.5, c.y + 1.5),
+                                            egui::pos2(c.x, c.y - 2.0),
+                                        ],
+                                        stroke,
+                                    );
+                                    ui.painter().line_segment(
+                                        [
+                                            egui::pos2(c.x, c.y - 2.0),
+                                            egui::pos2(c.x + 3.5, c.y + 1.5),
+                                        ],
+                                        stroke,
+                                    );
+                                    if up_resp.clicked() && idx > 0 {
+                                        swap_pair = Some((idx, idx - 1));
+                                    }
+
+                                    // Move Down Vector Button
+                                    let down_enabled = idx + 1 < current_order.len();
+                                    let down_resp = ui.add_enabled(
+                                        down_enabled,
+                                        egui::Button::new("")
+                                            .min_size(Vec2::new(18.0, 18.0))
+                                            .corner_radius(2.0),
+                                    );
+                                    let c = down_resp.rect.center();
+                                    let stroke_color = if down_enabled {
+                                        if down_resp.hovered() {
+                                            palette.accent_hover
+                                        } else {
+                                            palette.text_primary
+                                        }
+                                    } else {
+                                        palette.text_muted
+                                    };
+                                    let stroke = Stroke::new(1.2, stroke_color);
+                                    ui.painter().line_segment(
+                                        [
+                                            egui::pos2(c.x - 3.5, c.y - 1.5),
+                                            egui::pos2(c.x, c.y + 2.0),
+                                        ],
+                                        stroke,
+                                    );
+                                    ui.painter().line_segment(
+                                        [
+                                            egui::pos2(c.x, c.y + 2.0),
+                                            egui::pos2(c.x + 3.5, c.y - 1.5),
+                                        ],
+                                        stroke,
+                                    );
+                                    if down_resp.clicked() && idx + 1 < current_order.len() {
+                                        swap_pair = Some((idx, idx + 1));
+                                    }
+                                }
+
+                                // Active Checkbox
+                                let enabled_key = format!("{}_enabled", item_id);
+                                let mut enabled = state
+                                    .values
+                                    .get(&enabled_key)
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(item_cfg.enabled);
+                                if ui.checkbox(&mut enabled, "").changed() {
+                                    state
+                                        .values
+                                        .insert(enabled_key.clone(), DynamicValue::Bool(enabled));
+                                    state.values.insert(
+                                        format!("{}_{}_enabled", id, item_id),
+                                        DynamicValue::Bool(enabled),
+                                    );
+                                    changed = true;
+                                }
+
+                                // Item label with fixed width slot for crisp zero-stair-step alignment
+                                ui.add_sized(
+                                    egui::vec2(max_label_w, ui.spacing().interact_size.y),
+                                    egui::Label::new(
+                                        egui::RichText::new(item_cfg.label_for_lang(lang))
+                                            .size(12.0)
+                                            .color(if enabled {
+                                                palette.text_primary
+                                            } else {
+                                                palette.text_muted
+                                            }),
+                                    )
+                                    .truncate(),
+                                );
+
+                                // Parameter Value (Interactive Slider when enabled, disabled track when disabled)
+                                let val_key = format!("{}_value", item_id);
+                                let mut val = state
+                                    .values
+                                    .get(&val_key)
+                                    .and_then(|v| v.as_f64())
+                                    .unwrap_or(item_cfg.default);
+                                let step = item_cfg.step.unwrap_or(1.0);
+                                let suffix = if let Some(ref u) = item_cfg.unit {
+                                    format!(" {}", u)
+                                } else {
+                                    String::new()
+                                };
+
+                                let is_integer = step >= 1.0;
+                                let mut slider =
+                                    egui::Slider::new(&mut val, item_cfg.min..=item_cfg.max)
+                                        .step_by(step)
+                                        .show_value(true);
+
+                                if is_integer {
+                                    let s_clone = suffix.clone();
+                                    slider = slider
+                                        .custom_formatter(move |v, _| {
+                                            format!("{:.0}{}", v, s_clone)
+                                        })
+                                        .custom_parser({
+                                            let s_clone = suffix.clone();
+                                            move |s| {
+                                                s.trim_end_matches(&s_clone)
+                                                    .trim()
+                                                    .parse::<f64>()
+                                                    .ok()
+                                            }
+                                        });
+                                } else {
+                                    let s_clone = suffix.clone();
+                                    slider = slider
+                                        .custom_formatter(move |v, _| {
+                                            format!("{:.1}{}", v, s_clone)
+                                        })
+                                        .custom_parser({
+                                            let s_clone = suffix.clone();
+                                            move |s| {
+                                                s.trim_end_matches(&s_clone)
+                                                    .trim()
+                                                    .parse::<f64>()
+                                                    .ok()
+                                            }
+                                        });
+                                }
+
+                                let slider_resp = ui
+                                    .add_enabled_ui(enabled, |ui| {
+                                        ui.add_sized(
+                                            egui::vec2(
+                                                ui.available_width(),
+                                                ui.spacing().interact_size.y,
+                                            ),
+                                            slider,
+                                        )
+                                    })
+                                    .inner;
+
+                                let mut val_changed = slider_resp.changed() && enabled;
+
+                                let mut wheel_ticks: f32 = 0.0;
+                                ui.input(|i| {
+                                    for event in &i.events {
+                                        if let egui::Event::MouseWheel { delta, .. } = event {
+                                            if delta.y > 0.0 {
+                                                wheel_ticks += 1.0;
+                                            } else if delta.y < 0.0 {
+                                                wheel_ticks -= 1.0;
+                                            }
+                                        }
+                                    }
+                                });
+
+                                if wheel_ticks != 0.0 && slider_resp.hovered() && enabled {
+                                    let wheel_step = if is_integer { 1.0 } else { 0.1 };
+                                    let new_val = (val + (wheel_ticks as f64) * wheel_step)
+                                        .clamp(item_cfg.min, item_cfg.max);
+                                    let new_val = if is_integer {
+                                        new_val.round()
+                                    } else {
+                                        (new_val * 10.0).round() / 10.0
+                                    };
+                                    if (new_val - val).abs() > f64::EPSILON {
+                                        val = new_val;
+                                        val_changed = true;
+                                    }
+                                }
+
+                                if val_changed {
+                                    state
+                                        .values
+                                        .insert(val_key.clone(), DynamicValue::Number(val));
+                                    state.values.insert(
+                                        format!("{}_{}_value", id, item_id),
+                                        DynamicValue::Number(val),
+                                    );
+                                    changed = true;
+                                }
+                            });
+                        }
+                    }
+
+                    if let Some((i1, i2)) = swap_pair {
+                        current_order.swap(i1, i2);
+                        state
+                            .values
+                            .insert(order_key, DynamicValue::StringList(current_order.clone()));
+                        state
+                            .values
+                            .insert(id.clone(), DynamicValue::StringList(current_order.clone()));
+                        if let Some(cfg_path) = config_path {
+                            let mut cfg =
+                                core_contracts::CompanionConfig::load_or_default(cfg_path);
+                            cfg.modifier_stack_orders
+                                .insert(format!("{}:{}", plugin_id, id), current_order.clone());
+                            cfg.modifier_stack_orders
+                                .insert(id.clone(), current_order.clone());
+                            if let Err(e) = cfg.save(cfg_path) {
+                                warn!("Failed to persist modifier stack order to config: {}", e);
+                            }
+                        }
+                        changed = true;
+                    }
+                });
             }
         }
 
@@ -3534,5 +4125,259 @@ mod tests {
         assert_eq!(action.params["params"]["angle_deg"], 45.0);
         assert_eq!(action.params["params"]["shadow_opacity"], 0.0);
         assert_eq!(action.params["params"]["perspective"], 0.3);
+    }
+
+    #[test]
+    fn test_selection_modifier_stack_rhai_script() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let engine = DynamicToolEngine::new(&[], Some(tx));
+
+        let script = include_str!("../../../plugins/selection_mod/script.rhai");
+        let ast = engine
+            .rhai_engine
+            .compile(script)
+            .expect("Selection mod script must compile");
+
+        let mut scope = rhai::Scope::new();
+
+        // 1. Tool window opened with active selection snapshots working base
+        let mut open_map = rhai::Map::new();
+        open_map.insert("is_open".into(), rhai::Dynamic::from(true));
+        let res_map1: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (open_map,))
+            .expect("First on_state_changed must succeed");
+
+        assert_eq!(res_map1.get("base_saved").unwrap().as_bool(), Ok(true));
+        let save_base_action = rx.try_recv().expect("Must save base working selection");
+        assert_eq!(save_base_action.command, "select.saveSelection");
+        assert_eq!(save_base_action.params["name"], "__pc_companion_base_sel");
+        assert_eq!(
+            save_base_action.params["channel"],
+            "__pc_companion_base_sel"
+        );
+        assert_eq!(save_base_action.params["operation"], "replace");
+        assert!(rx.try_recv().is_err(), "Only base selection must be saved");
+
+        // 2. Reset action (Zero Data-Loss UX: resets UI modifiers without loading or altering canvas)
+        let mut reset_map = res_map1.clone();
+        reset_map.insert("contract_enabled".into(), rhai::Dynamic::from(true));
+        reset_map.insert("contract_value".into(), rhai::Dynamic::from(10.0));
+        reset_map.insert("action_reset".into(), rhai::Dynamic::from(true));
+        let res_map2: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (reset_map,))
+            .expect("Reset on_state_changed must succeed");
+
+        assert_eq!(res_map2.get("action_reset").unwrap().as_bool(), Ok(false));
+        assert_eq!(
+            res_map2.get("contract_enabled").unwrap().as_bool(),
+            Ok(false)
+        );
+        assert_eq!(res_map2.get("contract_value").unwrap().as_float(), Ok(0.0));
+
+        // Canvas selection is saved as base, NOT loaded/destroyed
+        let reset_sync_action = rx.try_recv().expect("Must sync canvas to base on reset");
+        assert_eq!(reset_sync_action.command, "select.saveSelection");
+        assert_eq!(
+            reset_sync_action.params["channel"],
+            "__pc_companion_base_sel"
+        );
+        assert_eq!(reset_sync_action.params["operation"], "replace");
+        assert!(
+            rx.try_recv().is_err(),
+            "select.loadSelection must NOT be called on reset (Zero Data-Loss)"
+        );
+
+        // 3. Apply custom modifier stack order
+        let mut apply_map = res_map2;
+        apply_map.insert("action_apply".into(), rhai::Dynamic::from(true));
+        // Custom order: contract -> smooth -> feather
+        let custom_order: rhai::Array = vec![
+            rhai::Dynamic::from("contract".to_string()),
+            rhai::Dynamic::from("smooth".to_string()),
+            rhai::Dynamic::from("feather".to_string()),
+        ];
+        apply_map.insert(
+            "modifiers_order".into(),
+            rhai::Dynamic::from_array(custom_order),
+        );
+        apply_map.insert("contract_enabled".into(), rhai::Dynamic::from(true));
+        apply_map.insert("contract_value".into(), rhai::Dynamic::from(8.0));
+        apply_map.insert("smooth_enabled".into(), rhai::Dynamic::from(true));
+        apply_map.insert("smooth_value".into(), rhai::Dynamic::from(4.0));
+        apply_map.insert("feather_enabled".into(), rhai::Dynamic::from(false));
+        apply_map.insert("feather_value".into(), rhai::Dynamic::from(2.0));
+
+        let res_map3: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (apply_map,))
+            .expect("Apply on_state_changed must succeed");
+
+        assert_eq!(res_map3.get("action_apply").unwrap().as_bool(), Ok(false));
+        assert_eq!(res_map3.get("base_saved").unwrap().as_bool(), Ok(true));
+
+        let load_base_action = rx.try_recv().expect("Must load base working selection");
+        assert_eq!(load_base_action.command, "select.loadSelection");
+        assert_eq!(
+            load_base_action.params["channel"],
+            "__pc_companion_base_sel"
+        );
+        assert_eq!(load_base_action.params["operation"], "new");
+
+        let mod1_action = rx
+            .try_recv()
+            .expect("Must execute first modifier (contract)");
+        assert_eq!(mod1_action.command, "select.modify.contract");
+        assert_eq!(mod1_action.params["radius"], 8.0);
+        assert_eq!(mod1_action.params["applyAtCanvasBounds"], false);
+
+        let mod2_action = rx
+            .try_recv()
+            .expect("Must execute second modifier (smooth)");
+        assert_eq!(mod2_action.command, "select.modify.smooth");
+        assert_eq!(mod2_action.params["radius"], 4.0);
+        assert_eq!(mod2_action.params["applyAtCanvasBounds"], false);
+
+        // 4. Test unchecking commits current selection as new working base and zeroes radius
+        let mut uncheck_map = res_map3;
+        uncheck_map.insert("contract_enabled".into(), rhai::Dynamic::from(false));
+        let res_map4: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (uncheck_map,))
+            .expect("Uncheck on_state_changed must succeed");
+        assert_eq!(res_map4.get("contract_value").unwrap().as_float(), Ok(0.0));
+        let uncheck_commit = rx.try_recv().expect("Must save base on uncheck");
+        assert_eq!(uncheck_commit.command, "select.saveSelection");
+        assert_eq!(uncheck_commit.params["channel"], "__pc_companion_base_sel");
+
+        // 5. Test external selection reactivity and bounds change in PhotoCraft
+        let ext_map = res_map4.clone();
+        let bounds_1: rhai::Array = vec![
+            rhai::Dynamic::from(10 as rhai::INT),
+            rhai::Dynamic::from(20 as rhai::INT),
+            rhai::Dynamic::from(100 as rhai::INT),
+            rhai::Dynamic::from(200 as rhai::INT),
+        ];
+        let res_sel1: rhai::Map = engine
+            .rhai_engine
+            .call_fn(
+                &mut scope,
+                &ast,
+                "on_selection_state",
+                (true, rhai::Dynamic::from_array(bounds_1), ext_map),
+            )
+            .expect("on_selection_state 3-args must succeed");
+        assert_eq!(res_sel1.get("base_saved").unwrap().as_bool(), Ok(true));
+
+        // When bounds change externally in PhotoCraft, base_saved becomes false to snapshot new contour on apply
+        let bounds_2: rhai::Array = vec![
+            rhai::Dynamic::from(30 as rhai::INT),
+            rhai::Dynamic::from(40 as rhai::INT),
+            rhai::Dynamic::from(150 as rhai::INT),
+            rhai::Dynamic::from(250 as rhai::INT),
+        ];
+        let res_sel2: rhai::Map = engine
+            .rhai_engine
+            .call_fn(
+                &mut scope,
+                &ast,
+                "on_selection_state",
+                (true, rhai::Dynamic::from_array(bounds_2), res_sel1),
+            )
+            .expect("on_selection_state changed bounds must succeed");
+        assert_eq!(res_sel2.get("base_saved").unwrap().as_bool(), Ok(false));
+
+        // When selection is deselected in PhotoCraft
+        let res_sel3: rhai::Map = engine
+            .rhai_engine
+            .call_fn(
+                &mut scope,
+                &ast,
+                "on_selection_state",
+                (false, rhai::Dynamic::UNIT, res_sel2),
+            )
+            .expect("on_selection_state false must succeed");
+        assert_eq!(res_sel3.get("base_saved").unwrap().as_bool(), Ok(false));
+
+        // 6. Test window closing cleanup deletes temporary alpha channel
+        let mut close_map = res_map4;
+        close_map.insert("is_open".into(), rhai::Dynamic::from(false));
+        let res_map5: rhai::Map = engine
+            .rhai_engine
+            .call_fn(&mut scope, &ast, "on_state_changed", (close_map,))
+            .expect("Close on_state_changed must succeed");
+        assert_eq!(res_map5.get("base_saved").unwrap().as_bool(), Ok(false));
+        let del1 = rx.try_recv().expect("Must delete base_sel channel");
+        assert_eq!(del1.command, "channel.delete");
+        assert_eq!(del1.params["channel"], "__pc_companion_base_sel");
+        assert!(rx.try_recv().is_err(), "Only base_sel must be deleted");
+    }
+
+    #[test]
+    fn test_modifier_stack_config_persistence() {
+        let manifest_json = r#"{
+            "id": "ui.photocraft.plugins.selection_mod",
+            "name": "Selection Modifiers",
+            "version": "1.0.0",
+            "description": "Test",
+            "author": "Test",
+            "plugin_type": "interactive_ui",
+            "interactive_ui": {
+                "window_title": "Selection Modifiers",
+                "widgets": [
+                    {
+                        "type": "modifier_stack",
+                        "id": "modifiers",
+                        "label": "Modifiers",
+                        "allow_reordering": true,
+                        "items": [
+                            { "id": "border", "label": "Border", "min": 0.0, "max": 100.0, "default": 0.0, "enabled": false },
+                            { "id": "smooth", "label": "Smooth", "min": 0.0, "max": 50.0, "default": 0.0, "enabled": false },
+                            { "id": "expand", "label": "Expand", "min": 0.0, "max": 100.0, "default": 0.0, "enabled": false }
+                        ]
+                    }
+                ]
+            }
+        }"#;
+        let manifest: PluginManifest = serde_json::from_str(manifest_json).unwrap();
+        let mut engine = DynamicToolEngine::new(&[manifest], None);
+
+        // Verify default order
+        let state = engine
+            .states
+            .get("ui.photocraft.plugins.selection_mod")
+            .unwrap();
+        let order = state
+            .values
+            .get("modifiers_order")
+            .unwrap()
+            .as_string_list()
+            .unwrap();
+        assert_eq!(order, &["border", "smooth", "expand"]);
+
+        // Apply config with custom order
+        let mut config = core_contracts::CompanionConfig::default();
+        config.modifier_stack_orders.insert(
+            "ui.photocraft.plugins.selection_mod:modifiers".to_string(),
+            vec![
+                "expand".to_string(),
+                "border".to_string(),
+                "smooth".to_string(),
+            ],
+        );
+        engine.apply_saved_modifier_stack_orders(&config);
+
+        let state = engine
+            .states
+            .get("ui.photocraft.plugins.selection_mod")
+            .unwrap();
+        let order = state
+            .values
+            .get("modifiers_order")
+            .unwrap()
+            .as_string_list()
+            .unwrap();
+        assert_eq!(order, &["expand", "border", "smooth"]);
     }
 }

@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.3.1"
+version = "1.3.2"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"

@@ -13,6 +13,7 @@ pub struct ToolstripApp {
     pub hovered_tooltip: Option<(String, egui::Rect)>,
     pub is_busy: bool,
     pub active_action: Option<String>,
+    pub has_selection: bool,
     pub orientation_changed: bool,
     pub icon_cache: crate::icons::SvgIconCache,
     pub open_sub_actions_for: Option<(String, egui::Rect)>,
@@ -34,6 +35,7 @@ impl ToolstripApp {
             hovered_tooltip: None,
             is_busy: false,
             active_action: None,
+            has_selection: false,
             orientation_changed: false,
             icon_cache: crate::icons::SvgIconCache::new(),
             open_sub_actions_for: None,
@@ -86,6 +88,7 @@ impl ToolstripApp {
         let is_busy = self.is_busy;
         let active_action = self.active_action.clone();
         let is_dark = palette.is_dark;
+        let has_selection = self.has_selection;
 
         let mut sub_action_open = None;
         let mut sub_action_toggle = None;
@@ -177,6 +180,22 @@ impl ToolstripApp {
                             Stroke::new(1.5, palette.accent_blue),
                             egui::StrokeKind::Inside,
                         );
+                    }
+
+                    if has_selection && btn.requires_selection {
+                        let dot_center = resp.rect.right_top() + Vec2::new(-4.5, 4.5);
+                        let glow_color = if is_dark {
+                            egui::Color32::from_rgba_unmultiplied(56, 189, 248, 120)
+                        } else {
+                            egui::Color32::from_rgba_unmultiplied(14, 165, 233, 120)
+                        };
+                        let dot_color = if is_dark {
+                            egui::Color32::from_rgb(56, 189, 248)
+                        } else {
+                            egui::Color32::from_rgb(14, 165, 233)
+                        };
+                        ui.painter().circle_filled(dot_center, 3.5, glow_color);
+                        ui.painter().circle_filled(dot_center, 2.0, dot_color);
                     }
 
                     if has_sub_actions {
@@ -748,6 +767,7 @@ mod tests {
                 active_sub_action: None,
                 name_ru: None,
                 locales: Default::default(),
+                requires_selection: false,
             })
             .collect()
     }
@@ -922,6 +942,7 @@ mod tests {
             active_sub_action: Some("mask".to_string()),
             name_ru: None,
             locales: Default::default(),
+            requires_selection: false,
         };
 
         let app = ToolstripApp::new(vec![btn], ThemeMode::Dark);
@@ -962,6 +983,7 @@ mod tests {
             active_sub_action: Some("mask".to_string()),
             name_ru: None,
             locales: Default::default(),
+            requires_selection: false,
         };
 
         let resolved = btn.effective_icon_path();

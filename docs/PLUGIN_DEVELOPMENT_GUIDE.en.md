@@ -504,6 +504,9 @@ In `interactive_ui`, all window controls are declared inside the `"widgets"` arr
 | **`label`** | `text_binding` | Text line bound to a state key. |
 | **`separator`** | *(none)* | Thin visual dividing line. |
 | **`row`** | `items: [ WidgetNode, ... ]` | Horizontal container layout. |
+| **`modifier_stack`** | `id`, `label`, `label_ru`, `allow_reordering`, `items: [ ModifierItemConfig, ... ]` | Non-destructive modifier stack with vector up/down reorder chevrons, step toggle checkboxes, adaptive column auto-alignment without stair-stepping (Rule 6.1 Layout Guard), and discrete formatted sliders. Modifier sequence is stored in `state[id + "_order"]`, step toggles in `state[item_id + "_enabled"]`, and radii in `state[item_id + "_value"]`. Reordered state persists across sessions automatically. |
+| **`vector_pad`** | `id`, `label`, `label_ru`, `default_angle_deg`, `default_distance`, `max_distance` | Circular vector angle (0..360°) and distance controller with interactive viewfinder crosshair and gradient directional beam. Stores angle in `state[id + "_angle"]` and distance in `state[id + "_distance"]`. |
+| **`image_preview`** | `id`, `height` | Interactive live preview canvas rendered by the raster engine with proportional scaling, a vector refresh button to re-fetch the layer from PhotoCraft, and texture memory guard. |
 
 ---
 
@@ -553,12 +556,35 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 }
 ```
 
+#### 3. `on_selection_state(has_selection, bounds, state) -> state`
+Fired automatically when selection presence or selection contour bounds change in PhotoCraft (requires subscription to `"document.selection"`):
+- `has_selection: bool` — whether an active selection exists on the canvas (`true`/`false`);
+- `bounds: Array` — selection bounding box coordinates `[x, y, w, h]` (or `()` if no selection);
+- `state: Map` — reactive state of the tool window widgets.
+```rhai
+fn on_selection_state(has_selection, bounds, state) {
+    if !has_selection {
+        state["base_saved"] = false;
+        state["last_bounds"] = ();
+    } else {
+        let prev_bounds = state["last_bounds"];
+        // If the artist redrew the selection contour in PhotoCraft, invalidate cached base
+        if prev_bounds != () && bounds != () && prev_bounds != bounds {
+            state["base_saved"] = false;
+        }
+        state["last_bounds"] = bounds;
+    }
+    return state;
+}
+```
+
 ### 7.2. Built-in Native Functions
 
-* **Editor Control:**
+* **Editor Control & Raster Engine:**
   - `execute_command(command, params_map)` — send command to PhotoCraft socket;
   - `execute_command(command)` — send command without parameters;
-  - `set_colors(fg_hex, bg_hex)` — immediately set brush foreground and background colors.
+  - `set_colors(fg_hex, bg_hex)` — immediately set brush foreground and background colors;
+  - `execute_raster_process(params_map, mode)` — execute high-speed 2.5D extrusion, bevel and shadow generation via native `raster_engine`. Modes: `"merged"` (single flat layer) or `"split"` (layered Shadow + Extrusion + Facade).
 * **Localization (i18n):**
   - `t("English text", "Русский текст")` — returns translation for the active app language;
   - `current_language()` — returns `"ru"` or `"en"`.
@@ -571,17 +597,34 @@ fn on_session_colors(fg_hex, bg_hex, state) {
 
 ---
 
-## 8. Bidirectional Sync & Echo Guard (`ipc_subscriptions`)
+## 8. Bidirectional Sync & Event Subscriptions (`ipc_subscriptions`)
 
-When subscribed to `"session.colors"`:
+Plugins can subscribe to system editor events via `"ipc_subscriptions"`:
 ```json
 "ipc_subscriptions": [
-  "session.colors"
+  "document.selection",
+  "session.colors",
+  "active_layer.image"
 ]
 ```
-The companion activates a smart dual-tier mechanism:
-1. **Zero-Waste Poller:** Socket 18492 is polled at 180 ms **only while at least one plugin window is open**. When windows are closed, CPU and network usage drop to 0%.
-2. **Echo Guard:** Commands sent by the plugin via `set_colors` or `tools.setColors` are cached in `echo_guard`. Echoed responses from PhotoCraft are suppressed, eliminating flicker and slider loops.
+### Supported Subscription Topics:
+
+1. **`"document.selection"` — Selection Bi-Directional Reactivity:**
+   - Dispatches selection existence and exact bounding box coordinates `[x, y, w, h]` into `on_selection_state(has_selection, bounds, state)`.
+   - Allows plugins to immediately adapt to contour changes made by the artist on the PhotoCraft canvas (Lasso, Marquee, moving selection), implementing a robust non-destructive lifecycle and preventing contour overwrite (**Zero Data-Loss UX**).
+
+2. **`"session.colors"` — Live PhotoCraft Palette Sync:**
+   - Dispatches active foreground and background colors into `on_session_colors(fg_hex, bg_hex, state)`.
+   - Leverages a smart **Zero-Waste Poller** (180 ms only while at least one plugin window is open, 0% CPU when closed) and **Echo Guard** (suppresses echoed command events to eliminate slider flicker and feedback loops).
+
+3. **`"active_layer.image"` — Live Active Layer Capture:**
+   - Asynchronously captures the raster image of the active layer for display in the `image_preview` widget and processing by the local raster engine.
+
+### Interactive Tool Lifecycle Standards (Lifecycle Best Practices):
+- **Zero Data-Loss UX on Reset:** The *Reset* button must reset slider values and checkboxes only in the Companion UI, under no circumstances clearing or destroying the artist's live selection contour on the canvas (`select.loadSelection` is never called). The current canvas contour is committed to the working base as a clean reference point.
+- **Commit-on-Uncheck (Bake):** Unchecking an active modifier step must zero its radius and commit (bake) the current altered canvas shape into the working base alpha channel `__pc_companion_base_sel`.
+
+
 
 ---
 

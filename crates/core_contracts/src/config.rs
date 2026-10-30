@@ -31,6 +31,8 @@ pub struct CompanionConfig {
     pub active_sub_actions: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub photocraft_path: Option<PathBuf>,
+    #[serde(default)]
+    pub modifier_stack_orders: std::collections::HashMap<String, Vec<String>>,
 }
 
 fn default_host() -> String {
@@ -65,6 +67,7 @@ impl Default for CompanionConfig {
             enabled_plugins: Vec::new(),
             active_sub_actions: std::collections::HashMap::new(),
             photocraft_path: None,
+            modifier_stack_orders: std::collections::HashMap::new(),
         }
     }
 }
