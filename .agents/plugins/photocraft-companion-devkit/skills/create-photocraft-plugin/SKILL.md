@@ -124,7 +124,7 @@ description: Пошаговое создание нового автономно
 ```
 
 ### Вариант Г: Интерактивный UI-виджет / Панель (`interactive_ui`)
-Манифест `plugin.json` задает декларативную верстку окна (`widgets`), подписки на события IPC (`session.colors`) и имя скрипта Rhai:
+Манифест `plugin.json` задает декларативную верстку окна (`widgets`), подписки на события IPC (`"document.selection"`, `"session.colors"`, `"active_layer.image"`) и имя скрипта Rhai:
 ```json
 {
   "id": "ui.photocraft.plugins.color_helper",
@@ -143,23 +143,6 @@ description: Пошаговое создание нового автономно
     "default_width": 320.0,
     "default_height": 420.0,
     "script": "logic.rhai",
-
-### Интернационализация (i18n): словарь `locales` и канонические параметры
-1. **Словарь `locales` в `plugin.json`:**
-   Для перевода названия и описания на другие языки (de, fr, es, ja, zh-hans и т.д.) используйте секцию `locales`:
-   ```json
-   "locales": {
-     "de": { "name": "...", "description": "..." },
-     "fr": { "name": "...", "description": "..." },
-     "ja": { "name": "...", "description": "..." }
-   }
-   ```
-   В `sub_actions` вариации также поддерживают `"locales": { "de": { "name": "..." } }`.
-2. **Канонические параметры команд (Smart Parameter Retry):**
-   Всегда указывайте команды и параметры на английском языке (`"blend": "Soft Light"`, `"channel": "transparency"`).
-   Движок Компаньона автоматически определит язык PhotoCraft и, если локализованный редактор отклонит каноническую команду, на лету переведет параметр и повторит выполнение без ошибки.
-
-
     "ipc_subscriptions": [
       "session.colors"
     ],
@@ -187,7 +170,24 @@ description: Пошаговое создание нового автономно
   }
 }
 ```
-Рядом создается скрипт `plugins/<id_плагина>/logic.rhai` с хуками `on_state_changed(state)` и `on_session_colors(fg_hex, bg_hex, state)`.
+Рядом создается скрипт `plugins/<id_плагина>/logic.rhai` с хуками `on_state_changed(state)`, `on_session_colors(fg_hex, bg_hex, state)` и `on_selection_state(has_selection, bounds, state)`.
+
+Для неразрушающего стека операций доступен виджет `modifier_stack` с шевронами перестановки шагов и автосохранением порядка.
+
+### Интернационализация (i18n): словарь `locales` и канонические параметры
+1. **Словарь `locales` в `plugin.json`:**
+   Для перевода названия и описания на другие языки (de, fr, es, ja, zh-hans и т.д.) используйте секцию `locales`:
+   ```json
+   "locales": {
+     "de": { "name": "...", "description": "..." },
+     "fr": { "name": "...", "description": "..." },
+     "ja": { "name": "...", "description": "..." }
+   }
+   ```
+   В `sub_actions` вариации также поддерживают `"locales": { "de": { "name": "..." } }`.
+2. **Канонические параметры команд (Smart Parameter Retry):**
+   Всегда указывайте команды и параметры на английском языке (`"blend": "Soft Light"`, `"channel": "transparency"`).
+   Движок Компаньона автоматически определит язык PhotoCraft и, если локализованный редактор отклонит каноническую команду, на лету переведет параметр и повторит выполнение без ошибки.
 
 ## Шаг 3. Векторная иконка и веса модели
 1. Создайте адаптивную векторную иконку `icon.svg` (`viewBox="0 0 24 24"`, `stroke="currentColor"`).
