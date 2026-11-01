@@ -973,7 +973,7 @@ fn main() -> anyhow::Result<()> {
     });
 
     let is_process_running: Arc<dyn Fn() -> bool + Send + Sync> =
-        Arc::new(|| photocraft_bridge::PhotoCraftClient::is_photocraft_process_running());
+        Arc::new(photocraft_bridge::PhotoCraftClient::is_photocraft_process_running);
 
     overlay_ui::launch_companion_overlay(
         buttons,
