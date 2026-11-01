@@ -3849,3 +3849,38 @@ Plugin descriptions now wrap adaptively at least 110 px before the right card ed
 - Validator `plugin_validator` verified all 14 ecosystem plugins.
 - Defect `BUG-100` resolved in `docs/BUGS_AND_ISSUES.md`.
 - Phase 102 marked completed in `docs/CHECKLIST.md`.
+
+
+## [2026-11-01 17:30] Chapter 111: PR #9 Integration: Preserving Active Layer Offset in Native AI (Issue #8, BUG-101)
+
+*Time: November 01, 2026, 17:30 (~20 minutes)*
+
+### 1. The Problem: "Silent" Jumping of Extracted Layers to Top-Left Corner
+When running Native AI plugins that produce a new layer (such as `remove_bg` or `depth_map`), users encountered an issue where any source layer placed away from `(0, 0)` ended up pasted at the top-left canvas corner `(0, 0)`.
+
+This was caused by the interaction contract with PhotoCraft:
+1. `copy_active_layer_image` retrieves only the tight bounding box of the active layer content (e.g. `896×1152` inside a `2480×3508` canvas).
+2. The `paste_image_in_place` call maps to `edit.pasteSpecial.pasteInPlace`, which relies on an active selection. Without an active selection, PhotoCraft pastes the clipboard at `(0, 0)`.
+3. Although `DocumentInfo.active_layer_bounds` was correctly populated by `get_document_info`, it was never utilized on the output paste pathway.
+
+### 2. Architectural Solution: Baking Layer Offset onto Full Canvas (`crates/ai_engine/src/lib.rs`)
+Contributor `Vitek14` submitted PR #9 providing an elegant, zero-hardcoding platform solution:
+
+1. **Pure Function `bake_layer_offset_onto_canvas`:**
+   Accepts the processed image, optional `layer_bounds: Option<[i32; 4]>`, and canvas dimensions.
+   - If offset is `(0, 0)`, bounds are missing, canvas size is undefined, or image dimensions do not match the layer bbox (the 2× super-resolution upscale case) — the image is returned unmodified.
+   - If offset is non-zero and dimensions match — a transparent full canvas `RgbaImage::new(canvas_w, canvas_h)` is allocated and the processed raster is positioned via `image::imageops::overlay` at `(x, y)`.
+2. **Seamless Integration in AI Pipeline (`GenericAiPlugin::execute`):**
+   The baking step runs prior to `paste_image_in_place` for all tasks except `Inpainting` (which operates `in_place` without creating a new layer).
+3. **Comprehensive Regression Tests:**
+   Five unit tests were added: zero-offset pass-through, exact canvas positioning, size mismatch / upscaler handling, missing bounds pass-through, and negative offset clipping.
+
+### 3. Verification & Definition of Done
+- Compilations and tests executed strictly under Resource Guard with `-j 1`.
+- `cargo fmt --all -- --check` confirmed clean code formatting (0 differences).
+- All 12 unit and integration tests in `ai_engine` passed.
+- 100% tests passed across all workspace crates (`cargo test --workspace -j 1`).
+- All linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`.
+- Validator `plugin_validator` verified all 14 ecosystem plugins.
+- Defect `BUG-101` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 103 marked completed in `docs/CHECKLIST.md`.

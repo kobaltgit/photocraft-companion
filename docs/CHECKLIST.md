@@ -1262,3 +1262,24 @@
     - Стиль кода подтвержден (`cargo fmt --all -- --check`);
     - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`) успешно пройдены;
     - Валидация каталога плагинов (14/14 плагинов OK).
+
+
+- [x] **Фаза 103: Сохранение координат смещенного слоя в Native AI плагинах (PR #9 от Vitek14, Issue #8, BUG-101)**
+  - [x] **Запекание оффсета слоя на холст (`crates/ai_engine/src/lib.rs`)**:
+    - Реализована функция `bake_layer_offset_onto_canvas(img, layer_bounds, canvas_w, canvas_h) -> RgbaImage`:
+      - При наличии непустых границ слоя (`active_layer_bounds`) и ненулевом смещении `(x != 0 || y != 0)`, если растр совпадает с tight bbox (`img.width() == bw && img.height() == bh`), растр накладывается на прозрачный холст `canvas_w × canvas_h` через `image::imageops::overlay` по координатам `(x, y)`.
+      - При нулевом оффсете `(0, 0)`, отсутствии bounds, нулевом холсте или несовпадении размеров (кейс 2× super-resolution / upscale) растр возвращается без изменений.
+    - В `GenericAiPlugin::execute` вызов `bake_layer_offset_onto_canvas` интегрирован перед `paste_image_in_place` для всех задач, кроме `AiTask::Inpainting` (который работает `in_place` без создания нового слоя).
+    - Принцип Zero-Core Hardcoding строго соблюден: нет проверок `manifest.id`, ключевых слов `.contains("remove_bg")` / `.contains("depth")` или имен файлов моделей. Решение универсально для любого Native AI плагина с режимом `output_mode: new_layer`.
+  - [x] **Регрессионные тесты (`crates/ai_engine/src/lib.rs`)**:
+    - `test_bake_layer_offset_zero_offset_passthrough`: проверка прозрачного пропуска при нулевом смещении;
+    - `test_bake_layer_offset_expands_to_canvas_at_original_position`: проверка точного размещения пикселей в исходной позиции холста;
+    - `test_bake_layer_offset_size_mismatch_passthrough`: проверка пропуска при несовпадении размеров (upscaling);
+    - `test_bake_layer_offset_missing_bounds_passthrough`: проверка пропуска при отсутствии метаданных границ;
+    - `test_bake_layer_offset_negative_offset_clips_safely`: безопасное отсечение при частично выходящих за холст слоях.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`);
+    - Чистота форматирования кода (`cargo fmt --all -- --check`);
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`;
+    - Валидация каталога плагинов (14/14 плагинов OK);
+    - Зарегистрирован и закрыт дефект `BUG-101` в `docs/BUGS_AND_ISSUES.md`.
