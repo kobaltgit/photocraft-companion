@@ -68,6 +68,7 @@ pub struct PluginManagerApp {
     pub photocraft_path: String,
     pub launch_requested: bool,
     pub icons_calibrated: bool,
+    pub is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl PluginManagerApp {
@@ -164,6 +165,7 @@ impl PluginManagerApp {
             photocraft_path,
             launch_requested: false,
             icons_calibrated: false,
+            is_process_running: None,
         }
     }
 
@@ -180,6 +182,11 @@ impl PluginManagerApp {
         callback: Arc<dyn Fn(Option<String>) + Send + Sync>,
     ) -> Self {
         self.on_token_saved = Some(callback);
+        self
+    }
+
+    pub fn with_process_detector(mut self, callback: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self.is_process_running = Some(callback);
         self
     }
 
@@ -621,10 +628,36 @@ impl PluginManagerApp {
                         )
                         .clicked()
                     {
-                        if let Err(e) = self.save_settings() {
-                            tracing::error!("Failed to auto-save settings before launch: {e}");
+                        let path_trim = self.photocraft_path.trim();
+                        let is_invalid_folder = if !path_trim.is_empty() {
+                            let p = std::path::Path::new(path_trim);
+                            if p.is_dir() {
+                                let has_binary = p.join("photocraft.exe").is_file()
+                                    || p.join("PhotoCraft.exe").is_file()
+                                    || p.join("photocraft").is_file()
+                                    || p.join("PhotoCraft").is_file();
+                                !has_binary
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if is_invalid_folder {
+                            let msg = self
+                                .t(
+                                    "Please specify the photocraft.exe binary, not a folder.",
+                                    "Пожалуйста, укажите файл photocraft.exe, а не папку.",
+                                )
+                                .to_string();
+                            self.set_status(msg, true);
+                        } else {
+                            if let Err(e) = self.save_settings() {
+                                tracing::error!("Failed to auto-save settings before launch: {e}");
+                            }
+                            self.launch_requested = true;
                         }
-                        self.launch_requested = true;
                     }
                 });
                 ui.end_row();
@@ -676,10 +709,41 @@ impl PluginManagerApp {
 
                         if let Some(t) = found {
                             self.token = t;
-                            let msg = self
-                                .t("Token updated successfully", "Токен успешно обновлен")
-                                .to_string();
-                            self.set_status(msg, false);
+                            let _ = self.save_settings();
+                            let is_offline = self
+                                .connection_state
+                                .read()
+                                .map(|s| *s == ConnectionState::Offline)
+                                .unwrap_or(false);
+                            if is_offline {
+                                let is_proc = self
+                                    .is_process_running
+                                    .as_ref()
+                                    .map(|f| f())
+                                    .unwrap_or(false);
+                                if is_proc {
+                                    let msg = self
+                                        .t(
+                                            "Token saved. PhotoCraft is running, but port 18492 is closed (Set Control port to 18492 in Edit -> Preferences -> Integrations)",
+                                            "Токен сохранен. PhotoCraft запущен, но порт 18492 закрыт (Укажите порт 18492 в Редактирование -> Настройки -> Интеграции)",
+                                        )
+                                        .to_string();
+                                    self.set_status(msg, false);
+                                } else {
+                                    let msg = self
+                                        .t(
+                                            "Token saved. Start PhotoCraft using [> Launch]",
+                                            "Токен сохранен. Запустите PhotoCraft кнопкой [> Запуск]",
+                                        )
+                                        .to_string();
+                                    self.set_status(msg, false);
+                                }
+                            } else {
+                                let msg = self
+                                    .t("Token updated successfully", "Токен успешно обновлен")
+                                    .to_string();
+                                self.set_status(msg, false);
+                            }
                         } else {
                             let msg = self
                                 .t("control.token not found", "Файл control.token не найден")
@@ -704,10 +768,41 @@ impl PluginManagerApp {
                                 let trimmed = content.trim();
                                 if !trimmed.is_empty() {
                                     self.token = trimmed.to_string();
-                                    let msg = self
-                                        .t("Token loaded from file", "Токен загружен из файла")
-                                        .to_string();
-                                    self.set_status(msg, false);
+                                    let _ = self.save_settings();
+                                    let is_offline = self
+                                        .connection_state
+                                        .read()
+                                        .map(|s| *s == ConnectionState::Offline)
+                                        .unwrap_or(false);
+                                    if is_offline {
+                                        let is_proc = self
+                                            .is_process_running
+                                            .as_ref()
+                                            .map(|f| f())
+                                            .unwrap_or(false);
+                                        if is_proc {
+                                            let msg = self
+                                                .t(
+                                                    "Token saved. PhotoCraft is running, but port 18492 is closed (Set Control port to 18492 in Edit -> Preferences -> Integrations)",
+                                                    "Токен сохранен. PhotoCraft запущен, но порт 18492 закрыт (Укажите порт 18492 в Редактирование -> Настройки -> Интеграции)",
+                                                )
+                                                .to_string();
+                                            self.set_status(msg, false);
+                                        } else {
+                                            let msg = self
+                                                .t(
+                                                    "Token saved. Start PhotoCraft using [> Launch]",
+                                                    "Токен сохранен. Запустите PhotoCraft кнопкой [> Запуск]",
+                                                )
+                                                .to_string();
+                                            self.set_status(msg, false);
+                                        }
+                                    } else {
+                                        let msg = self
+                                            .t("Token loaded from file", "Токен загружен из файла")
+                                            .to_string();
+                                        self.set_status(msg, false);
+                                    }
                                 }
                             }
                         }
@@ -2765,7 +2860,46 @@ impl eframe::App for PluginManagerApp {
 }
 
 fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> Option<String> {
-    // 1. Environment variables
+    // 1. Configured photocraft_path (HIGHEST priority: if user explicitly pointed to a PhotoCraft instance,
+    // use its token to resolve multi-version and global env var conflicts from launchers like ArtCraft Launcher)
+    if !photocraft_path.trim().is_empty() {
+        let p = std::path::Path::new(photocraft_path.trim());
+        let candidate_dir = if p.is_dir() {
+            p.to_path_buf()
+        } else {
+            p.parent().unwrap_or(p).to_path_buf()
+        };
+        let paths = [
+            candidate_dir.join("PhotoCraftData").join("control.token"),
+            candidate_dir.join("control.token"),
+        ];
+        for path in &paths {
+            if let Ok(s) = std::fs::read_to_string(path) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // 2. Prefs path parent
+    if let Some(parent) = prefs_path.parent() {
+        let paths = [
+            parent.join("control.token"),
+            parent.join("PhotoCraftData").join("control.token"),
+        ];
+        for path in &paths {
+            if let Ok(s) = std::fs::read_to_string(path) {
+                let trimmed = s.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+    }
+
+    // 3. Environment variables (fallback if not resolved from configured photocraft_path or prefs)
     if let Ok(tok) = std::env::var("PHOTOCRAFT_CONTROL_TOKEN") {
         let trimmed = tok.trim();
         if !trimmed.is_empty() {
@@ -2783,12 +2917,12 @@ fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> 
 
     let mut candidates = Vec::new();
 
-    // 2. User data directories (guaranteed writable across macOS / Windows / Linux)
+    // 4. User data directories (guaranteed writable across macOS / Windows / Linux)
     let user_data = core_contracts::user_data_dir();
     candidates.push(user_data.join("PhotoCraftData").join("control.token"));
     candidates.push(user_data.join("control.token"));
 
-    // 3. macOS / Linux standard user config
+    // 5. macOS / Linux standard user config
     if let Ok(home) = std::env::var("HOME") {
         candidates.push(
             std::path::PathBuf::from(&home)
@@ -2802,7 +2936,7 @@ fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> 
         candidates.push(std::path::PathBuf::from(&home).join(".config/photocraft/control.token"));
     }
 
-    // 4. Windows AppData / LocalAppData
+    // 6. Windows AppData / LocalAppData / USERPROFILE
     if let Ok(appdata) = std::env::var("APPDATA") {
         candidates.push(
             std::path::PathBuf::from(appdata)
@@ -2823,24 +2957,6 @@ fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> 
                 .join("PhotoCraftData")
                 .join("control.token"),
         );
-    }
-
-    // 5. Configured photocraft_path
-    if !photocraft_path.trim().is_empty() {
-        let p = std::path::Path::new(photocraft_path.trim());
-        let candidate_dir = if p.is_dir() {
-            p.to_path_buf()
-        } else {
-            p.parent().unwrap_or(p).to_path_buf()
-        };
-        candidates.push(candidate_dir.join("PhotoCraftData").join("control.token"));
-        candidates.push(candidate_dir.join("control.token"));
-    }
-
-    // 6. Prefs path parent
-    if let Some(parent) = prefs_path.parent() {
-        candidates.push(parent.join("control.token"));
-        candidates.push(parent.join("PhotoCraftData").join("control.token"));
     }
 
     // 7. Cwd and parent
@@ -3129,5 +3245,36 @@ mod tests {
         assert!(ru_lines.iter().any(|l| l.contains("Русское описание")));
         assert!(ru_lines.iter().any(|l| l.contains("Сценарий 1")));
         assert!(!ru_lines.iter().any(|l| l.contains("English description")));
+    }
+
+    #[test]
+    fn test_detect_default_token_prioritizes_configured_path() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "detect_token_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let app_dir = temp_dir.join("photocraft_app");
+        let app_token_dir = app_dir.join("PhotoCraftData");
+        let _ = std::fs::create_dir_all(&app_token_dir);
+        let app_token_file = app_token_dir.join("control.token");
+        std::fs::write(&app_token_file, "app_token_priority_2").unwrap();
+
+        let prefs_dir = temp_dir.join("prefs_dir");
+        let _ = std::fs::create_dir_all(&prefs_dir);
+        let prefs_token_file = prefs_dir.join("control.token");
+        std::fs::write(&prefs_token_file, "prefs_token_priority_3").unwrap();
+
+        let prefs_file = prefs_dir.join("preferences.json");
+        std::fs::write(&prefs_file, "{}").unwrap();
+
+        let detected = detect_default_token(&app_dir.to_string_lossy(), &prefs_file);
+        assert_eq!(detected, Some("app_token_priority_2".to_string()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

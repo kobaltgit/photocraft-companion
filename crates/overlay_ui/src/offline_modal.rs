@@ -183,8 +183,8 @@ impl OfflineModalApp {
                 )
             } else if self.is_process_detected {
                 self.t(
-                    "PhotoCraft is running, but the control socket is not reachable. Relaunch via the button below or check Settings.",
-                    "PhotoCraft запущен, но сокет управления недоступен. Перезапустите редактор кнопкой ниже или проверьте настройки.",
+                    "PhotoCraft is running, but port 18492 is closed. Restart PhotoCraft or set Control port to 18492 in Edit -> Preferences -> Integrations",
+                    "PhotoCraft запущен, но порт 18492 закрыт. Перезапустите PhotoCraft или укажите порт 18492 в Редактирование -> Настройки -> Интеграции",
                 )
             } else {
                 self.t(

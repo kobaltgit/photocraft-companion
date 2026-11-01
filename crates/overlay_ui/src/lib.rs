@@ -161,6 +161,7 @@ pub struct CompanionOverlayApp {
     pub manager_icons_calibrated: bool,
     pub on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
     pub dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
+    pub is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 }
 
 impl CompanionOverlayApp {
@@ -270,11 +271,18 @@ impl CompanionOverlayApp {
             manager_icons_calibrated: false,
             on_launch_requested: None,
             dynamic_engine,
+            is_process_running: None,
         }
     }
 
     pub fn with_launch_callback(mut self, cb: Arc<dyn Fn() + Send + Sync>) -> Self {
         self.on_launch_requested = Some(cb);
+        self
+    }
+
+    pub fn with_process_detector(mut self, cb: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
+        self.is_process_running = Some(cb.clone());
+        self.manager.is_process_running = Some(cb);
         self
     }
 
@@ -862,8 +870,13 @@ impl eframe::App for CompanionOverlayApp {
                     }
                 }
             } else {
-                self.offline_modal.is_process_detected =
-                    crate::win32_window::find_photocraft_window_rect().is_some();
+                self.offline_modal.is_process_detected = self
+                    .is_process_running
+                    .as_ref()
+                    .map(|f| f())
+                    .unwrap_or_else(|| {
+                        crate::win32_window::find_photocraft_window_rect().is_some()
+                    });
                 self.offline_modal.connection_state = *self.connection_state.read().unwrap();
                 self.offline_modal.render(ui, &palette);
 
@@ -1048,6 +1061,7 @@ pub fn launch_companion_overlay(
     ipc_action_tx: Option<UnboundedSender<core_contracts::PluginIpcAction>>,
     dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
     egui_ctx_holder: Arc<std::sync::Mutex<Option<egui::Context>>>,
+    is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -1064,6 +1078,9 @@ pub fn launch_companion_overlay(
     );
     if let Some(cb) = on_launch_requested {
         app = app.with_launch_callback(cb);
+    }
+    if let Some(cb) = is_process_running {
+        app = app.with_process_detector(cb);
     }
     if start_with_manager {
         app.show_manager = true;

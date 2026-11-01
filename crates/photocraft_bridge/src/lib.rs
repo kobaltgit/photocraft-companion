@@ -211,6 +211,11 @@ impl PhotoCraftClient {
 
         None
     }
+
+    /// Check whether a running PhotoCraft process is detected on the system
+    pub fn is_photocraft_process_running() -> bool {
+        Self::find_running_photocraft_dir().is_some()
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -835,12 +840,45 @@ impl PhotoCraftClient {
                 })?;
             }
             let token = generate_token();
-            std::fs::write(&token_path, token).map_err(|e| {
-                CompanionError::Bridge(format!(
-                    "Failed to write token file {}: {e}",
-                    token_path.display()
-                ))
-            })?;
+            #[cfg(unix)]
+            {
+                use std::io::Write;
+                use std::os::unix::fs::OpenOptionsExt;
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .truncate(true)
+                    .mode(0o600)
+                    .open(&token_path)
+                    .map_err(|e| {
+                        CompanionError::Bridge(format!(
+                            "Failed to write token file {}: {e}",
+                            token_path.display()
+                        ))
+                    })?;
+                file.write_all(token.as_bytes()).map_err(|e| {
+                    CompanionError::Bridge(format!(
+                        "Failed to write token data {}: {e}",
+                        token_path.display()
+                    ))
+                })?;
+            }
+            #[cfg(not(unix))]
+            {
+                std::fs::write(&token_path, token).map_err(|e| {
+                    CompanionError::Bridge(format!(
+                        "Failed to write token file {}: {e}",
+                        token_path.display()
+                    ))
+                })?;
+            }
+        }
+
+        // Repair / enforce 0600 permissions on Unix (PhotoCraft 0.18+ requirement, Issue #10)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600));
         }
 
         if let Some(bundle_path) = app_bundle {
@@ -2120,6 +2158,75 @@ mod tests {
         let token_content = std::fs::read_to_string(&token_file).unwrap();
         assert_eq!(token_content.len(), 64);
         assert!(token_content.chars().all(|c| c.is_ascii_hexdigit()));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = token_file.metadata().unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "Token file mode on Unix must be strictly 0600");
+        }
+
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_is_photocraft_process_running_smoke() {
+        let _ = PhotoCraftClient::is_photocraft_process_running();
+    }
+
+    #[test]
+    fn test_launch_photocraft_token_existing_mode_repair() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "launch_repair_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mock_exe = if cfg!(windows) {
+            let p = temp_dir.join("mock.cmd");
+            std::fs::write(&p, "@echo off\r\nexit 0\r\n").unwrap();
+            p
+        } else {
+            let p = temp_dir.join("mock.sh");
+            std::fs::write(&p, "#!/bin/sh\nexit 0\n").unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755));
+            }
+            p
+        };
+
+        let token_dir = temp_dir.join("PhotoCraftData");
+        let _ = std::fs::create_dir_all(&token_dir);
+        let token_file = token_dir.join("control.token");
+        std::fs::write(
+            &token_file,
+            "existing_token_value_0123456789abcdef0123456789abcdef",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&token_file, std::fs::Permissions::from_mode(0o644));
+        }
+
+        let mut child = PhotoCraftClient::launch_photocraft(&mock_exe, 18492, Some(&token_file))
+            .expect("Launch should succeed with pre-existing token");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = token_file.metadata().unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "Existing token permissions must be repaired to 0600 on launch"
+            );
+        }
 
         let _ = child.wait();
         let _ = std::fs::remove_dir_all(&temp_dir);

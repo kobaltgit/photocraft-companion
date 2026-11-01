@@ -3884,3 +3884,44 @@ Contributor `Vitek14` submitted PR #9 providing an elegant, zero-hardcoding plat
 - Validator `plugin_validator` verified all 14 ecosystem plugins.
 - Defect `BUG-101` resolved in `docs/BUGS_AND_ISSUES.md`.
 - Phase 103 marked completed in `docs/CHECKLIST.md`.
+
+
+## [2026-11-01 21:00] Chapter 112: Eliminating PhotoCraft Connection Failures: Mode 0600 on Unix, Multi-Version Priority Inversion, and Socket Onboarding (Issue #10, Issue #11, BUG-102, BUG-103)
+
+*Time: November 01, 2026, 21:00 (~30 minutes)*
+
+### 1. The Problem: False Token Updates, PhotoCraft 0.18 Permissions, and Third-Party Launcher Conflicts
+Following the v2.0.0 milestone release, reports surfaced from users running PhotoCraft via launchers (ArtCraft Launcher) or on recent 0.18+ builds:
+
+1. **False Token Update Feedback (Issue #11):** In the Plugin Manager, clicking "Auto-Detect" or "Browse..." displayed a green message `Token updated successfully`. However, exactly 1.5 seconds later, the background client tick pinged the socket with stale configuration and dropped back to `Offline`. The token was updated only in form memory without saving to disk!
+2. **Multi-Version Conflicts & Poisoned Environment Variables:** Users with multiple PhotoCraft versions experienced silent auth failures because `detect_default_token` evaluated environment variables and global AppData folders **before** the configured `photocraft_path`. ArtCraft Launcher placed a persistent Windows user env var `PHOTOCRAFT_CONTROL_TOKEN_FILE` pointing to a legacy 0.6.0 directory, hijacking token detection even when a user explicitly pointed to a newer executable!
+3. **PhotoCraft 0.18+ Unix Crash (Issue #10):** On macOS and Linux, PhotoCraft 0.18+ strictly requires mode `0600` on `control.token`. Any file created under default umask (0644) crashed the editor with an I/O error (`control token file is readable by group or others`).
+4. **Folder vs Binary Confusion:** Launcher users frequently entered a folder path (`.../PhotoCraft`) instead of the executable `photocraft.exe`. Clicking `> Launch` failed silently with zero feedback in the UI.
+5. **Control Port 0 In PhotoCraft:** In vanilla PhotoCraft, checking `Allow agent control` leaves the port default at 0 (disabled), leaving users unaware that port 18492 must be explicitly entered.
+
+### 2. Architectural Solution & Dependency Injection
+
+#### A. Strict 0600 Token Mode & Pre-Launch Repair (`crates/photocraft_bridge/src/lib.rs`)
+- On Unix, token generation now utilizes `OpenOptionsExt::mode(0o600)`.
+- **Pre-Launch Repair:** Prior to spawning PhotoCraft with `--control-token-file`, `std::fs::set_permissions(&token_path, Permissions::from_mode(0o600))` is invoked. This automatically repairs legacy 0644 files created by previous builds or launcher scripts.
+- Introduced `PhotoCraftClient::is_photocraft_process_running()` and unit tests for mode validation and repair.
+
+#### B. Priority Inversion & Immediate Persistence (`crates/overlay_ui/src/manager.rs`)
+- In `detect_default_token`, configured `photocraft_path` now takes highest priority, reading the token directly from the selected version and ignoring stale launcher environment variables.
+- `Auto-Detect` and `Browse...` buttons now immediately trigger `save_settings()` and notify the active runtime client.
+- Smart status feedback distinguishes between PhotoCraft not running vs running with port 18492 disabled.
+- Clicking `> Launch` on a folder path without binary triggers a visible status error `"Please specify the photocraft.exe binary, not a folder."`.
+
+#### C. Crate Isolation & Clear Port Guidance (`crates/overlay_ui`, `crates/companion_app`)
+- Crate isolation rule was strictly preserved (`overlay_ui` has zero dependencies on `photocraft_bridge`): process detection is injected via closure `is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>` from the composition root (`companion_app`).
+- UI tips in the offline modal and manager explicitly show safe ASCII path: `Edit -> Preferences -> Integrations -> Allow agent control (Port: 18492)`.
+
+### 3. Verification & Definition of Done
+- Compilations and tests executed strictly under Resource Guard with `-j 1`.
+- `cargo fmt --all -- --check` confirmed clean code formatting (0 differences).
+- All 33 tests in `photocraft_bridge` and 62 tests in `overlay_ui` passed.
+- All regulatory linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`.
+- Validator `plugin_validator` verified all 14 ecosystem plugins.
+- 100% tests passed across the entire workspace (`cargo test --workspace -j 1`).
+- Defect tickets `BUG-102` and `BUG-103` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 104 marked completed in `docs/CHECKLIST.md`.

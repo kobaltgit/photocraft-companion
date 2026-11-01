@@ -1283,3 +1283,27 @@
     - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`;
     - Валидация каталога плагинов (14/14 плагинов OK);
     - Зарегистрирован и закрыт дефект `BUG-101` в `docs/BUGS_AND_ISSUES.md`.
+
+
+- [x] **Фаза 104: Ликвидация сбоев подключения PhotoCraft, права токена 0600 и онбординг сокета (Issue #10, Issue #11, BUG-102, BUG-103)**
+  - [x] **Строгие права токена и repair на Unix (`crates/photocraft_bridge/src/lib.rs`)**:
+    - В `PhotoCraftClient::launch_photocraft` на Unix создание файла токена переведено на `OpenOptionsExt::mode(0o600)`.
+    - Добавлен принудительный pre-launch repair: перед запуском процесса на Unix вызывается `std::fs::set_permissions(&token_path, Permissions::from_mode(0o600))`, что восстанавливает права 0600 для уже существовавших файлов токена с mode 0644 и предотвращает крэш PhotoCraft 0.18+.
+    - Добавлен публичный кроссплатформенный детектор процесса `PhotoCraftClient::is_photocraft_process_running() -> bool`.
+    - Добавлены модульные тесты `test_launch_photocraft_token_generation`, `test_launch_photocraft_token_existing_mode_repair` и `test_is_photocraft_process_running_smoke`.
+  - [x] **Инверсия приоритетов поиска токена и автосохранение (`crates/overlay_ui/src/manager.rs`)**:
+    - В `detect_default_token` настроенный `photocraft_path` получил высший приоритет поиска файла токена (перед общими переменными среды и системными папками), ликвидировав конфликт мульти-версий PhotoCraft и глобальной переменной `PHOTOCRAFT_CONTROL_TOKEN_FILE` от ArtCraft Launcher.
+    - В кнопках `Auto-Detect` и `Browse...` сразу вызывается `save_settings()` и коллбек `on_token_saved`, исключая сброс статуса обратно в Offline при следующем тике фонового сокета.
+    - В статус-баре реализована интеллектуальная обратная связь: если токен сохранен, но сокет оффлайн, пользователь видит точную причину (процесс не запущен vs процесс запущен, но порт 18492 закрыт).
+    - При клике `> Launch` на папку без бинарника `photocraft.exe` статус-бар выдает видимую ошибку `"Please specify the photocraft.exe binary, not a folder."`.
+    - Добавлен регрессионный юнит-тест `test_detect_default_token_prioritizes_configured_path`.
+  - [x] **Архитектурная чистота и DI-изоляция (`crates/overlay_ui`, `crates/companion_app`)**:
+    - Крейт `overlay_ui` сохранен на 100% свободным от зависимости `photocraft_bridge`.
+    - Детектор запущенного процесса передан через DI-коллбек `is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>` из корня сборки `companion_app`.
+    - В `offline_modal.rs` обновлена подсказка при запущенном процессе без сокета с явным указанием порта 18492 (`Edit -> Preferences -> Integrations -> Allow agent control (Port: 18492)`).
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`);
+    - Чистота форматирования кода (`cargo fmt --all -- --check`);
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`;
+    - Валидация каталога плагинов (14/14 плагинов OK);
+    - Зарегистрированы дефекты `BUG-102` и `BUG-103` в `docs/BUGS_AND_ISSUES.md`.
