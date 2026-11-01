@@ -69,7 +69,7 @@ pub use crate::win32_window::apply_crisp_window_icons_by_title;
 pub use crate::win32_window::get_system_window_icon_size;
 
 pub fn encode_ico_dib(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
-    let and_row_bytes = ((width + 31) / 32) * 4;
+    let and_row_bytes = width.div_ceil(32) * 4;
     let mut dib =
         Vec::with_capacity(40 + (width * height * 4) as usize + (and_row_bytes * height) as usize);
     dib.extend_from_slice(&40u32.to_le_bytes());
@@ -98,11 +98,8 @@ pub fn encode_ico_dib(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
         }
     }
 
-    for _ in 0..height {
-        for _ in 0..and_row_bytes {
-            dib.push(0);
-        }
-    }
+    let and_mask_size = (and_row_bytes * height) as usize;
+    dib.resize(dib.len() + and_mask_size, 0);
 
     dib
 }

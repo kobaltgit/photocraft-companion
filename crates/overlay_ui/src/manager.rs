@@ -2749,12 +2749,12 @@ impl PluginManagerApp {
 
 impl eframe::App for PluginManagerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
-        if !self.icons_calibrated {
-            if crate::win32_window::apply_crisp_window_icons_by_title(
+        if !self.icons_calibrated
+            && crate::win32_window::apply_crisp_window_icons_by_title(
                 "PhotoCraft - Plugins Manager",
-            ) {
-                self.icons_calibrated = true;
-            }
+            )
+        {
+            self.icons_calibrated = true;
         }
         let palette = ThemePalette::for_mode(self.current_theme);
         ui.ctx().set_visuals(palette.to_egui_visuals());

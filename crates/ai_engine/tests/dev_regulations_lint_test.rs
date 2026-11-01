@@ -1,4 +1,4 @@
-﻿use std::fs;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Locate workspace root containing Cargo.toml with [workspace]
@@ -774,15 +774,10 @@ fn test_production_file_size_guard() {
                 || rel_path.starts_with("widgets/modifier_stack.rs")
             {
                 750
-            } else if rel_path.starts_with("widgets/") && file_name != "mod.rs" {
-                500
-            } else if rel_path == "state.rs" {
-                500
-            } else if rel_path == "mod.rs"
-                || rel_path == "rhai_bridge.rs"
-                || rel_path == "widgets/mod.rs"
+            } else if (rel_path.starts_with("widgets/") && file_name != "mod.rs")
+                || rel_path == "state.rs"
             {
-                800
+                500
             } else {
                 800
             };

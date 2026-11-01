@@ -954,12 +954,12 @@ impl eframe::App for CompanionOverlayApp {
                 egui::ViewportId::from_hash_of("plugin_manager_window"),
                 vp,
                 |ctx, _class| {
-                    if !self.manager_icons_calibrated {
-                        if crate::win32_window::apply_crisp_window_icons_by_title(
+                    if !self.manager_icons_calibrated
+                        && crate::win32_window::apply_crisp_window_icons_by_title(
                             "PhotoCraft - Plugins Manager",
-                        ) {
-                            self.manager_icons_calibrated = true;
-                        }
+                        )
+                    {
+                        self.manager_icons_calibrated = true;
                     }
 
                     if self.manager_just_opened {

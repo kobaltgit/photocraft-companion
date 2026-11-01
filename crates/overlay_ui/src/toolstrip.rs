@@ -65,13 +65,13 @@ impl ToolstripApp {
     pub fn calculate_size(&self) -> Vec2 {
         let count = self.buttons.len().max(1);
         if self.is_vertical {
-            let cols = ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let cols = count.div_ceil(MAX_BUTTONS_PER_TIER).max(1) as f32;
             let max_rows = count.min(MAX_BUTTONS_PER_TIER) as f32;
             let width = 50.0 + (cols - 1.0) * BUTTON_SLOT_SIZE_V;
             let height = max_rows * BUTTON_SLOT_SIZE_V + 68.0;
             Vec2::new(width, height)
         } else {
-            let rows = ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let rows = count.div_ceil(MAX_BUTTONS_PER_TIER).max(1) as f32;
             let max_cols = count.min(MAX_BUTTONS_PER_TIER) as f32;
             let width = (max_cols * BUTTON_SLOT_SIZE_H + 16.0).max(116.0);
             let height = 78.0 + (rows - 1.0) * BUTTON_SLOT_SIZE_V;
@@ -399,9 +399,8 @@ impl ToolstripApp {
 
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                    let cols_count = ((self.buttons.len() + MAX_BUTTONS_PER_TIER - 1)
-                        / MAX_BUTTONS_PER_TIER)
-                        .max(1) as f32;
+                    let cols_count =
+                        self.buttons.len().div_ceil(MAX_BUTTONS_PER_TIER).max(1) as f32;
                     let total_cols_w = 32.0 * cols_count + (cols_count - 1.0) * 4.0;
                     let avail = ui.available_width();
                     if avail > total_cols_w {
@@ -811,8 +810,7 @@ mod tests {
             app.is_vertical = true;
 
             let expected_size = app.calculate_size();
-            let expected_cols =
-                ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let expected_cols = count.div_ceil(MAX_BUTTONS_PER_TIER).max(1) as f32;
             let expected_w = 50.0 + (expected_cols - 1.0) * BUTTON_SLOT_SIZE_V;
             assert_eq!(expected_size.x, expected_w);
             assert!(expected_size.y >= (count.min(MAX_BUTTONS_PER_TIER) as f32) * 36.0 + 58.0);
@@ -861,8 +859,7 @@ mod tests {
             app.is_vertical = false;
 
             let expected_size = app.calculate_size();
-            let expected_rows =
-                ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let expected_rows = count.div_ceil(MAX_BUTTONS_PER_TIER).max(1) as f32;
             let expected_h = 78.0 + (expected_rows - 1.0) * BUTTON_SLOT_SIZE_V;
             assert_eq!(expected_size.y, expected_h);
 

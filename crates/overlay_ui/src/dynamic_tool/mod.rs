@@ -579,12 +579,12 @@ impl DynamicToolEngine {
                             !manifest.models.is_empty() && !manifest.all_models_installed();
 
                         if let Some(state) = self.states.get_mut(&plugin_id) {
-                            if !state.icons_calibrated {
-                                if crate::win32_window::apply_crisp_window_icons_by_title(
+                            if !state.icons_calibrated
+                                && crate::win32_window::apply_crisp_window_icons_by_title(
                                     &win_title,
-                                ) {
-                                    state.icons_calibrated = true;
-                                }
+                                )
+                            {
+                                state.icons_calibrated = true;
                             }
                             state.values.insert(
                                 "model_missing".to_string(),
@@ -639,20 +639,18 @@ impl DynamicToolEngine {
                                                         if !matches!(
                                                             widget,
                                                             WidgetNode::ImagePreview { .. }
+                                                        ) && widgets::render_widget_node(
+                                                            ui,
+                                                            &plugin_id,
+                                                            widget,
+                                                            state,
+                                                            palette,
+                                                            self.current_language,
+                                                            &mut self.preview_thumbnails,
+                                                            &mut self.preview_textures,
+                                                            self.config_path.as_deref(),
                                                         ) {
-                                                            if widgets::render_widget_node(
-                                                                ui,
-                                                                &plugin_id,
-                                                                widget,
-                                                                state,
-                                                                palette,
-                                                                self.current_language,
-                                                                &mut self.preview_thumbnails,
-                                                                &mut self.preview_textures,
-                                                                self.config_path.as_deref(),
-                                                            ) {
-                                                                state_changed = true;
-                                                            }
+                                                            state_changed = true;
                                                         }
                                                     }
                                                 }

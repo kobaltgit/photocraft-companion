@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 pub use super::preview_params::*;
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_image_preview(
     ui: &mut egui::Ui,
     plugin_id: &str,

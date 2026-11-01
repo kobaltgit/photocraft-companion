@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Character categories forbidden in UI text according to Rule 6 (Vector-First UI):
-/// 1. Emojis and Pictographs (e.g., ⏳, ⚠️, ✨, 🪄, 🔥, 🚀, 💡, 🤖, 🔄, 📥)
-/// 2. Miscellaneous Symbols (e.g., ⚙, ⚡)
-/// 3. Dingbats & Checkmarks/Crosses (e.g., ✓, ✔, ✕, ✖)
-/// 4. Unicode geometric shapes & bullets (e.g., ● U+25CF, • U+2022)
-/// 5. Unicode arrows (e.g., ⬇, ⬆, ⬅, ➡)
+// Character categories forbidden in UI text according to Rule 6 (Vector-First UI):
+// 1. Emojis and Pictographs (e.g., ⏳, ⚠️, ✨, 🪄, 🔥, 🚀, 💡, 🤖, 🔄, 📥)
+// 2. Miscellaneous Symbols (e.g., ⚙, ⚡)
+// 3. Dingbats & Checkmarks/Crosses (e.g., ✓, ✔, ✕, ✖)
+// 4. Unicode geometric shapes & bullets (e.g., ● U+25CF, • U+2022)
+// 5. Unicode arrows (e.g., ⬇, ⬆, ⬅, ➡)
 
 fn collect_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
     if !dir.exists() {

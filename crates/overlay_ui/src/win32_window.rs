@@ -416,7 +416,11 @@ pub fn apply_crisp_window_icons_by_title(title: &str) -> bool {
                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                     );
 
-                    SetPropW(hwnd, PROP_NAME.as_ptr(), 1 as *mut std::ffi::c_void);
+                    SetPropW(
+                        hwnd,
+                        PROP_NAME.as_ptr(),
+                        std::ptr::dangling_mut::<std::ffi::c_void>(),
+                    );
                     return true;
                 }
             } else {

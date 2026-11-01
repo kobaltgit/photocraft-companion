@@ -97,7 +97,7 @@ impl AccumPixel {
     }
 
     #[inline(always)]
-    fn to_rgba(&self) -> Rgba<u8> {
+    fn to_rgba(self) -> Rgba<u8> {
         if self.w > 0.0001 {
             let inv_w = 1.0 / self.w;
             let r = (self.r * inv_w).round().clamp(0.0, 255.0) as u8;
@@ -170,7 +170,7 @@ fn separable_box_pass(src: &[AccumPixel], w: usize, h: usize, radius: usize) -> 
             temp[row + x] = sum.scale(inv_window);
 
             let right_idx = (x + radius + 1).min(w - 1);
-            let left_idx = if x >= radius { x - radius } else { 0 };
+            let left_idx = x.saturating_sub(radius);
 
             sum.add(&src[row + right_idx]);
             sum.sub(&src[row + left_idx]);
@@ -195,7 +195,7 @@ fn separable_box_pass(src: &[AccumPixel], w: usize, h: usize, radius: usize) -> 
             dest[y * w + x] = sum.scale(inv_window);
 
             let down_idx = (y + radius + 1).min(h - 1);
-            let up_idx = if y >= radius { y - radius } else { 0 };
+            let up_idx = y.saturating_sub(radius);
 
             sum.add(&temp[down_idx * w + x]);
             sum.sub(&temp[up_idx * w + x]);
@@ -512,9 +512,11 @@ mod tests {
     fn test_zero_blur_is_noop() {
         let base = RgbaImage::from_pixel(16, 16, Rgba([255, 0, 0, 255]));
         let depth = GrayImage::from_pixel(16, 16, image::Luma([0]));
-        let mut params = LensBlurParams::default();
-        params.blur_radius = 0.0;
-        params.fog_enabled = false;
+        let params = LensBlurParams {
+            blur_radius: 0.0,
+            fog_enabled: false,
+            ..Default::default()
+        };
 
         let out = render_lens_blur(&base, &depth, &params);
         assert_eq!(out, base);
@@ -541,11 +543,13 @@ mod tests {
             }
         }
 
-        let mut params = LensBlurParams::default();
-        params.focus_distance = 128.0;
-        params.dof_width = 20.0;
-        params.blur_radius = 8.0;
-        params.fog_enabled = false;
+        let params = LensBlurParams {
+            focus_distance: 128.0,
+            dof_width: 20.0,
+            blur_radius: 8.0,
+            fog_enabled: false,
+            ..Default::default()
+        };
 
         let out = render_lens_blur(&base, &depth, &params);
 
@@ -564,12 +568,14 @@ mod tests {
 
         let depth = GrayImage::from_pixel(17, 17, image::Luma([0])); // out of focus
 
-        let mut params_no_bloom = LensBlurParams::default();
-        params_no_bloom.focus_distance = 255.0;
-        params_no_bloom.dof_width = 10.0;
-        params_no_bloom.blur_radius = 6.0;
-        params_no_bloom.specular_bloom = 0.0;
-        params_no_bloom.fog_enabled = false;
+        let params_no_bloom = LensBlurParams {
+            focus_distance: 255.0,
+            dof_width: 10.0,
+            blur_radius: 6.0,
+            specular_bloom: 0.0,
+            fog_enabled: false,
+            ..Default::default()
+        };
 
         let mut params_bloom = params_no_bloom.clone();
         params_bloom.specular_bloom = 100.0;
@@ -592,14 +598,16 @@ mod tests {
             depth.put_pixel(x, 0, image::Luma([d]));
         }
 
-        let mut params = LensBlurParams::default();
-        params.bokeh_enabled = false;
-        params.fog_enabled = true;
-        params.fog_color = [200, 220, 250, 255];
-        params.fog_density = 80.0;
-        params.fog_start = 10.0;
-        params.fog_falloff = 1.0;
-        params.fog_blend_mode = 0; // Normal
+        let params = LensBlurParams {
+            bokeh_enabled: false,
+            fog_enabled: true,
+            fog_color: [200, 220, 250, 255],
+            fog_density: 80.0,
+            fog_start: 10.0,
+            fog_falloff: 1.0,
+            fog_blend_mode: 0, // Normal
+            ..Default::default()
+        };
 
         let out = render_lens_blur(&base, &depth, &params);
 
@@ -618,11 +626,13 @@ mod tests {
         let base = RgbaImage::from_pixel(16, 16, Rgba([50, 50, 50, 255]));
         let depth = GrayImage::from_pixel(16, 16, image::Luma([0])); // Far
 
-        let mut params = LensBlurParams::default();
-        params.fog_enabled = true;
-        params.fog_color = [180, 200, 220, 255];
-        params.fog_density = 100.0;
-        params.fog_start = 0.0;
+        let params = LensBlurParams {
+            fog_enabled: true,
+            fog_color: [180, 200, 220, 255],
+            fog_density: 100.0,
+            fog_start: 0.0,
+            ..Default::default()
+        };
 
         let (defocused, fog_layer_opt) = render_lens_blur_split(&base, &depth, &params);
         assert_eq!(defocused.dimensions(), (16, 16));
