@@ -5,7 +5,27 @@ const SM_CXSCREEN: i32 = 0;
 #[cfg(windows)]
 const SM_CYSCREEN: i32 = 1;
 #[cfg(windows)]
+const SM_CXSMICON: i32 = 49;
+#[cfg(windows)]
+const SM_CXICON: i32 = 11;
+#[cfg(windows)]
 const MONITOR_DEFAULTTONULL: u32 = 0;
+#[cfg(windows)]
+const WM_SETICON: u32 = 0x0080;
+#[cfg(windows)]
+const ICON_SMALL: usize = 0;
+#[cfg(windows)]
+const ICON_BIG: usize = 1;
+#[cfg(windows)]
+const SWP_NOSIZE: u32 = 0x0001;
+#[cfg(windows)]
+const SWP_NOMOVE: u32 = 0x0002;
+#[cfg(windows)]
+const SWP_NOZORDER: u32 = 0x0004;
+#[cfg(windows)]
+const SWP_NOACTIVATE: u32 = 0x0010;
+#[cfg(windows)]
+const SWP_FRAMECHANGED: u32 = 0x0020;
 
 #[cfg(windows)]
 #[link(name = "user32")]
@@ -21,12 +41,44 @@ extern "system" {
     fn GetSystemMetrics(nIndex: i32) -> i32;
     fn GetDpiForSystem() -> u32;
     fn MonitorFromRect(lprc: *const [i32; 4], dwFlags: u32) -> *mut std::ffi::c_void;
+    fn CreateIconFromResourceEx(
+        presbits: *const u8,
+        dwResSize: u32,
+        fIcon: i32,
+        dwVer: u32,
+        cxDesired: i32,
+        cyDesired: i32,
+        Flags: u32,
+    ) -> *mut std::ffi::c_void;
+    fn SendMessageW(hWnd: *mut std::ffi::c_void, Msg: u32, wParam: usize, lParam: isize) -> isize;
+    fn GetPropW(hWnd: *mut std::ffi::c_void, lpString: *const u16) -> *mut std::ffi::c_void;
+    fn SetPropW(
+        hWnd: *mut std::ffi::c_void,
+        lpString: *const u16,
+        hData: *mut std::ffi::c_void,
+    ) -> i32;
+    fn EnumThreadWindows(
+        dwThreadId: u32,
+        lpfn: unsafe extern "system" fn(*mut std::ffi::c_void, isize) -> i32,
+        lParam: isize,
+    ) -> i32;
+    fn FindWindowW(lpClassName: *const u16, lpWindowName: *const u16) -> *mut std::ffi::c_void;
+    fn SetWindowPos(
+        hWnd: *mut std::ffi::c_void,
+        hWndInsertAfter: *mut std::ffi::c_void,
+        X: i32,
+        Y: i32,
+        cx: i32,
+        cy: i32,
+        uFlags: u32,
+    ) -> i32;
 }
 
 #[cfg(windows)]
 #[link(name = "kernel32")]
 extern "system" {
     fn GetCurrentProcessId() -> u32;
+    fn GetCurrentThreadId() -> u32;
     fn OpenProcess(
         dwDesiredAccess: u32,
         bInheritHandle: i32,
@@ -179,4 +231,222 @@ pub fn is_position_visible_on_screen(pos: [f32; 2], size: [f32; 2]) -> bool {
 /// Centered safely on primary display.
 pub fn calculate_toolstrip_spawn_pos(panel_width: f32) -> Option<[f32; 2]> {
     Some(calculate_primary_screen_center(panel_width, 70.0))
+}
+
+/// Returns the system small icon dimension (width in pixels) based on SM_CXSMICON.
+/// Defaults to 16 if not on Windows or if query fails.
+pub fn get_system_small_icon_size() -> u32 {
+    #[cfg(windows)]
+    unsafe {
+        let size = GetSystemMetrics(SM_CXSMICON);
+        if size > 0 {
+            size as u32
+        } else {
+            16
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        16
+    }
+}
+
+/// Returns the system large window icon dimension (width in pixels) based on SM_CXICON.
+/// Defaults to 64 if not on Windows or if query fails.
+pub fn get_system_window_icon_size() -> u32 {
+    #[cfg(windows)]
+    unsafe {
+        let s = GetSystemMetrics(SM_CXICON);
+        if s > 0 {
+            (s as u32).max(64)
+        } else {
+            64
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        64
+    }
+}
+
+#[cfg(windows)]
+static NATIVE_ICONS: std::sync::OnceLock<Option<(isize, isize)>> = std::sync::OnceLock::new();
+
+#[cfg(windows)]
+fn get_or_create_native_icons() -> Option<(isize, isize)> {
+    *NATIVE_ICONS.get_or_init(|| {
+        let small_size = get_system_small_icon_size();
+        let big_size = get_system_window_icon_size();
+
+        // 1. Dedicated small icon rendered strictly from icon_small.svg for window caption corner
+        let rgba_small = crate::icons::render_svg_icon(
+            crate::icons::APP_ICON_SMALL_SVG,
+            small_size,
+            small_size,
+        )?;
+        let dib_small = crate::icons::encode_ico_dib(&rgba_small, small_size, small_size);
+
+        // 2. Original high-resolution icon from main icon.svg for taskbar and alt-tab
+        let rgba_big =
+            crate::icons::render_svg_icon(crate::icons::APP_ICON_SVG, big_size, big_size)?;
+        let dib_big = crate::icons::encode_ico_dib(&rgba_big, big_size, big_size);
+
+        unsafe {
+            let hicon_small = CreateIconFromResourceEx(
+                dib_small.as_ptr(),
+                dib_small.len() as u32,
+                1,
+                0x00030000,
+                small_size as i32,
+                small_size as i32,
+                0,
+            );
+
+            let hicon_big = CreateIconFromResourceEx(
+                dib_big.as_ptr(),
+                dib_big.len() as u32,
+                1,
+                0x00030000,
+                big_size as i32,
+                big_size as i32,
+                0,
+            );
+
+            let h_small = if !hicon_small.is_null() {
+                hicon_small as isize
+            } else {
+                0
+            };
+
+            let h_big = if !hicon_big.is_null() {
+                hicon_big as isize
+            } else {
+                h_small
+            };
+
+            if h_small != 0 || h_big != 0 {
+                Some((h_small, h_big))
+            } else {
+                None
+            }
+        }
+    })
+}
+
+#[cfg(windows)]
+struct FindWindowContext<'a> {
+    target_title: &'a str,
+    found_hwnd: Option<*mut std::ffi::c_void>,
+}
+
+#[cfg(windows)]
+unsafe extern "system" fn enum_thread_windows_callback(
+    hwnd: *mut std::ffi::c_void,
+    lparam: isize,
+) -> i32 {
+    let ctx = &mut *(lparam as *mut FindWindowContext);
+    let mut buf = [0u16; 512];
+    let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 512);
+    if len > 0 {
+        let win_title = String::from_utf16_lossy(&buf[..len as usize]);
+        if win_title == ctx.target_title || win_title.contains(ctx.target_title) {
+            ctx.found_hwnd = Some(hwnd);
+            return 0; // Found target window
+        }
+    }
+    1 // Continue enumeration
+}
+
+/// Applies crisp native Windows icons: icon_small.svg strictly for the window corner,
+/// and full-resolution icon.svg for taskbar and alt-tab.
+/// Returns true if the icons have been successfully calibrated or were already calibrated.
+#[cfg(windows)]
+pub fn apply_crisp_window_icons_by_title(title: &str) -> bool {
+    let mut ctx = FindWindowContext {
+        target_title: title,
+        found_hwnd: None,
+    };
+
+    unsafe {
+        let thread_id = GetCurrentThreadId();
+        let lparam = &mut ctx as *mut FindWindowContext as isize;
+        EnumThreadWindows(thread_id, enum_thread_windows_callback, lparam);
+
+        let hwnd = ctx.found_hwnd.unwrap_or_else(|| {
+            let wide_title: Vec<u16> = title.encode_utf16().chain(std::iter::once(0)).collect();
+            FindWindowW(std::ptr::null(), wide_title.as_ptr())
+        });
+
+        if !hwnd.is_null() {
+            const PROP_NAME: &[u16] = &[
+                b'P' as u16,
+                b'C' as u16,
+                b'_' as u16,
+                b'C' as u16,
+                b'R' as u16,
+                b'I' as u16,
+                b'S' as u16,
+                b'P' as u16,
+                b'_' as u16,
+                b'I' as u16,
+                b'C' as u16,
+                b'O' as u16,
+                b'N' as u16,
+                b'S' as u16,
+                0,
+            ];
+            let prop = GetPropW(hwnd, PROP_NAME.as_ptr());
+            if prop.is_null() {
+                if let Some((hicon_small, hicon_big)) = get_or_create_native_icons() {
+                    if hicon_small != 0 {
+                        SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small);
+                    }
+                    if hicon_big != 0 {
+                        SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big);
+                    }
+
+                    // Immediately redraw non-client area (titlebar frame)
+                    SetWindowPos(
+                        hwnd,
+                        std::ptr::null_mut(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+
+                    SetPropW(hwnd, PROP_NAME.as_ptr(), 1 as *mut std::ffi::c_void);
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// No-op fallback on non-Windows platforms.
+#[cfg(not(windows))]
+pub fn apply_crisp_window_icons_by_title(_title: &str) -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apply_crisp_window_icons_smoke() {
+        let _ = apply_crisp_window_icons_by_title("Non_Existent_Window_Test_Title_12345");
+        #[cfg(windows)]
+        {
+            let icons = get_or_create_native_icons();
+            assert!(
+                icons.is_some(),
+                "get_or_create_native_icons must return Some on Windows"
+            );
+        }
+    }
 }

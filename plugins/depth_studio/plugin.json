@@ -1,0 +1,249 @@
+{
+  "id": "ui.photocraft.plugins.depth_studio",
+  "name": "Depth Studio",
+  "name_ru": "Студия глубины (Туман и Боке)",
+  "version": "1.0.0",
+  "description": "Interactive AI Depth Studio for realistic atmospheric fog, aerial perspective and optical lens bokeh defocus with click-to-focus.",
+  "description_ru": "Интерактивная ИИ-студия глубины: реалистичный атмосферный туман, воздушная перспектива и оптическое боке с клик-фокусировкой.",
+  "author": "kobaltGIT",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "models": [
+    {
+      "role": "depth_estimation",
+      "name": "depth-anything-v2-small.onnx",
+      "required": true,
+      "size_mb": 99,
+      "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+      "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+    }
+  ],
+  "ai": {
+    "task": "segmentation_mask",
+    "input_size": 518,
+    "normalize": "image_net",
+    "output_type": "grayscale_layer"
+  },
+  "interactive_ui": {
+    "window_title": "Depth Studio (Fog & Bokeh)",
+    "window_title_ru": "Студия глубины (Туман и Боке)",
+    "default_width": 780.0,
+    "default_height": 560.0,
+    "layout_mode": "split_preview_right",
+    "auto_run_model_role": "depth_estimation",
+    "script": "script.rhai",
+    "ipc_subscriptions": [
+      "active_layer.image"
+    ],
+    "widgets": [
+      {
+        "type": "tabs",
+        "id": "depth_tabs",
+        "default_index": 0,
+        "tabs": [
+          {
+            "id": "fog_tab",
+            "title": "Atmospheric Fog",
+            "title_ru": "Атмосферный туман",
+            "widgets": [
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "preset_mist",
+                    "label": "Morning Mist",
+                    "label_ru": "Утренняя дымка"
+                  },
+                  {
+                    "type": "button",
+                    "id": "preset_sunset",
+                    "label": "Golden Sunset",
+                    "label_ru": "Золотой закат"
+                  },
+                  {
+                    "type": "button",
+                    "id": "preset_silent_hill",
+                    "label": "Deep Fog",
+                    "label_ru": "Густой туман"
+                  }
+                ]
+              },
+              {
+                "type": "toggle",
+                "id": "fog_enabled",
+                "label": "Enable Fog Effect",
+                "label_ru": "Включить атмосферный туман",
+                "default": false
+              },
+              {
+                "type": "color_slot",
+                "id": "fog_color",
+                "label": "Fog Tint Color",
+                "label_ru": "Цвет оттенка тумана",
+                "default_hex": "#c8d6e5"
+              },
+              {
+                "type": "slider",
+                "id": "fog_density",
+                "label": "Fog Density (%)",
+                "label_ru": "Плотность тумана (%)",
+                "min": 0.0,
+                "max": 100.0,
+                "step": 1.0,
+                "default": 65.0
+              },
+              {
+                "type": "slider",
+                "id": "fog_start",
+                "label": "Start Distance (%)",
+                "label_ru": "Дистанция старта (%)",
+                "min": 0.0,
+                "max": 95.0,
+                "step": 1.0,
+                "default": 15.0
+              },
+              {
+                "type": "slider",
+                "id": "fog_falloff",
+                "label": "Distance Falloff",
+                "label_ru": "Спад перспективы",
+                "min": 0.5,
+                "max": 3.0,
+                "step": 0.1,
+                "default": 1.5
+              },
+              {
+                "type": "dropdown",
+                "id": "fog_blend_mode",
+                "label": "Blending Mode",
+                "label_ru": "Режим наложения",
+                "options": [
+                  "Normal",
+                  "Screen",
+                  "Soft Light"
+                ],
+                "options_ru": [
+                  "Нормальный",
+                  "Экран (Screen)",
+                  "Мягкий свет (Soft Light)"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "toggle",
+                "id": "fog_as_separate_layer",
+                "label": "Export Fog as Separate Layer",
+                "label_ru": "Экспортировать туман отдельным слоем",
+                "default": true
+              }
+            ]
+          },
+          {
+            "id": "bokeh_tab",
+            "title": "Lens Bokeh",
+            "title_ru": "Размытие и Боке",
+            "widgets": [
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "preset_portrait",
+                    "label": "Portrait f/1.4",
+                    "label_ru": "Портрет f/1.4"
+                  },
+                  {
+                    "type": "button",
+                    "id": "preset_street",
+                    "label": "Street f/2.8",
+                    "label_ru": "Стрит f/2.8"
+                  },
+                  {
+                    "type": "button",
+                    "id": "preset_macro",
+                    "label": "Macro f/1.2",
+                    "label_ru": "Макро f/1.2"
+                  }
+                ]
+              },
+              {
+                "type": "toggle",
+                "id": "bokeh_enabled",
+                "label": "Enable Lens Bokeh",
+                "label_ru": "Включить оптическое боке",
+                "default": false
+              },
+              {
+                "type": "slider",
+                "id": "focus_distance",
+                "label": "Focus Distance",
+                "label_ru": "Дистанция фокуса",
+                "min": 0.0,
+                "max": 255.0,
+                "step": 1.0,
+                "default": 128.0
+              },
+              {
+                "type": "slider",
+                "id": "dof_width",
+                "label": "Depth of Field (DOF)",
+                "label_ru": "Глубина резкости (ГРИП)",
+                "min": 5.0,
+                "max": 100.0,
+                "step": 1.0,
+                "default": 30.0
+              },
+              {
+                "type": "slider",
+                "id": "blur_radius",
+                "label": "Aperture Blur (px)",
+                "label_ru": "Радиус размытия (px)",
+                "min": 0.0,
+                "max": 35.0,
+                "step": 1.0,
+                "default": 14.0
+              },
+              {
+                "type": "slider",
+                "id": "specular_bloom",
+                "label": "Specular Bloom (%)",
+                "label_ru": "Усиление бликов (%)",
+                "min": 0.0,
+                "max": 100.0,
+                "step": 1.0,
+                "default": 25.0
+              }
+            ]
+          }
+        ]
+      },
+
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "button",
+            "id": "refresh_scene",
+            "label": "Refresh Scene",
+            "label_ru": "Обновить сцену",
+            "icon": "refresh"
+          },
+          {
+            "type": "button",
+            "id": "apply_to_canvas",
+            "label": "Apply to PhotoCraft",
+            "label_ru": "Применить в PhotoCraft",
+            "icon": "check"
+          }
+        ]
+      },
+      {
+        "type": "image_preview",
+        "id": "depth_preview",
+        "height": 450.0
+      }
+    ]
+  }
+}

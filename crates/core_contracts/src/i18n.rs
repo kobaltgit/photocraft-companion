@@ -713,6 +713,81 @@ impl Language {
 
         format!("{trimmed} ({suffix})")
     }
+
+    /// Suffix for bokeh blur layers
+    pub fn bokeh_suffix(&self) -> &'static str {
+        match self {
+            Language::Ru | Language::Uk => "Боке",
+            Language::ZhHans | Language::ZhHant => "散景",
+            Language::Ja => "ボケ",
+            Language::Ko => "보케",
+            Language::Es => "Desenfoque",
+            Language::PtBr => "Desfoque",
+            Language::Tr => "Bulanıklık",
+            Language::Vi => "Làm mờ",
+            Language::El => "Μποκέ",
+            Language::Hi => "बोकेह",
+            Language::Cs => "Bokeh",
+            Language::De => "Bokeh",
+            Language::Fr => "Bokeh",
+            Language::It => "Bokeh",
+            Language::Pl => "Bokeh",
+            Language::Nl => "Bokeh",
+            Language::Hu => "Bokeh",
+            Language::Sr => "Boke",
+            Language::Id => "Bokeh",
+            Language::En | Language::Auto => "Bokeh",
+        }
+    }
+
+    /// Format bokeh blur layer name preserving source name and preventing duplicate suffixes
+    pub fn format_bokeh_name(&self, source_name: &str) -> String {
+        let suffix = self.bokeh_suffix();
+        let trimmed = source_name.trim();
+
+        for lang in Self::ALL_SUPPORTED {
+            let s = lang.bokeh_suffix();
+            let pattern1 = format!("({s})");
+            let pattern2 = format!("[{s}]");
+            let pattern3 = format!("- {s}");
+            if trimmed.ends_with(&pattern1)
+                || trimmed.ends_with(&pattern2)
+                || trimmed.ends_with(&pattern3)
+            {
+                return trimmed.to_string();
+            }
+        }
+
+        format!("{trimmed} ({suffix})")
+    }
+
+    /// Localized name for the atmospheric fog layer
+    pub fn fog_layer_name(&self) -> &'static str {
+        match self {
+            Language::En | Language::Auto => "Atmospheric Fog",
+            Language::Ru => "Атмосферный туман",
+            Language::Uk => "Атмосферний туман",
+            Language::ZhHans => "大气雾",
+            Language::ZhHant => "大氣霧",
+            Language::Ja => "大気フォグ",
+            Language::Ko => "대기 안개",
+            Language::Es => "Niebla atmosférica",
+            Language::Fr => "Brouillard atmosphérique",
+            Language::De => "Atmosphärischer Nebel",
+            Language::It => "Nebbia atmosferica",
+            Language::PtBr => "Névoa atmosférica",
+            Language::Pl => "Mgła atmosferyczna",
+            Language::Cs => "Atmosférická mlha",
+            Language::Nl => "Atmosferische mist",
+            Language::Hu => "Atmoszférikus köd",
+            Language::El => "Ατμοσφαιρική ομίχλη",
+            Language::Tr => "Atmosferik Sis",
+            Language::Id => "Kabut Atmosfer",
+            Language::Vi => "Sương mù khí quyển",
+            Language::Sr => "Atmosferska magla",
+            Language::Hi => "वायुमंडलीय कोहरा",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -931,7 +1006,39 @@ mod tests {
             assert!(!lang.inpaint_suffix().is_empty());
             assert!(!lang.denoise_suffix().is_empty());
             assert!(!lang.depth_suffix().is_empty());
+            assert!(!lang.bokeh_suffix().is_empty());
+            assert!(!lang.fog_layer_name().is_empty());
         }
+    }
+
+    #[test]
+    fn test_bokeh_suffix_and_format_bokeh_name() {
+        let ru = Language::Ru;
+        assert_eq!(ru.bokeh_suffix(), "Боке");
+        assert_eq!(ru.format_bokeh_name("Слой 1"), "Слой 1 (Боке)");
+        assert_eq!(ru.format_bokeh_name("Слой 1 (Боке)"), "Слой 1 (Боке)");
+        assert_eq!(ru.format_bokeh_name("Слой 1 [Боке]"), "Слой 1 [Боке]");
+
+        let en = Language::En;
+        assert_eq!(en.bokeh_suffix(), "Bokeh");
+        assert_eq!(en.format_bokeh_name("Background"), "Background (Bokeh)");
+        assert_eq!(
+            en.format_bokeh_name("Background (Bokeh)"),
+            "Background (Bokeh)"
+        );
+        assert_eq!(
+            ru.format_bokeh_name("Background (Bokeh)"),
+            "Background (Bokeh)"
+        );
+    }
+
+    #[test]
+    fn test_fog_layer_name_all_languages() {
+        assert_eq!(Language::Ru.fog_layer_name(), "Атмосферный туман");
+        assert_eq!(Language::En.fog_layer_name(), "Atmospheric Fog");
+        assert_eq!(Language::ZhHans.fog_layer_name(), "大气雾");
+        assert_eq!(Language::El.fog_layer_name(), "Ατμοσφαιρική ομίχλη");
+        assert_eq!(Language::Hi.fog_layer_name(), "वायुमंडलीय कोहरा");
     }
 
     #[test]

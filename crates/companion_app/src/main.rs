@@ -10,10 +10,14 @@ mod workflow_engine;
 
 use ai_engine::{AiEngine, GenericAiPlugin};
 use core_contracts::{
-    ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
+    ExecutionState, PluginContext, PluginManifest, PluginRegistry, PluginType,
+    SharedExecutionStatus,
 };
-use overlay_ui::{get_icon_rgba, DynamicToolEngine, OverlayBar, ThemeMode};
+use overlay_ui::{
+    get_system_small_icon_size, get_tray_icon, DynamicToolEngine, OverlayBar, ThemeMode,
+};
 use photocraft_bridge::PhotoCraftClient;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -183,7 +187,6 @@ fn main() -> anyhow::Result<()> {
     let data_dir = find_photocraft_data_dir();
     let prefs_path = data_dir.join("preferences.json");
     let theme_mode = ThemeMode::from_preferences(&prefs_path);
-    let is_dark = theme_mode.is_dark();
 
     // Set Win32 context menu theme strictly matching the selected theme (no white popups in dark mode)
     let win32_mode = match theme_mode {
@@ -338,10 +341,9 @@ fn main() -> anyhow::Result<()> {
             .with_menu_on_left_click(false) // Left click restores toolbar; Right click opens menu
             .with_tooltip("PhotoCraft Companion");
 
-        if let Some(rgba) = get_icon_rgba(is_dark, 32) {
-            if let Ok(icon) = tray_icon::Icon::from_rgba(rgba, 32, 32) {
-                tray_builder = tray_builder.with_icon(icon);
-            }
+        let tray_size = get_system_small_icon_size();
+        if let Some(icon) = get_tray_icon(tray_size) {
+            tray_builder = tray_builder.with_icon(icon);
         }
 
         match tray_builder.build() {
@@ -621,10 +623,20 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // IPC action execution worker for interactive dynamic plugins (e.g. Rhai scripts, palette harmony)
+    // Initialize DynamicToolEngine and UI repaint context holder at composition root
     let (ipc_action_tx, mut ipc_action_rx) =
         tokio::sync::mpsc::unbounded_channel::<core_contracts::PluginIpcAction>();
+    let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+    let mut dyn_engine =
+        DynamicToolEngine::new_with_language(&manifests, Some(ipc_action_tx.clone()), current_lang);
+    dyn_engine.set_config_path(config_path.clone());
+    let dynamic_engine = Arc::new(std::sync::Mutex::new(dyn_engine));
+    let egui_ctx_holder = Arc::new(std::sync::Mutex::new(None::<overlay_ui::egui::Context>));
+
+    // IPC action execution worker for interactive dynamic plugins (e.g. Rhai scripts, palette harmony)
     let client_ipc = client.clone();
+    let dynamic_engine_ipc = dynamic_engine.clone();
+    let egui_ctx_holder_ipc = egui_ctx_holder.clone();
     rt_handle.spawn(async move {
         while let Some(action) = ipc_action_rx.recv().await {
             info!(
@@ -638,14 +650,38 @@ fn main() -> anyhow::Result<()> {
                     tracing::warn!("Failed to set colors via IPC: {e}");
                 }
             } else if action.command == "raster.process" {
-                if let Err(e) = execute_raster_process_action(&client_ipc, &action.params).await {
+                if let Err(e) = execute_raster_process_action(
+                    &client_ipc,
+                    &action.params,
+                    &dynamic_engine_ipc,
+                    &egui_ctx_holder_ipc,
+                )
+                .await
+                {
                     tracing::error!("Failed to execute raster.process: {e}");
                 }
-            } else if let Err(e) = client_ipc
-                .execute_command(&action.command, action.params)
-                .await
-            {
-                tracing::warn!("Failed to execute IPC action '{}': {e}", action.command);
+            } else {
+                let first_try = client_ipc
+                    .execute_command(&action.command, action.params.clone())
+                    .await;
+                if let Err(e) = first_try {
+                    let host_lang = core_contracts::Language::Auto.resolve(None).code();
+                    let (translated, changed) =
+                        workflow_engine::runner::translate_value_to_host(&action.params, host_lang);
+                    if changed {
+                        if let Err(retry_err) = client_ipc
+                            .execute_command(&action.command, translated)
+                            .await
+                        {
+                            tracing::warn!(
+                                "Failed to execute IPC action '{}' (retry failed: {retry_err}, original: {e})",
+                                action.command
+                            );
+                        }
+                    } else {
+                        tracing::warn!("Failed to execute IPC action '{}': {e}", action.command);
+                    }
+                }
             }
         }
     });
@@ -747,19 +783,18 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Initialize DynamicToolEngine and UI repaint context holder at composition root
-    let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
-    let mut dyn_engine =
-        DynamicToolEngine::new_with_language(&manifests, Some(ipc_action_tx.clone()), current_lang);
-    dyn_engine.set_config_path(config_path.clone());
-    let dynamic_engine = Arc::new(std::sync::Mutex::new(dyn_engine));
-    let egui_ctx_holder = Arc::new(std::sync::Mutex::new(None::<overlay_ui::egui::Context>));
-
     // Background poller for live active session colors (PhotoCraft -> Plugins)
     let client_colors = client.clone();
     let dynamic_engine_colors = dynamic_engine.clone();
     let is_conn_colors = is_connected.clone();
     let ctx_holder_colors = egui_ctx_holder.clone();
+    let ai_colors = ai.clone();
+    let manifests_map: Arc<HashMap<String, PluginManifest>> = Arc::new(
+        manifests
+            .iter()
+            .map(|m| (m.id.clone(), m.clone()))
+            .collect(),
+    );
 
     rt_handle.spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(400));
@@ -842,7 +877,8 @@ fn main() -> anyhow::Result<()> {
                         let orig_w = img.width();
                         let orig_h = img.height();
                         if orig_w > 0 && orig_h > 0 {
-                            let scale = raster_engine::calculate_preview_scale(orig_w, orig_h, 512);
+                            let scale =
+                                raster_engine::calculate_preview_scale(orig_w, orig_h, 1280);
                             let target_w = ((orig_w as f32 * scale).round() as u32).max(1);
                             let target_h = ((orig_h as f32 * scale).round() as u32).max(1);
                             let thumbnail = image::imageops::resize(
@@ -857,6 +893,76 @@ fn main() -> anyhow::Result<()> {
                             if let Ok(guard) = ctx_holder_colors.lock() {
                                 if let Some(ctx) = guard.as_ref() {
                                     ctx.request_repaint();
+                                }
+                            }
+
+                            // If plugin declares auto_run_model_role, run model inference asynchronously
+                            if let Some(m) = manifests_map.get(&plugin_id) {
+                                if let Some(ref ui_cfg) = m.interactive_ui {
+                                    if let Some(ref role) = ui_cfg.auto_run_model_role {
+                                        if let Some(model_req) = m.model_by_role(role) {
+                                            if let Some(model_path) = ai_colors.resolve_model_path(
+                                                &model_req.name,
+                                                m.plugin_dir.as_deref(),
+                                            ) {
+                                                if let Some(ref ai_cfg) = m.ai {
+                                                    if let Ok(mut engine) =
+                                                        dynamic_engine_colors.lock()
+                                                    {
+                                                        engine.set_busy(&plugin_id, true);
+                                                    }
+                                                    if let Ok(guard) = ctx_holder_colors.lock() {
+                                                        if let Some(ctx) = guard.as_ref() {
+                                                            ctx.request_repaint();
+                                                        }
+                                                    }
+
+                                                    let ai_worker = ai_colors.clone();
+                                                    let ai_cfg_worker = ai_cfg.clone();
+                                                    let dyn_engine_worker =
+                                                        dynamic_engine_colors.clone();
+                                                    let ctx_holder_worker =
+                                                        ctx_holder_colors.clone();
+                                                    let pid_worker = plugin_id.clone();
+                                                    let model_path_worker = model_path.clone();
+                                                    let img_worker = img.clone();
+
+                                                    tokio::task::spawn_blocking(move || {
+                                                        if let Ok(mask) = ai_worker
+                                                            .execute_segmentation(
+                                                                &model_path_worker,
+                                                                &img_worker,
+                                                                &ai_cfg_worker,
+                                                            )
+                                                        {
+                                                            if let Ok(mut engine) =
+                                                                dyn_engine_worker.lock()
+                                                            {
+                                                                engine.set_role_mask(
+                                                                    &pid_worker,
+                                                                    mask,
+                                                                );
+                                                                engine.set_busy(&pid_worker, false);
+                                                            }
+                                                            if let Ok(guard) =
+                                                                ctx_holder_worker.lock()
+                                                            {
+                                                                if let Some(ctx) = guard.as_ref() {
+                                                                    ctx.request_repaint();
+                                                                }
+                                                            }
+                                                            return;
+                                                        }
+                                                        if let Ok(mut engine) =
+                                                            dyn_engine_worker.lock()
+                                                        {
+                                                            engine.set_busy(&pid_worker, false);
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -909,9 +1015,209 @@ fn parse_hex_rgba(hex: &str) -> std::result::Result<image::Rgba<u8>, ()> {
 async fn execute_raster_process_action(
     client: &photocraft_bridge::PhotoCraftClient,
     params: &serde_json::Value,
+    dynamic_engine: &Arc<std::sync::Mutex<DynamicToolEngine>>,
+    egui_ctx_holder: &Arc<std::sync::Mutex<Option<overlay_ui::egui::Context>>>,
 ) -> core_contracts::Result<()> {
     let task = params.get("task").and_then(|v| v.as_str()).unwrap_or("");
     match task {
+        "refresh_preview" => {
+            if let Some(plugin_id) = params.get("plugin_id").and_then(|v| v.as_str()) {
+                if let Ok(mut engine) = dynamic_engine.lock() {
+                    engine.clear_preview_and_role_mask(plugin_id);
+                }
+                if let Ok(guard) = egui_ctx_holder.lock() {
+                    if let Some(ctx) = guard.as_ref() {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+            Ok(())
+        }
+        "lens_blur" => {
+            let plugin_id = params
+                .get("plugin_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            if !plugin_id.is_empty() {
+                if let Ok(mut engine) = dynamic_engine.lock() {
+                    engine.set_busy(plugin_id, true);
+                }
+                if let Ok(guard) = egui_ctx_holder.lock() {
+                    if let Some(ctx) = guard.as_ref() {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+
+            let result = async {
+                let doc = client.get_document_info().await.ok();
+                let source_name = doc
+                    .as_ref()
+                    .and_then(|d| d.active_layer_name.clone())
+                    .unwrap_or_else(|| "Layer".to_string());
+                let lang = core_contracts::Language::Auto.resolve(None);
+
+                let src = client.copy_active_layer_image().await?;
+                if src.width() == 0 || src.height() == 0 {
+                    return Err(core_contracts::CompanionError::Plugin(
+                        "Active layer has empty dimensions".to_string(),
+                    ));
+                }
+
+                let p_val = params.get("params").unwrap_or(params);
+                let mut lens_params = raster_engine::LensBlurParams::default();
+
+                if let Some(b) = p_val.get("fog_enabled").and_then(|v| v.as_bool()) {
+                    lens_params.fog_enabled = b;
+                }
+                if let Some(hex) = p_val.get("fog_color").and_then(|v| v.as_str()) {
+                    if let Ok(c) = parse_hex_rgba(hex) {
+                        lens_params.fog_color = [c.0[0], c.0[1], c.0[2], c.0[3]];
+                    }
+                }
+                if let Some(n) = p_val.get("fog_density").and_then(|v| v.as_f64()) {
+                    lens_params.fog_density = n as f32;
+                }
+                if let Some(n) = p_val.get("fog_start").and_then(|v| v.as_f64()) {
+                    lens_params.fog_start = n as f32;
+                }
+                if let Some(n) = p_val.get("fog_falloff").and_then(|v| v.as_f64()) {
+                    lens_params.fog_falloff = n as f32;
+                }
+                if let Some(idx) = p_val.get("fog_blend_mode").and_then(|v| v.as_u64()) {
+                    lens_params.fog_blend_mode = idx as u8;
+                }
+                if let Some(b) = p_val.get("bokeh_enabled").and_then(|v| v.as_bool()) {
+                    lens_params.bokeh_enabled = b;
+                }
+                if let Some(n) = p_val.get("focus_distance").and_then(|v| v.as_f64()) {
+                    lens_params.focus_distance = n as f32;
+                }
+                if let Some(n) = p_val.get("dof_width").and_then(|v| v.as_f64()) {
+                    lens_params.dof_width = n as f32;
+                }
+                if let Some(n) = p_val.get("blur_radius").and_then(|v| v.as_f64()) {
+                    lens_params.blur_radius = n as f32;
+                }
+                if let Some(n) = p_val.get("specular_bloom").and_then(|v| v.as_f64()) {
+                    lens_params.specular_bloom = n as f32;
+                }
+
+                let cached_mask = {
+                    if let Ok(engine) = dynamic_engine.lock() {
+                        engine.get_role_mask(plugin_id).cloned()
+                    } else {
+                        None
+                    }
+                };
+
+                let depth_map = cached_mask.unwrap_or_else(|| {
+                    image::GrayImage::from_pixel(src.width(), src.height(), image::Luma([128]))
+                });
+
+                let depth_map =
+                    if depth_map.width() != src.width() || depth_map.height() != src.height() {
+                        image::imageops::resize(
+                            &depth_map,
+                            src.width(),
+                            src.height(),
+                            image::imageops::FilterType::Triangle,
+                        )
+                    } else {
+                        depth_map
+                    };
+
+                let fog_as_separate = params
+                    .get("fog_as_separate_layer")
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| {
+                        params
+                            .get("output_mode")
+                            .and_then(|v| v.as_str())
+                            .map(|m| m == "split" || m == "split_layers")
+                    })
+                    .unwrap_or(true);
+
+                let bokeh_name = lang.format_bokeh_name(&source_name);
+
+                if fog_as_separate {
+                    let (defocused, fog_layer_opt) =
+                        raster_engine::render_lens_blur_split(&src, &depth_map, &lens_params);
+                    let paste_res = client.paste_image_in_place(&defocused).await?;
+                    let fallback_id = client
+                        .get_document_info()
+                        .await
+                        .ok()
+                        .and_then(|i| i.active_layer);
+                    let result_layer_id = paste_res
+                        .get("layer")
+                        .or_else(|| paste_res.get("layerId"))
+                        .or_else(|| paste_res.get("id"))
+                        .and_then(|l| l.as_u64())
+                        .or(fallback_id);
+
+                    if let Some(new_layer_id) = result_layer_id {
+                        let _ = client.rename_layer(new_layer_id, &bokeh_name).await;
+                    }
+
+                    if let Some(fog_layer) = fog_layer_opt {
+                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+                        let fog_res = client.paste_image_in_place(&fog_layer).await?;
+                        let fallback_fog = client
+                            .get_document_info()
+                            .await
+                            .ok()
+                            .and_then(|i| i.active_layer);
+                        let fog_layer_id = fog_res
+                            .get("layer")
+                            .or_else(|| fog_res.get("layerId"))
+                            .or_else(|| fog_res.get("id"))
+                            .and_then(|l| l.as_u64())
+                            .or(fallback_fog);
+
+                        if let Some(fog_id) = fog_layer_id {
+                            let fog_name = lang.fog_layer_name();
+                            let _ = client.rename_layer(fog_id, fog_name).await;
+                        }
+                    }
+                } else {
+                    let merged = raster_engine::render_lens_blur(&src, &depth_map, &lens_params);
+                    let paste_res = client.paste_image_in_place(&merged).await?;
+                    let fallback_id = client
+                        .get_document_info()
+                        .await
+                        .ok()
+                        .and_then(|i| i.active_layer);
+                    let result_layer_id = paste_res
+                        .get("layer")
+                        .or_else(|| paste_res.get("layerId"))
+                        .or_else(|| paste_res.get("id"))
+                        .and_then(|l| l.as_u64())
+                        .or(fallback_id);
+
+                    if let Some(new_layer_id) = result_layer_id {
+                        let _ = client.rename_layer(new_layer_id, &bokeh_name).await;
+                    }
+                }
+
+                Ok(())
+            }
+            .await;
+
+            if !plugin_id.is_empty() {
+                if let Ok(mut engine) = dynamic_engine.lock() {
+                    engine.set_busy(plugin_id, false);
+                }
+                if let Ok(guard) = egui_ctx_holder.lock() {
+                    if let Some(ctx) = guard.as_ref() {
+                        ctx.request_repaint();
+                    }
+                }
+            }
+
+            result
+        }
         "extrude_2_5d" => {
             // 1. Fetch active layer image
             let src = client.copy_active_layer_image().await?;

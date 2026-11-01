@@ -1,4 +1,4 @@
-use std::fs;
+﻿use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Locate workspace root containing Cargo.toml with [workspace]
@@ -662,4 +662,138 @@ fn test_plugin_model_isolation_and_self_containment() {
 
     // Clean up
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+// =========================================================================
+// 8. Production Code File Size & Gradation Guard (File Size Tiers)
+// =========================================================================
+
+fn count_production_lines(content: &str) -> usize {
+    let mut prod_lines = 0;
+    let mut in_test_cfg = false;
+    let mut brace_depth: i32 = 0;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.starts_with("#[cfg(test)]") {
+            in_test_cfg = true;
+            continue;
+        }
+
+        if in_test_cfg {
+            for ch in trimmed.chars() {
+                if ch == '{' {
+                    brace_depth += 1;
+                } else if ch == '}' {
+                    brace_depth -= 1;
+                    if brace_depth <= 0 {
+                        in_test_cfg = false;
+                        brace_depth = 0;
+                    }
+                }
+            }
+            continue;
+        }
+
+        prod_lines += 1;
+    }
+
+    prod_lines
+}
+
+#[test]
+fn test_production_file_size_guard() {
+    let root = find_workspace_root();
+
+    // Check dynamic_tool monolith or decomposed package
+    let legacy_dynamic_tool = root
+        .join("crates")
+        .join("overlay_ui")
+        .join("src")
+        .join("dynamic_tool.rs");
+    if legacy_dynamic_tool.exists() {
+        let content =
+            fs::read_to_string(&legacy_dynamic_tool).expect("Failed to read dynamic_tool.rs");
+        let prod_lines = count_production_lines(&content);
+        assert!(
+            prod_lines <= 800,
+            "Monolithic file '{}' has {} production lines, exceeding the hard cap of 800 lines! Must be decomposed into dynamic_tool/ package.",
+            legacy_dynamic_tool.display(),
+            prod_lines
+        );
+    }
+
+    let dynamic_tool_dir = root
+        .join("crates")
+        .join("overlay_ui")
+        .join("src")
+        .join("dynamic_tool");
+    if dynamic_tool_dir.exists() {
+        let mut files = Vec::new();
+        fn collect_all_rs(dir: &Path, out: &mut Vec<PathBuf>) {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        collect_all_rs(&path, out);
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                        out.push(path);
+                    }
+                }
+            }
+        }
+        collect_all_rs(&dynamic_tool_dir, &mut files);
+
+        for file in files {
+            let rel_path = file
+                .strip_prefix(&dynamic_tool_dir)
+                .unwrap_or(&file)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let file_name = file.file_name().unwrap().to_string_lossy();
+
+            if file_name == "tests.rs" || file_name.ends_with("_test.rs") {
+                let content = fs::read_to_string(&file).expect("Failed to read test file");
+                let lines = content.lines().count();
+                assert!(
+                    lines <= 1500,
+                    "Test file '{}' has {} lines, exceeding Tier T limit (1500 lines)!",
+                    rel_path,
+                    lines
+                );
+                continue;
+            }
+
+            let content = fs::read_to_string(&file).expect("Failed to read file");
+            let prod_lines = count_production_lines(&content);
+
+            let max_allowed = if rel_path == "named_colors.rs" {
+                2000 // Tier 5: Data Tables
+            } else if rel_path.starts_with("widgets/hue_wheel.rs")
+                || rel_path.starts_with("widgets/modifier_stack.rs")
+            {
+                750
+            } else if rel_path.starts_with("widgets/") && file_name != "mod.rs" {
+                500
+            } else if rel_path == "state.rs" {
+                500
+            } else if rel_path == "mod.rs"
+                || rel_path == "rhai_bridge.rs"
+                || rel_path == "widgets/mod.rs"
+            {
+                800
+            } else {
+                800
+            };
+
+            assert!(
+                prod_lines <= max_allowed,
+                "File '{}' has {} production lines, exceeding allowed limit of {} lines for its tier!",
+                rel_path,
+                prod_lines,
+                max_allowed
+            );
+        }
+    }
 }

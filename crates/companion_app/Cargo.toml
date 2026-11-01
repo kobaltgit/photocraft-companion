@@ -28,6 +28,9 @@ rhai = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = { workspace = true }
 
+[target.'cfg(windows)'.build-dependencies]
+winres = { workspace = true }
+
 [[bin]]
 name = "photocraft-companion"
 path = "src/main.rs"

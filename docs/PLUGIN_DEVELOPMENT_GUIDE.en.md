@@ -494,12 +494,12 @@ In `interactive_ui`, all window controls are declared inside the `"widgets"` arr
 
 | Widget Type (`type`) | Parameters | Description |
 | :--- | :--- | :--- |
-| **`color_slot`** | `id`, `label`, `label_ru`, `default_hex`, `read_only`, `selectable`, `target_binding` | Interactive color swatch. If `selectable: true`, clicking selects this swatch as active target (`target_binding`). When `read_only: true`, displays non-editable results. |
-| **`slider`** | `id`, `label`, `label_ru`, `min`, `max`, `step`, `default` | Numeric slider with vector rendering. Value is accessible in `state[id]`. |
+| **`color_slot`** | `id`, `label`, `label_ru`, `default_hex`, `read_only`, `selectable`, `target_binding`, `label_binding` | Interactive color swatch. If `selectable: true`, clicking selects this swatch as active target (`target_binding`). When `read_only: true`, displays non-editable results. The `label_binding` parameter enables dynamic binding of the slot label to a Rhai state key for real-time localization and dynamic role labels. |
+| **`slider`** | `id`, `label`, `label_ru`, `min`, `max`, `step`, `default`, `enabled_binding` | Numeric slider with vector rendering. Value is accessible in `state[id]`. When `step >= 1.0`, numbers are formatted cleanly as integers (`0 px`, `15 px`); fractional steps format with one decimal (`1.5 px`). The `enabled_binding` parameter enables dynamic disabling (graying out) of the slider based on a boolean in state (e.g. disabling spread angle in monochromatic mode). |
 | **`dropdown`** | `id`, `label`, `label_ru`, `options`, `options_ru`, `default_index` | Dropdown combobox with localized option labels. Selected index stored in `state[id]`. |
 | **`toggle`** | `id`, `label`, `label_ru`, `default` | Checkbox toggle storing boolean (`true`/`false`). |
 | **`button`** | `id`, `label`, `label_ru`, `icon` | Action button. When clicked, sets `action_<id> = true` in state. Supports vector icons (e.g. `"swap"`). |
-| **`hue_wheel`** | `id`, `source_color_id`, `show_pointer` | Vector circular HSL color wheel with pointer indicating current tone. |
+| **`hue_wheel`** | `id`, `source_color_id`, `show_pointer`, `markers_binding`, `connect_mode_binding` | Vector circular HSL color wheel with pointer indicating current tone. The `markers_binding` parameter accepts a state key holding an array of angle values in degrees `[θ1, θ2, ...]` ($0..360$) to render multiple harmony nodes on the spectral ring. The `connect_mode_binding` parameter configures vector geometric connector lines: `"polygon"` (closed polygon / chords), `"spokes"` (rays from ring center), or `"none"` (markers only). |
 | **`banner`** | `id`, `message_binding`, `style_binding` | Dynamic notification banner (`"info"`, `"warning"`, `"error"`, `"success"`). |
 | **`label`** | `text_binding` | Text line bound to a state key. |
 | **`separator`** | *(none)* | Thin visual dividing line. |
@@ -594,6 +594,146 @@ fn on_selection_state(has_selection, bounds, state) {
   - `get_named_color(r, g, b) -> String` — returns semantic shade name from a 152-color database in active language;
   - `simulate_cvd(r, g, b, profile_idx) -> String` — Brettel-Vienot LMS color-blindness simulation;
   - `calculate_contrast(r1, g1, b1, r2, g2, b2) -> Float` — W3C WCAG 2.1 symmetric luminance contrast ratio.
+
+### 7.3. Reactive Architecture Patterns & Implementation Examples
+
+The Rhai scripting engine combined with declarative widgets enables developers to construct advanced, responsive interactive plugins without recompiling the Companion runtime. Below are standard reference implementation patterns.
+
+#### 7.3.1. Dynamic Localization Reactivity (Dynamic i18n Reactivity)
+When the user switches the application language in Companion Preferences, the runtime dispatches an update into all open plugins via `on_state_changed`. To ensure that dynamically generated strings (such as in `color_slot` with `label_binding` or notification banners) translate immediately without waiting for slider input, track the prior language in state:
+
+```rhai
+fn on_state_changed(state) {
+    let cur_lang = current_language();
+    let lang_changed = false;
+    if !state.contains("last_language") || state["last_language"] != cur_lang {
+        state["last_language"] = cur_lang;
+        lang_changed = true;
+    }
+
+    // Refresh dynamic labels if parameters changed or application language changed
+    if lang_changed || state["params_dirty"] == true {
+        state["params_dirty"] = false;
+        state = recalculate_ui_labels(state);
+    }
+
+    return state;
+}
+
+fn recalculate_ui_labels(state) {
+    state["slot_base_label"] = t("Base Dominant (60%)", "Базовый доминирующий (60%)");
+    state["slot_secondary_label"] = t("Secondary Harmony (30%)", "Вторичная гармония (30%)");
+    state["slot_accent_label"] = t("Focal Accent (10%)", "Фокусный акцент (10%)");
+    state["status_message"] = t("Ready for painting", "Готово к рисованию");
+    return state;
+}
+```
+
+#### 7.3.2. Echo Suppression Pattern (Echo Guard)
+When a plugin modifies the active color in PhotoCraft via `execute_command("tools.setColors", ...)`, the editor updates its foreground tool color. This triggers a `session.colors` event that echoes back into the plugin through `on_session_colors`. Without suppression, this causes feedback loops, slider jitter, and redundant recalculations.
+
+**Solution — record outgoing color:**
+```rhai
+fn on_state_changed(state) {
+    if state["color_changed_by_user"] == true {
+        state["color_changed_by_user"] = false;
+        let new_fg = state["selected_hex"];
+        
+        // Cache the dispatched color before triggering PhotoCraft IPC
+        state["last_sent_fg"] = new_fg;
+        execute_command("tools.setColors", #{
+            foreground: new_fg
+        });
+    }
+    return state;
+}
+
+fn on_session_colors(fg_hex, bg_hex, state) {
+    // If the incoming color matches our recently dispatched color, suppress the echo
+    if state.contains("last_sent_fg") && state["last_sent_fg"] == fg_hex {
+        return state;
+    }
+
+    // Genuine external change by the artist (e.g. Eyedropper on the canvas)
+    state["external_brush_color"] = fg_hex;
+    state = rebuild_palette_from_brush(state);
+    return state;
+}
+```
+
+#### 7.3.3. Exporting Palettes to PhotoCraft Swatches (`swatches`)
+Plugins can create organized swatch groups in PhotoCraft and populate them with color tokens in a single click:
+
+```rhai
+fn export_to_swatches(group_name, colors_list) {
+    // 1. Create a named swatch group in PhotoCraft's library
+    execute_command("swatches.newGroup", #{
+        groupName: group_name
+    });
+
+    // 2. Add individual swatches into the newly created group
+    for item in colors_list {
+        execute_command("swatches.add", #{
+            groupName: group_name,
+            name: item["name"],
+            color: item["hex"]
+        });
+    }
+}
+```
+
+#### 7.3.4. Drawing Swatch Cards and Graphics on a New Canvas Layer
+Plugins can automate drawing graphical elements directly on the PhotoCraft canvas (such as horizontal or vertical swatch cards, layout grids, or rulers) using atomic selection and fill commands:
+
+```rhai
+fn draw_palette_card_on_canvas(colors_list, is_horizontal) {
+    // 1. Create a dedicated transparent layer for the card
+    execute_command("layer.new.layer", #{
+        name: "Harmonic Palette Swatches"
+    });
+
+    let swatch_w = 64;
+    let swatch_h = 64;
+    let gap = 8;
+    let start_x = 40;
+    let start_y = 40;
+
+    // 2. Sequentially select and fill rectangular swatches
+    for i in 0..colors_list.len() {
+        let x = if is_horizontal { start_x + i * (swatch_w + gap) } else { start_x };
+        let y = if is_horizontal { start_y } else { start_y + i * (swatch_h + gap) };
+
+        // Create rectangular selection on canvas
+        execute_command("select.rect", #{
+            x: x,
+            y: y,
+            width: swatch_w,
+            height: swatch_h
+        });
+
+        // Set foreground color and fill selected area
+        execute_command("tools.setColors", #{
+            foreground: colors_list[i]
+        });
+        execute_command("edit.fill", #{
+            contents: "foreground"
+        });
+    }
+
+    // 3. Clear selection after drawing
+    execute_command("select.deselect");
+}
+```
+
+#### 7.3.5. Rhai Sandbox Guard & Security Boundaries
+To maintain smooth 60 FPS UI rendering and safeguard user host environments, Rhai executes within strict isolation boundaries:
+1. **Operations Quota:** Maximum `100,000` execution operations per hook invocation. Unbounded loops (`while true`) are aborted automatically.
+2. **Call Stack Limit:** Restricted to `64` nested frames to prevent stack overflow.
+3. **OS Isolation:** Rhai scripts have zero access to the host filesystem, system commands, raw sockets, or environment variables. All side effects are mediated exclusively through typed PhotoCraft IPC (`execute_command`) and local raster engine operations (`execute_raster_process`).
+
+#### 7.3.6. Window Layout Standards (Rule 6.1 Layout Guard)
+* **Precise Dimensions:** Define `window_width` and `window_height` in `plugin.json` to snugly wrap declared widgets, preventing empty black gaps at the bottom.
+* **Slider Formatting:** For discrete values (pixels, percentages, angles), set `step: 1.0` — the runtime automatically formats values as pure integers (`0 px`, `30°`) with discrete $\pm 1$ mouse-wheel notches. Continuous parameters (radius, contrast) format with a single decimal (`step: 0.1` $\rightarrow$ `1.5 px`).
 
 ---
 

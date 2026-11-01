@@ -2,7 +2,7 @@ use crate::{DocumentInfo, Result};
 use async_trait::async_trait;
 use image::RgbaImage;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// Localized metadata for a plugin or sub-action
@@ -252,6 +252,53 @@ impl PluginManifest {
     pub fn description_for_lang(&self, lang: crate::Language) -> &str {
         self.localized_description(lang.code())
     }
+
+    /// Resolves the absolute path to the plugin's icon file (e.g. icon.svg).
+    ///
+    /// Priority:
+    /// 1. `self.plugin_dir.join(icon)` if explicitly configured;
+    /// 2. `self.plugin_dir.join("icon.svg")` as default;
+    /// 3. Fallback to `root_plugins_dir.join(&self.id)` if `plugin_dir` is not populated.
+    pub fn resolve_icon_path(&self, root_plugins_dir: Option<&Path>) -> Option<PathBuf> {
+        let is_valid_file = |path: &Path| -> bool {
+            if let Ok(meta) = std::fs::metadata(path) {
+                meta.is_file() && meta.len() > 0
+            } else {
+                false
+            }
+        };
+
+        // 1. Try directly with self.plugin_dir
+        if let Some(ref dir) = self.plugin_dir {
+            if let Some(ref icon_file) = self.icon {
+                let path = dir.join(icon_file);
+                if is_valid_file(&path) {
+                    return Some(path);
+                }
+            }
+            let default_svg = dir.join("icon.svg");
+            if is_valid_file(&default_svg) {
+                return Some(default_svg);
+            }
+        }
+
+        // 2. Fallback using root_plugins_dir if provided
+        if let Some(root) = root_plugins_dir {
+            let candidate_dir = root.join(&self.id);
+            if let Some(ref icon_file) = self.icon {
+                let path = candidate_dir.join(icon_file);
+                if is_valid_file(&path) {
+                    return Some(path);
+                }
+            }
+            let default_svg = candidate_dir.join("icon.svg");
+            if is_valid_file(&default_svg) {
+                return Some(default_svg);
+            }
+        }
+
+        None
+    }
 }
 
 impl Default for PluginManifest {
@@ -346,6 +393,8 @@ pub enum WidgetNode {
         selectable: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         target_binding: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label_binding: Option<String>,
     },
     Slider {
         id: String,
@@ -357,6 +406,8 @@ pub enum WidgetNode {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         step: Option<f64>,
         default: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled_binding: Option<String>,
     },
     Dropdown {
         id: String,
@@ -390,6 +441,10 @@ pub enum WidgetNode {
         source_color_id: String,
         #[serde(default = "default_true")]
         show_pointer: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        markers_binding: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        connect_mode_binding: Option<String>,
     },
     Banner {
         id: String,
@@ -422,6 +477,12 @@ pub enum WidgetNode {
         #[serde(default)]
         items: Vec<WidgetNode>,
     },
+    Tabs {
+        id: String,
+        tabs: Vec<TabItem>,
+        #[serde(default)]
+        default_index: usize,
+    },
     ModifierStack {
         id: String,
         label: String,
@@ -431,6 +492,29 @@ pub enum WidgetNode {
         #[serde(default)]
         allow_reordering: bool,
     },
+}
+
+/// Configuration for an individual tab in a Tabs widget
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabItem {
+    pub id: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title_ru: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub widgets: Vec<WidgetNode>,
+}
+
+impl TabItem {
+    pub fn title_for_lang(&self, lang: crate::Language) -> &str {
+        if matches!(lang, crate::Language::Ru) {
+            self.title_ru.as_deref().unwrap_or(&self.title)
+        } else {
+            &self.title
+        }
+    }
 }
 
 /// Configuration for an individual item in a ModifierStack widget
@@ -527,6 +611,10 @@ pub struct InteractiveUiConfig {
     pub default_height: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub script: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_run_model_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub widgets: Vec<WidgetNode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -812,6 +900,20 @@ pub trait BridgeOperations {
     async fn copy_active_layer_image(&self) -> Result<RgbaImage>;
     async fn paste_image_in_place(&self, image: &RgbaImage) -> Result<serde_json::Value>;
     async fn rename_layer(&self, layer_id: u64, new_name: &str) -> Result<serde_json::Value>;
+    async fn set_layer_props(
+        &self,
+        layer_id: u64,
+        props: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let mut full_props = props;
+        if let Some(map) = full_props.as_object_mut() {
+            map.entry("layer")
+                .or_insert_with(|| serde_json::json!(layer_id));
+            map.entry("layerId")
+                .or_insert_with(|| serde_json::json!(layer_id));
+        }
+        self.execute_command("layer.setProps", full_props).await
+    }
     async fn get_document_info(&self) -> Result<DocumentInfo>;
 }
 
@@ -1162,6 +1264,8 @@ mod tests {
             default_width: Some(360.0),
             default_height: Some(540.0),
             script: Some("ui.rhai".to_string()),
+            auto_run_model_role: None,
+            layout_mode: None,
             ipc_subscriptions: vec!["photocraft.layer.color_picked".to_string()],
             widgets: vec![
                 WidgetNode::Banner {
@@ -1177,11 +1281,14 @@ mod tests {
                     read_only: false,
                     selectable: true,
                     target_binding: Some("target_slot".to_string()),
+                    label_binding: None,
                 },
                 WidgetNode::HueWheel {
                     id: "color_wheel".to_string(),
                     source_color_id: "primary_color".to_string(),
                     show_pointer: true,
+                    markers_binding: None,
+                    connect_mode_binding: None,
                 },
                 WidgetNode::Slider {
                     id: "spread".to_string(),
@@ -1191,6 +1298,7 @@ mod tests {
                     max: 180.0,
                     step: Some(1.0),
                     default: 45.0,
+                    enabled_binding: None,
                 },
                 WidgetNode::Dropdown {
                     id: "harmony_rule".to_string(),
@@ -1240,6 +1348,7 @@ mod tests {
                             read_only: true,
                             selectable: false,
                             target_binding: None,
+                            label_binding: None,
                         },
                         WidgetNode::ColorSlot {
                             id: "accent_2".to_string(),
@@ -1249,6 +1358,7 @@ mod tests {
                             read_only: true,
                             selectable: false,
                             target_binding: None,
+                            label_binding: None,
                         },
                     ],
                 },
@@ -1258,6 +1368,71 @@ mod tests {
         let json = serde_json::to_string_pretty(&config).unwrap();
         let deserialized: InteractiveUiConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_tabs_widget_and_auto_ai_role_roundtrip() {
+        let config = InteractiveUiConfig {
+            window_title: "Depth Studio".to_string(),
+            window_title_ru: Some("Студия глубины".to_string()),
+            default_width: Some(780.0),
+            default_height: Some(540.0),
+            script: Some("logic.rhai".to_string()),
+            auto_run_model_role: Some("depth_estimation".to_string()),
+            layout_mode: Some("split_preview_right".to_string()),
+            ipc_subscriptions: vec![],
+            widgets: vec![WidgetNode::Tabs {
+                id: "studio_tabs".to_string(),
+                default_index: 0,
+                tabs: vec![
+                    TabItem {
+                        id: "fog_tab".to_string(),
+                        title: "Atmospheric Fog".to_string(),
+                        title_ru: Some("Атмосферный туман".to_string()),
+                        icon: Some("fog".to_string()),
+                        widgets: vec![WidgetNode::Toggle {
+                            id: "fog_enabled".to_string(),
+                            label: "Enable Fog".to_string(),
+                            label_ru: Some("Включить туман".to_string()),
+                            default: false,
+                        }],
+                    },
+                    TabItem {
+                        id: "bokeh_tab".to_string(),
+                        title: "Lens Bokeh".to_string(),
+                        title_ru: Some("Размытие боке".to_string()),
+                        icon: Some("bokeh".to_string()),
+                        widgets: vec![WidgetNode::Slider {
+                            id: "focus_dist".to_string(),
+                            label: "Focus Distance".to_string(),
+                            label_ru: Some("Дистанция фокуса".to_string()),
+                            min: 0.0,
+                            max: 255.0,
+                            step: Some(1.0),
+                            default: 128.0,
+                            enabled_binding: None,
+                        }],
+                    },
+                ],
+            }],
+        };
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let deserialized: InteractiveUiConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, deserialized);
+        if let WidgetNode::Tabs { tabs, .. } = &deserialized.widgets[0] {
+            assert_eq!(tabs.len(), 2);
+            assert_eq!(
+                tabs[0].title_for_lang(crate::Language::En),
+                "Atmospheric Fog"
+            );
+            assert_eq!(
+                tabs[0].title_for_lang(crate::Language::Ru),
+                "Атмосферный туман"
+            );
+        } else {
+            panic!("Expected WidgetNode::Tabs");
+        }
     }
 
     #[test]
@@ -1397,6 +1572,7 @@ mod tests {
                 id,
                 source_color_id,
                 show_pointer,
+                ..
             } => {
                 assert_eq!(id, "wheel");
                 assert_eq!(source_color_id, "base_color");
@@ -1501,5 +1677,46 @@ mod tests {
 
         let req4 = ActionRequest::from("plugin:remove_bg");
         assert_eq!(req4, req1);
+    }
+
+    #[test]
+    fn test_plugin_manifest_resolve_icon_path() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "pc_test_icon_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let plugin_dir = temp_dir.join("my_plugin");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+
+        let icon_svg = plugin_dir.join("icon.svg");
+        std::fs::write(&icon_svg, "<svg></svg>").unwrap();
+
+        let mut manifest = PluginManifest {
+            id: "my_plugin".to_string(),
+            name: "My Plugin".to_string(),
+            plugin_dir: Some(plugin_dir.clone()),
+            ..Default::default()
+        };
+
+        // Default icon.svg resolution via plugin_dir
+        assert_eq!(manifest.resolve_icon_path(None), Some(icon_svg.clone()));
+
+        // Explicit custom icon resolution
+        let custom_icon = plugin_dir.join("custom.svg");
+        std::fs::write(&custom_icon, "<svg>custom</svg>").unwrap();
+        manifest.icon = Some("custom.svg".to_string());
+        assert_eq!(manifest.resolve_icon_path(None), Some(custom_icon));
+
+        // Resolution via root_plugins_dir when plugin_dir is None
+        manifest.plugin_dir = None;
+        assert_eq!(
+            manifest.resolve_icon_path(Some(&temp_dir)),
+            Some(plugin_dir.join("custom.svg"))
+        );
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

@@ -2,7 +2,7 @@
 ; Produces: PhotoCraft-Companion-Setup-Windows-x64.exe
 
 #define MyAppName "PhotoCraft Companion"
-#define MyAppVersion "1.3.2"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "kobaltGIT"
 #define MyAppURL "https://github.com/kobaltgit/photocraft-companion"
 #define MyAppExeName "photocraft-companion.exe"
@@ -26,6 +26,7 @@ SolidCompression=yes
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=..\..\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]

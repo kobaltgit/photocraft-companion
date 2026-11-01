@@ -3425,3 +3425,427 @@ Real-world artist testing of the `selection_mod` modifier stack highlighted seve
 - Plugin catalog validated via `plugin_validator` (12/12 OK), package `dist/selection_mod.pcpl` rebuilt, catalog tables in `README.md` and `README.ru.md` synchronized.
 - Updated `plugins/selection_mod/README.md` documentation (DoD Rule 3.1).
 - Defect BUG-090 registered with status `RESOLVED` in `docs/BUGS_AND_ISSUES.md`, Phase 93 marked complete in `docs/CHECKLIST.md`.
+
+
+---
+
+## [2026-10-31 10:25] Chapter 101: Harmonic Color Studio Interactive Plugin & Ecosystem Expansion
+
+*Time: October 31, 2026, 10:25 (~25 minutes)*
+
+### 1. Background & Creative Challenge
+The daily workflow of digital colorists, concept artists, and illustrators in graphic editors is deeply intertwined with classical color theory. Historically, crafting harmonious palettes required jumping out to web apps such as Adobe Color or Coolors, or manually computing complementary or triadic angles on the color wheel while repeatedly sampling colors with the eyedropper.
+
+PhotoCraft artists needed a native, instant harmony tool directly inside the Companion ecosystem with the following core qualities:
+1. **Bi-Directional Live Synchronization:** The plugin must automatically pick up the active brush color selected by the artist in PhotoCraft (`session.colors`) and immediately reconstruct the entire harmony palette.
+2. **Classical Rules of Composition:** Support for 6 foundational color harmony rules (Complementary, Split-Complementary, Triadic, Analogous, Tetradic, and Monochromatic) with fine-tuning for spread angle $(\theta)$ and tonal contrast $(\Delta L)$.
+3. **The 60-30-10 Artistic Balance Rule:** Clear distinction into a 60% dominant base tone, 30% supporting harmonic secondary, 10% focal accent, plus dedicated highlight tint and deep shadow shade swatches.
+4. **Instant Brush Assignment:** One click on any harmonic swatch must immediately update PhotoCraft's active tool foreground color.
+5. **Dual Export Workflows:** The ability to either export the harmony group into PhotoCraft's native Swatches library (`swatches.newGroup` + `swatches.add`) or draw a clean swatch card directly on a new canvas layer (`[+] Draw on Canvas`).
+
+### 2. Implementation in the Zero-Core Hardcoding Paradigm
+In strict compliance with the **Zero-Core Hardcoding** principle, the entire studio was implemented **without touching a single line of core Rust code** (`crates/**`):
+- Created declarative manifest `plugins/harmonic_studio/plugin.json`: compact floating window ($360 \times 640$ px), spectral hue wheel `HueWheel` with real-time pointer indication, interactive sliders, separators, selectable `ColorSlot` widgets bound to `target_binding: "selected_slot"`, and card layout orientation selector (Horizontal Strip / Vertical Column).
+- Implemented reactive controller `plugins/harmonic_studio/logic.rhai`: pure mathematical RGB $\leftrightarrow$ HSL color conversion functions, harmony calculation algorithms, `on_session_colors` hook with echo suppression, and `on_state_changed` hook handling swatch selection and PhotoCraft IPC commands via socket 18492.
+- Designed pure vector SVG icon `plugins/harmonic_studio/icon.svg` adhering strictly to Vector-First UI standards (spectral ring, harmony triangle, and primary nodes).
+- Crafted comprehensive bilingual documentation `plugins/harmonic_studio/README.md` detailing all 6 harmony rules and 4 practical PhotoCraft use cases.
+
+### 3. Verification & Definition of Done
+- Plugin package validated and built: `cargo run --package plugin_validator -j 1` verified the 13th plugin in the ecosystem, generated `dist/harmonic_studio.pcpl`, and synchronized catalog tables in `README.md` and `README.ru.md`.
+- 100% pass across all specialized linters: architecture integrity (`architecture_integrity_test`), dev regulations (`dev_regulations_lint_test`), layout guard (`layout_guard_lint_test`), Vector-First UI (`vector_first_lint_test`), and localization (`plugin_i18n_lint_test`).
+- 100% clean run of all workspace tests (`cargo test --workspace -j 1 -- --test-threads=1`).
+- Code formatting check `cargo fmt --all -- --check` clean with 0 diffs.
+- Phase 94 checked off in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-31 13:05] Chapter 102: Hardware-Embedded Brand Identity (PC COMP), Isotropic Icon Geometry & Harmonic Studio Reactivity (BUG-091 / BUG-092)
+
+*Time: October 31, 2026, 13:05 (~35 minutes)*
+
+### 1. Background & Goals
+To unify Companion's visual brand identity and eliminate display distortions, three interrelated objectives were addressed:
+1. **Unified Brand Identity & Elimination of Theme Icon Swapping:** Integrating the author's official vector badge `assets/icon.svg` (emerald gradient badge, beveled corner, and full "PC COMP" typography) across the entire application using high-fidelity `resvg` rendering, eliminating theme-switch flickering in the system tray and windows.
+2. **Native Binary Icon Embedding & Elimination of Aspect Ratio Squashing (BUG-091):** Windows executable files lacked native PE `RT_GROUP_ICON` resources, displaying as generic white rectangles in File Explorer. Furthermore, an inaccurate initial Illustrator viewBox calculation caused vertical squashing.
+3. **Dynamic Localization Reactivity in Harmonic Studio (BUG-092):** When switching the application's language via Preferences, dynamic strings in Harmonic Color Studio (`slot_nuance_label`) did not update until the user manually manipulated the harmony scheme or sliders.
+
+### 2. Engineering Solutions
+1. **Isotropic Square Badge Geometry (`assets/icon.svg`):**
+   - The exact stroke bounds of the vector badge ($527.5 \times 556.0$) were centered into a strictly square `viewBox="-8 96 600 600"` with explicit `width="600" height="600"`.
+   - Complete elimination of squashing or stretching: scaling in `render_svg_icon` via `resvg::tiny_skia` is now 100% isotropic ($s_x = s_y$).
+   - Preserved full original detail with complete "PC COMP" branding across all display contexts.
+
+2. **Native ICO Generation & PE Resource Compilation:**
+   - In `crates/overlay_ui/src/icons.rs`, implemented hybrid encoder `generate_hybrid_ico`: resolutions $16 \times 16$, $24 \times 24$, $32 \times 32$, $48 \times 48$, and $64 \times 64$ are encoded in uncompressed 32-bit DIB/BMP, while $128 \times 128$ and $256 \times 256$ use PNG (ensuring 100% compatibility with Inno Setup 6 / Delphi VCL `TIcon` and Win32 GDI APIs).
+   - In `crates/companion_app`, added `winres = "0.1"` under `[target.'cfg(windows)'.build-dependencies]` and created `build.rs` utilizing absolute `CARGO_MANIFEST_DIR`. Icons are compiled directly into the executable's PE headers via `rc.exe`.
+   - Wired `SetupIconFile=..\..\assets\icon.ico` in Inno Setup, FreeDesktop SVG in Linux DEB packages, and ICNS support for macOS.
+   - For all window viewports (`overlay_ui/src/lib.rs`, `dynamic_tool.rs`), standard size `get_egui_icon_data(64)` is used, with `get_tray_icon(32)` for the system tray. Dynamic tool windows now display the official icon in their titlebar and taskbar.
+
+3. **End-to-End Localization Reactivity in Harmonic Studio (BUG-092):**
+   - In `plugins/harmonic_studio/logic.rhai`, updated `on_state_changed` to detect runtime language changes: `cur_lang != state["last_language"]`.
+   - Whenever Companion changes language, `recalculate_palette(state)` is triggered immediately, instantly refreshing all dynamic strings.
+
+### 3. Verification & Definition of Done
+- 100% successful formatting check: `cargo fmt --all -- --check` (0 diffs).
+- 100% clean run of all workspace tests (`cargo test --workspace -j 1`).
+- Validated 13/13 plugins via `plugin_validator` (all `.pcpl` packages rebuilt, README tables synchronized).
+- Passed architectural integrity test `architecture_integrity_test` and development regulations test `dev_regulations_lint_test`.
+- Release executable `target/release/photocraft-companion.exe` successfully compiled with native PE resource and verified via Win32 `[System.Drawing.Icon]::ExtractAssociatedIcon`.
+- Defects BUG-091 and BUG-092 registered in `docs/BUGS_AND_ISSUES.md`, Phase 95 recorded in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-31 13:40] Chapter 103: Dynamic DPI System Icon Calibration (SM_CXSMICON), Conquering Tray Artifacts & Native Titlebar Fidelity
+
+*Time: October 31, 2026, 13:40 (~25 minutes)*
+
+### 1. Background & Root Cause Analysis
+Following the unification of the brand identity and the compilation of `.ico` into PE resources, users noted a visual degradation: while the taskbar icon displayed in exceptional fidelity, the system tray icon (`Shell_NotifyIcon`) and native window titlebar corners (Plugins Manager, Harmonic Studio) suffered from noticeable blurring, jagged contours, and aliasing artifacts.
+
+Deep analysis of the StatCraft codebase and Win32 system metrics uncovered the root cause:
+1. **Hardcoded Runtime Pixel Dimensions:** In `companion_app/src/main.rs`, the tray was initialized with hardcoded `get_tray_icon(32)`, while window viewports requested `get_egui_icon_data(64)`.
+2. **Low-Quality Windows Explorer Resampling:** The physical slot of the system tray and native window titlebar corners on standard 100% DPI screens is exactly **16×16 pixels** (20×20 at 125%, 24×24 at 150%). When Windows Explorer (`explorer.exe`) and DWM receive 32×32 or 64×64 rasters, they invoke `DrawIconEx` using crude nearest-neighbor decimation without anti-aliasing. This decimated thin strokes and blurred typography.
+3. **Per-Frame `WM_SETICON` Spam:** Inside the Plugin Manager rendering loop, `ctx.send_viewport_cmd(ViewportCommand::Icon)` was called on every single frame, forcing Windows to recreate and assign the `HICON` handle 60 times per second.
+
+### 2. Engineering Solutions
+1. **Dynamic System Metrics Query (`GetSystemMetrics(SM_CXSMICON)`):**
+   - Implemented `get_system_small_icon_size()` in `crates/overlay_ui/src/win32_window.rs` reading `SM_CXSMICON = 49`:
+     * 100% DPI $\rightarrow$ 16×16 px;
+     * 125% DPI $\rightarrow$ 20×20 px;
+     * 150% DPI $\rightarrow$ 24×24 px;
+     * 200% DPI $\rightarrow$ 32×32 px.
+   - Provided a safe 16 px fallback on Unix/macOS platforms.
+2. **1:1 Native Pixel Mapping for System Tray:**
+   - In `crates/companion_app/src/main.rs`, the system tray icon is populated via `get_tray_icon(get_system_small_icon_size())`. The `resvg` engine rasterizes directly to the physical slot dimension, completely bypassing Windows Explorer's destructive downsamplers.
+3. **Window Viewport Icon Streamlining:**
+   - In `overlay_ui/src/lib.rs` and `dynamic_tool.rs`, window icons are matched to `get_system_small_icon_size()`.
+   - Eliminated the per-frame `send_viewport_cmd(ViewportCommand::Icon)` call. Icons are assigned strictly once during `ViewportBuilder` configuration.
+4. **Preserving 100% Brand Vector Authenticity:**
+   - The vector file `assets/icon.svg` is maintained in complete fidelity (emerald badge, "PC COMP") with zero artificial truncation of vector paths.
+
+### 3. Verification & Definition of Done
+- 100% test pass in `overlay_ui` (all 88 unit, integration, and UI tests green).
+- Architectural linter `architecture_integrity_test` and regulation linter `dev_regulations_lint_test` passed 100%.
+- Zero style discrepancies: `cargo fmt --all -- --check`.
+- Release executable `target/release/photocraft-companion.exe` successfully compiled with the updated icon subsystem.
+- Updated `docs/BUGS_AND_ISSUES.md` (BUG-091), Phase 95 verified in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-31 18:15] Chapter 104: Decomposing dynamic_tool Monolith, Production File Size Guard & Engine Crate Plugin Isolation
+
+*Time: October 31, 2026, 18:15 (~45 minutes)*
+
+### 1. Architectural Challenge & Context
+As the plugin ecosystem grew, `crates/overlay_ui/src/dynamic_tool.rs` expanded into an unwieldy monolith of 4,560 lines. Crammed into a single source file were disparate concerns:
+1. Window orchestration, lifecycle management, and `eframe` viewport coordination;
+2. Rhai scripting sandbox integration and IPC-bridge translation;
+3. Diverse vector widgets: from simple tabs and color slots to the `HueWheel` color compass and interactive modifier stack;
+4. A static color lookup table `NAMED_COLORS` spanning over 1,160 lines.
+
+This monolithic accumulation presented severe risks:
+- AI subagent context windows were overwhelmed by gargantuan diffs, causing autonomous agents to stall when parsing whole files;
+- Architectural boundaries and single-responsibility principles degraded;
+- A risk emerged of plugin-specific logic creeping into core engine crates rather than remaining strictly self-contained within `plugins/`.
+
+### 2. Guardrails & Architectural Invariants
+To prevent regressions permanently, we designed and implemented two automated test guards:
+
+1. **Core Isolation Guard (`architecture_integrity_test.rs`):**
+   - The test `test_no_plugin_specific_files_in_engine_crates` inspects all core crates (`ai_engine`, `companion_app`, `photocraft_bridge`, `raster_engine`, `core_contracts`) against folders in `plugins/`.
+   - Files matching plugin names (`<id>.rs`) or prefixed filenames (`<id>_*.rs`) are strictly prohibited in core crates. Companion core remains a 100% agnostic universal runtime.
+
+2. **File Size & Tier Gradation Guard (`dev_regulations_lint_test.rs`):**
+   - The test `test_production_file_size_guard` excludes `#[cfg(test)]` sections and validates production code against a tier-based scale:
+     * **Tier 1 (Simple Leaf Widgets):** $\le 500$ lines (`tabs.rs`, `color_slot.rs`, `vector_pad.rs`, `preview.rs`);
+     * **Tier 2 (Complex Interactive Canvas Widgets):** $\le 750$ lines (`hue_wheel.rs`, `modifier_stack.rs`);
+     * **Tier 3 (Engine Coordinators & Dispatchers):** $\le 800$ lines (`mod.rs`, `rhai_bridge.rs`, `widgets/mod.rs`);
+     * **Tier 4 (State Machines & Storage Structs):** $\le 500$ lines (`state.rs`);
+     * **Tier 5 (Static Data Tables):** $\le 2000$ lines (`named_colors.rs`);
+     * **Tier T (Test Suites):** $\le 1500$ lines (`tests.rs`).
+   - A strict Hard Cap enforces that no logic module may exceed 800 production lines.
+
+### 3. Modular Decomposition of dynamic_tool
+The monolithic `dynamic_tool.rs` was removed and decomposed into a clean modular package `crates/overlay_ui/src/dynamic_tool/`:
+- `mod.rs` (570 lines, Tier 3) — window orchestration, lifecycle, and viewport rendering;
+- `named_colors.rs` (1161 lines, Tier 5) — isolated color terminology table;
+- `rhai_bridge.rs` (199 lines, Tier 3) — isolated Rhai engine setup and API bindings;
+- `state.rs` (351 lines, Tier 4) — window and widget state structures;
+- `widgets/mod.rs` (432 lines, Tier 3) — widget routing and dispatcher;
+- `widgets/tabs.rs` (116 lines), `widgets/color_slot.rs` (97 lines), `widgets/vector_pad.rs` (145 lines), `widgets/preview.rs` (315 lines), `widgets/hue_wheel.rs` (366 lines), `widgets/modifier_stack.rs` (274 lines);
+- `tests.rs` (608 lines, Tier T) — isolated subsystem test suite.
+
+UI linters (`vector_first_lint_test.rs`, `layout_guard_lint_test.rs`, `multi_viewport_lint_test.rs`) were upgraded to recursively traverse all subdirectories.
+
+### 4. Verification & Definition of Done
+- Strict adherence to Resource Guard: all workspace tests run with `-j 1`.
+- 100% tests passing across all crates (0 failures in workspace).
+- Zero code formatting discrepancies: `cargo fmt --all -- --check`.
+- `plugin_validator` verified all 14 ecosystem plugins, generated `.pcpl` archives, and updated tables in `README.md` and `README.ru.md`.
+- Defect BUG-093 registered in `docs/BUGS_AND_ISSUES.md`, Phase 96 marked complete in `docs/CHECKLIST.md`.
+
+---
+
+## [2026-10-31 19:15] Chapter 105: Interactive AI Depth Studio, Generic lens_blur Filter and Split-Preview Window Layout
+
+*Time: October 31, 2026, 19:15 (~50 minutes)*
+
+### 1. Background & Creative Challenge
+Monocular depth maps generated by state-of-the-art neural networks such as Depth Anything have unlocked remarkable possibilities in 3D and compositing. In daily 2D graphics workflows, however, digital painters and photographers frequently encounter a frustrating workflow gap. A conventional AI plugin outputs a flat grayscale depth mask onto a new layer, leaving the artist with tedious manual chores: copying the mask into an alpha channel, adjusting gradient curves for depth-of-field (DoF) bokeh, simulating aerial perspective, and experimenting with blending modes for atmospheric fog.
+
+Our goal was to build a cohesive, holistic tool: an interactive depth studio where the neural network infers the depth map asynchronously in the background while the user sees immediate real-time feedback right inside the plugin window—adjusting fog density, fine-tuning bokeh aperture radii, and clicking directly onto any point on the canvas to lock focal distance to that specific subject.
+
+### 2. Architectural Invariant: Neutral Core Runtime & Zero Hardcoding
+The core engineering challenge was delivering this rich interactive experience while strictly maintaining the Zero-Core Hardcoding principle:
+1. **Zero Plugin-Specific Code in Core Engine:** No keywords, plugin IDs, or tailored heuristics were added to `companion_app`, `raster_engine`, or `ai_engine`.
+2. **Contract-First Declarative Schema (`core_contracts`):**
+   - Introduced the tabbed container `WidgetNode::Tabs` with `TabItem` nodes supporting bilingual titles (`title`, `title_ru`) and independent child widget trees.
+   - Added `auto_run_model_role: Option<String>` to `InteractiveUiConfig`: the companion core recognizes generic model roles (e.g. `"depth_estimation"`), automatically executes background inference via `tokio::task::spawn_blocking`, and injects the resulting grayscale value map into the dynamic tool engine.
+   - Added `layout_mode: Option<String>` configured to `"split_preview_right"` to dictate side-by-side viewport distribution.
+3. **Agnostic Raster Filter (`raster_engine`):**
+   - Created a generic optical filter `lens_blur` (`LensBlurParams`) operating on an abstract source image and intensity map: circle-of-confusion (CoC) depth-of-field, atmospheric fog with exponential falloff and customizable tint, and specular bloom highlights.
+
+### 3. Engineering Solutions: 60 FPS Proxy Preview, Click-to-Focus & Non-Destructive Export
+1. **Real-Time 60 FPS Proxy Preview:**
+   - Full optical bokeh calculations across large 4K/8K images are computationally intensive. For the interactive preview, we engineered an $O(1)$ separable sliding-window proxy algorithm operating on a 512px buffer. As a result, moving fog and aperture sliders yields silky 60 FPS visual feedback with zero UI-thread stalls.
+2. **Interactive Click-to-Focus:**
+   - The `ImagePreview` widget gained interactive pointer support via `Sense::click_and_drag()`. Clicking anywhere on the canvas normalizes the coordinates to $(u, v)$, queries the neural depth map, and immediately updates the `focus_distance` focal plane to match the clicked subject.
+3. **Non-Destructive Layer Export to PhotoCraft:**
+   - Upon clicking the Apply button, the `script.rhai` workflow dispatches the raster operation, producing either a unified composite or splitting the effect across two independent layers in PhotoCraft: a defocused base layer and an atmospheric fog layer with a designated blend mode (`Screen`, `Soft Light`, or `Normal`). The original layer remains completely untouched.
+4. **Vector-First Busy Indicator:**
+   - While background neural inference is active, a vector pulsing ring animates cleanly over the preview canvas, providing clear user feedback without any Unicode tofu or emojis.
+
+### 4. Verification & Definition of Done
+- 100% adherence to Resource Guard: all workspace tests executed with `-j 1`.
+- 100% unit, integration, and end-to-end tests passing across all crates (0 failures in workspace).
+- Zero formatting discrepancies: `cargo fmt --all -- --check`.
+- All linters passing: `architecture_integrity_test`, `dev_regulations_lint_test`, `vector_first_lint_test`, `layout_guard_lint_test`, `i18n_lint_test`.
+- `plugin_validator` verified all 14 ecosystem plugins, built the standalone `dist/depth_studio.pcpl` package, and synchronized catalog tables in both `README.md` and `README.ru.md`.
+- Phase 97 in `docs/CHECKLIST.md` verified and closed.
+
+---
+
+## [2026-10-31 20:10] Chapter 106: 64px Taskbar Icon Calibration, Crisp 1280px Preview & Reactive Control of Depth Studio
+
+*Time: October 31, 2026, 20:10 (~45 minutes)*
+
+### 1. Background & Hands-On User Testing
+Following the initial launch of the interactive Depth Studio, thorough manual validation was conducted. Testing the plugin on practical graphic workflows and maximizing the window across higher-resolution displays exposed several ergonomics and runtime quirks separating a prototype from commercial-grade software:
+1. **Windows Taskbar Icon Blurriness:** The window icon on the Windows taskbar and in the Alt+Tab switcher appeared as a fuzzy 16-pixel smudge.
+2. **Preview Interpolation Artifacts upon Maximization:** On 2K displays, maximizing the plugin window stretched the 512px proxy buffer, producing noticeable bilinear blur.
+3. **Preset Inactivity:** Clicking atmospheric fog or bokeh presets failed to alter parameters due to an event handler signature mismatch in Rhai scripts.
+4. **Missing Feedback for Uninstalled AI Models:** If the neural weights `depth_anything_v2_vits.onnx` were not present on disk, the canvas remained blank without guidance.
+5. **Rigid 50%/50% Split:** The parameter pane consumed half the screen, needlessly cramping the preview canvas.
+
+### 2. Root Causes & Engineering Solutions
+
+#### A. Windows Taskbar Icon Calibration (64px)
+Investigating the taskbar icon issue revealed a Windows subsystem subtlety: all viewports were previously initialized with `get_system_small_icon_size()`, fetching the `SM_CXSMICON` metric (16–20 px). While optimal for system tray slots and small window titlebars, Windows Taskbar and Alt+Tab require `ICON_BIG` (32–48 px). Windows GDI forcibly upscaled the 16px raster, turning crisp icons into blurry artifacts.
+We introduced constant `SM_CXICON = 11` and implemented `get_system_window_icon_size() -> u32`, returning `GetSystemMetrics(SM_CXICON).max(64)` on Windows and `64` on other operating systems. Window viewports now receive high-resolution 64×64 rasters, ensuring crisp subpixel rendering on any display scaling factor.
+
+#### B. Pixel-Sharp 1280px Preview & Safe Layer Export
+In `companion_app/src/main.rs`, the target proxy dimension was increased from 512 px to **1280 px** (`calculate_preview_scale`). On Full HD and 2K screens, preview images now render at 1:1 pixel parity or clean downscaling, eliminating blur. The `refresh_preview` task now invokes `engine.clear_preview_and_role_mask(plugin_id)`, and `lens_blur` export safely resizes the depth map to match the exact dimensions of the active source layer `src`.
+
+#### C. Preset Reactivity & Bidirectional Action Dispatch
+In `dynamic_tool/mod.rs` and `rhai_bridge.rs`, we implemented bidirectional action support: button clicks storing `action_*` flags now dispatch `on_action(action_id)` with stripped identifiers and reset the state flag before calling `on_state_changed(state)`. In `plugins/depth_studio/script.rhai`, preset handlers now automatically enable the corresponding effect (`fog_enabled = true` / `bokeh_enabled = true`), while initial defaults start disabled (`default: false`) for a clean initial canvas.
+
+#### D. Adaptive Split Layout & Vector Model Indicators
+The rigid `ui.columns(2)` was replaced with an adaptive layout: a compact 310.0 px settings sidebar with a vertical separator and an elastic `ImagePreview` occupying all remaining viewport area. Inside the sidebar, labels continue using dynamic width measurement (`layout_no_wrap`), satisfying `layout_guard_lint_test.rs`.
+When model weights are missing on disk, the plugin displays a vector `BannerStyle::Warning` banner with a button navigating directly to Plugin Manager, accompanied by an amber centered warning badge over the preview canvas (100% Vector-First, zero Unicode tofu).
+
+### 3. Verification & Definition of Done
+- 100% adherence to Resource Guard: all compilations and tests executed strictly with `-j 1`.
+- Full workspace test suite (`cargo test --workspace -j 1`) passed with 0 failures.
+- Clean code formatting: `cargo fmt --all -- --check` passed with 0 differences.
+- All linters verified: `layout_guard_lint_test`, `vector_first_lint_test`, `i18n_lint_test`, `architecture_integrity_test`, `dev_regulations_lint_test`.
+- Defects `BUG-094`, `BUG-095`, `BUG-096`, and `BUG-097` resolved and documented in `docs/BUGS_AND_ISSUES.md`.
+- Phase 98 checked off in `docs/CHECKLIST.md`.
+- `plugin_validator` verified 14/14 plugins and packaged all `dist/*.pcpl` bundles.
+- Release binary `target/release/photocraft-companion.exe` successfully compiled.
+---
+
+## [2026-10-31 22:15] Chapter 107: Depth Studio Multilingual Layers for 22 Languages, IPC Fog Blending, and Vector Busy State
+
+*Time: October 31, 2026, 22:15 (~45 minutes)*
+
+### 1. Background & Creative Experience
+Following visual refinement of Depth Studio's preview and split layout, we focused on the final critical workflow aspect—exporting results back onto the PhotoCraft canvas. Practical canvas testing revealed details breaking the cohesive studio feel:
+1. **Unlocalized Layer Names:** Generated layers ignored the host editor's active language. An artist working in Japanese or Russian PhotoCraft received English layer names, and repeated operations could accumulate redundant suffixes.
+2. **Fog Placed in Normal Blend Mode:** The atmospheric fog layer was pasted with standard `Normal` blending, requiring artists to manually navigate to the Layers panel to switch it to `Screen` or `Soft Light`.
+3. **Global Output Mode Disconnected from Fog:** The separate layer selector was positioned in a global footer at the bottom of the window, creating confusion when fog was disabled.
+4. **Missing Render Button Busy State:** When clicking "Apply to PhotoCraft", the button showed no feedback during intensive optical rendering.
+
+### 2. Root Causes & Engineering Solutions
+
+#### A. 22-Language Layer Naming in Core Contracts
+In `crates/core_contracts/src/i18n.rs`, we implemented layer naming helpers across all 22 active host languages:
+- `bokeh_suffix(&self) -> &'static str`: returns localized bokeh suffixes (`Боке` for RU/UK, `散景` for ZH, `ボケ` for JA, `보ке` for KO, `Desenfoque` for ES, `Desfoque` for PT, `Bokeh` for EN/DE/FR/IT/PL, etc.);
+- `format_bokeh_name(&self, base_name: &str) -> String`: formats layer names with automatic deduplication across all supported languages, preventing accumulation of repeated suffixes;
+- `fog_layer_name(&self) -> &'static str`: provides localized names for separate fog layers (`Атмосферный туман`, `Atmospheric Fog`, `大气雾`, `大気フォグ`, `Ατμοσφαιρική ομίχλη`, `वायुमंडलीय कोहरा`, etc.).
+
+#### B. Native Fog Blending via PhotoCraft IPC & Universal Smart Retry
+Per Rule 3 and Rule 4 of the architectural regulations, companion core runtime is strictly prohibited from hardcoding layer-specific logic for individual plugins. Blend modes across all ecosystem plugins (`dodge_and_burn`, `frequency_separation`) are applied strictly through standard PhotoCraft IPC `layer.setProps`.
+In `plugins/depth_studio/script.rhai`, immediately after invoking `raster.process`, the plugin dispatches the native editor action:
+```rhai
+if fog_sep && state["fog_enabled"] == true {
+    let blend_mode = state["fog_blend_mode"];
+    let blend_name = if blend_mode == 1 { "Screen" } else if blend_mode == 2 { "Soft Light" } else { "Normal" };
+    if blend_name != "Normal" {
+        execute_command("layer.setProps", #{ "blend": blend_name });
+    }
+}
+```
+In `companion_app`, the central IPC worker was enhanced with universal Smart Retry: if a non-English PhotoCraft instance rejects canonical English terminology, the runtime dynamically translates blend parameters into the active host locale via `translate_value_to_host` (e.g. `"Экран"`, `"Negativ multiplizieren"`), keeping the core 100% agnostic.
+
+#### C. Isolated Fog Toggle & Removal of Global output_mode
+The global `output_mode` dropdown was completely removed from `plugin.json` and `script.rhai`. In its place, a dedicated toggle was added inside the Atmospheric Fog tab:
+- `fog_as_separate_layer` (enabled by default, `true`).
+When enabled, fog exports as an independent non-destructive layer with appropriate blend modes. When disabled, it merges smoothly into the single bokeh layer.
+
+#### D. Vector-First Busy State for Buttons (Rule 6.3)
+In `dynamic_tool/widgets/mod.rs`, we added first-class support for button busy states:
+- While processing, label text transitions to `"..."`;
+- Interactivity is restricted to `Sense::hover()` to prevent duplicate clicks;
+- An active glowing vector stroke (`palette.accent_blue`) frames the button with 1 px margin.
+This fully complies with Vector-First UI standards without any emoji or Unicode tofu characters.
+
+### 3. Verification & Definition of Done
+- All compilations and tests executed under Resource Guard with `-j 1`.
+- 100% tests passed across all workspace crates (`cargo test --workspace -j 1 -- --test-threads=1`).
+- Clean code formatting with zero differences (`cargo fmt --all -- --check`).
+- All architectural and regulatory linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `vector_first_lint_test`, `layout_guard_lint_test`, `i18n_lint_test`.
+- `plugin_validator` validated 14/14 plugins, built `dist/depth_studio.pcpl`, and updated tables in `README.md` and `README.ru.md`.
+- Defect `BUG-098` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 99 marked completed in `docs/CHECKLIST.md`.
+
+## [2026-10-31 23:45] Chapter 108: Adaptive Multi-Column Toolstrip, 8-Button Tier Limit, and Eradicating Excessively Long Toolbars
+
+*Time: October 31, 2026, 23:45 (~25 minutes)*
+
+### 1. The Problem: "Sword-Like" Toolbars with Catalog Growth
+With the PhotoCraft Companion catalog growing past 14 plugins, having all active plugins on screen began stretching the floating toolstrip into an awkwardly long stick. On moderate display resolutions, the vertical panel stretched nearly across the entire screen height, while the horizontal mode covered too much valuable canvas real estate.
+
+An initial idea was to create folding accordions by plugin stack types (`no_code`, `native_ai`, `native_algorithm`), but critical evaluation quickly surfaced the UX flaw: artists do not care about the underlying runtime stack—they care about creative tasks (retouch, color, compositing). In contrast, the classic multi-column approach pioneered by Photoshop (multi-column tool palettes) proved to be an ergonomic home run.
+
+### 2. Architectural Solution & Implementation
+
+#### A. Automatic Grid Layout with 8-Button Threshold
+We introduced `MAX_BUTTONS_PER_TIER = 8` in `crates/overlay_ui/src/toolstrip.rs`.
+- When 1 to 8 buttons are active, the toolbar remains a monolithic ultra-compact strip (1 column or 1 row).
+- As soon as the 9th plugin appears, the panel automatically transitions into 2 columns (or 2 rows).
+- At 17 plugins, a 3rd tier is smoothly spawned.
+The calculation is completely deterministic and requires zero manual toggle buttons:
+`let cols = ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;`
+
+#### B. Ergonomic Flow Matching Digital Art Standards
+- **Vertical Mode (Column-major):** buttons are partitioned via `self.buttons.chunks_mut(8)` into vertical columns from top to bottom. Column 1 holds buttons 1..8, column 2 holds 9..16. This aligns with Photoshop muscle memory.
+- **Horizontal Mode (Row-major):** buttons flow left-to-right across rows (row 1: 1..8, row 2: 9..16).
+
+#### C. Exact Multi-Tier Geometry & No-Clipping Bounds (`calculate_size`)
+Native window dimensions adjust dynamically on the fly:
+- Vertical mode: `width = 50.0 + (cols - 1.0) * 36.0`, `height = max_rows * 36.0 + 68.0`.
+- Horizontal mode: `width = (max_cols * 38.0 + 16.0).max(116.0)`, `height = 78.0 + (rows - 1.0) * 36.0`.
+The top drag handle (6 dots) in Row 1 and the service buttons (orientation, manager, tray) in Row 2 remain centered across the expanded window width using `available_width()`.
+
+### 3. Verification & Definition of Done
+- Compilations and test suites executed strictly under Resource Guard with `-j 1`.
+- Expanded geometry test suites `test_vertical_toolstrip_geometry_no_clipping` and `test_horizontal_toolstrip_geometry_no_clipping` across `[1, 2, 4, 8, 9, 14, 16, 18]` button configurations, verifying zero clipping and exact bounding box containment.
+- Added boundary threshold tests to `test_toolstrip_size_scaling` for 0, 1, 5, 8, 9, 16, and 17 buttons.
+- 100% tests passed across the Cargo workspace (`cargo test --workspace -j 1`).
+- Code formatting strictly verified (`cargo fmt --all -- --check`).
+- All regulatory and architectural linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `vector_first_lint_test`, `layout_guard_lint_test`, `i18n_lint_test`.
+- Phase 100 marked completed in `docs/CHECKLIST.md`.
+
+## [2026-11-01 10:25] Chapter 109: Fundamental Solution for Windows Icon Crispness Across All Contexts and Cross-Platform Safety (BUG-099)
+
+*Time: November 01, 2026, 10:25 (~35 minutes)*
+
+### 1. Architectural Investigation: The "Swing" Between Titlebar Caption and Taskbar
+In earlier chapters we encountered a classic pitfall of cross-platform windowing toolkits. In `winit` / `eframe`, there is only one method to set a window icon:
+`ViewportBuilder::default().with_icon(IconData { rgba, width, height })`.
+
+Under the hood on Windows, `winit` takes this single raster and submits it directly into both Win32 slots:
+- `ICON_SMALL` (window caption titlebar in the top-left corner, 16–24 px);
+- `ICON_BIG` (Windows Taskbar and Alt+Tab switcher, 32–64 px).
+
+This caused a painful regression swing:
+1. **In BUG-091:** We passed a 16 px raster based on system `SM_CXSMICON`. In the window titlebar, the icon became pixel-perfect crisp (1:1). But on the Windows Taskbar, Windows upscaled 16 px with a bilinear filter up to 48 px, turning it into a blurry smudge.
+2. **In BUG-095:** To fix the taskbar, we passed a 64 px raster. The taskbar and Alt+Tab became razor-sharp. But Windows DWM shoved that 64 px raster into the 16 px titlebar caption slot and downscaled it using unfilitered nearest-neighbor sampling. The badge outline broke and the "PC COMP" text became an unreadable pixel mess.
+
+It became obvious: a single `with_icon` call in `winit` cannot resolve this conflict on Windows. A native Win32 hook was required to supply separate, tailored rasters to `ICON_SMALL` and `ICON_BIG`.
+
+### 2. Implementation: Dual-Slot Win32 Hook with Zero Overhead
+
+#### A. GDI Handle Caching Without Leaks
+In `crates/overlay_ui/src/win32_window.rs`, we implemented the descriptor generator `get_or_create_native_icons()`:
+- Small icon is rendered strictly from specialized `APP_ICON_SMALL_SVG` (`assets/icon_small.svg`, square 1:1 viewBox `0 90 612 612`) via `resvg` tailored to the physical system metric `get_system_small_icon_size()` (16 px at 100% DPI, 20 px at 125%, 24 px at 150%, 32 px at 200%) exclusively for the window titlebar caption (`ICON_SMALL`).
+- Big icon is rendered for `get_system_window_icon_size()` (64 px).
+- Both rasters are encoded into DIB format via `encode_ico_dib` and converted into native `HICON` handles via `CreateIconFromResourceEx`.
+- Handles are cached inside a static `OnceLock<Option<(isize, isize)>>`. They are created exactly **once per process lifecycle**, completely preventing Windows GDI handle leaks when opening and closing plugin windows.
+
+#### B. Thread Window Enumeration and Zero Overhead at 60 FPS ($O(1)$)
+The function `apply_crisp_window_icons_by_title(title)`:
+1. Finds the window `HWND` for the calling UI thread via `EnumThreadWindows(GetCurrentThreadId(), ...)` with fallback to `FindWindowW`.
+2. Checks the window property `GetPropW(hwnd, "PC_CRISP_ICONS")`.
+3. If not yet set, sends `SendMessageW(hwnd, WM_SETICON, ICON_SMALL, hicon_small)` and `SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon_big)`, then marks the window with `SetPropW(hwnd, "PC_CRISP_ICONS", 1)`.
+4. On all subsequent frames, the `icons_calibrated: bool` flag on window state structs disables any further calls, ensuring 0% CPU overhead at 60 FPS.
+
+#### C. Cross-Platform Safety
+- On Windows: 100% pixel-perfect crispness in both the titlebar caption and the taskbar.
+- On Linux (X11 / Wayland) and macOS: `apply_crisp_window_icons_by_title` compiles as an inline no-op, while the cross-platform `with_icon(64)` provides crisp rendering per X11 `_NET_WM_ICON` and macOS Dock HIG standards.
+
+### 3. Verification & Definition of Done
+- Compilations and test suites executed strictly under Resource Guard with `-j 1`.
+- Clean formatting confirmed with `cargo fmt --all -- --check` (0 differences).
+- All 61 unit tests in `overlay_ui` passed.
+- `i18n_lint_test` confirmed: `win32_window.rs` and `icons.rs` are 100% free of Cyrillic characters.
+- `vector_first_lint_test` confirmed zero forbidden Unicode/emoji glyphs.
+- Architectural and regulatory linters passed: `architecture_integrity_test` and `dev_regulations_lint_test`.
+- Validator `plugin_validator` validated all 14 ecosystem plugins.
+- Defect `BUG-099` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 101 marked completed in `docs/CHECKLIST.md`.
+
+## [2026-11-01 11:55] Chapter 110: Plugin Manager UI Polish: Installed Plugin Icons and Adaptive Store Catalog Layout (BUG-100)
+
+*Time: November 01, 2026, 11:55 (~35 minutes)*
+
+### 1. The Problem: Visual Disconnect Between Tabs and Text Overlap in Store
+With the companion ecosystem growing rapidly, the Plugin Manager serves as the primary hub for managing tools. However, a noticeable visual inconsistency emerged between its tabs:
+1. In the **"Store"** tab, each plugin card featured an SVG icon (24×24 px) with vector fallback badges. However, when descriptions were lengthy (particularly in bilingual descriptions like `AI Remove Background`, `Selection Modifiers`, or `Cinematic Teal & Orange`), text lines extended across the full width and collided with right-aligned action buttons (`Installed`, `Install`, `Update`).
+2. In the **"Plugins"** tab, installed plugins lacked icon rendering altogether—cards started directly with the badge pill (`AI GPU`, `NO-CODE`), and the enabled toggle was placed in the top header row, making the tabs feel disjointed.
+3. In the toolbar codebase (`crates/overlay_ui/src/lib.rs`), `icon.svg` path resolution was duplicated inline across multiple match arms.
+
+### 2. Architectural Solution & Implementation
+
+#### A. Contract-Level Icon Path Resolution (`crates/core_contracts/src/plugin.rs`)
+We added the helper method `resolve_icon_path(&self, root_plugins_dir: Option<&Path>) -> Option<PathBuf>` to `PluginManifest`:
+- Priority 1: `self.plugin_dir.join(icon)` if explicitly configured;
+- Priority 2: `self.plugin_dir.join("icon.svg")` as default;
+- Priority 3: Fallback to `root_plugins_dir.join(&self.id)` if `plugin_dir` was unpopulated.
+This eliminated 24 lines of duplicated filesystem probe logic in `crates/overlay_ui/src/lib.rs`, replacing them with a concise `m.resolve_icon_path(None)`. Added unit test `test_plugin_manifest_resolve_icon_path`.
+
+#### B. Unified 3-Column Card Layout in Plugins Tab (`crates/overlay_ui/src/manager.rs`)
+In `render_plugins_tab`, card layout was elevated to match Store ergonomics:
+- **Left:** Vector SVG icon (24×24 px) with theme-adaptive tinting and caching in `store_icon_cache`, or a neat vector fallback badge (`AI`, `FX`, `ALGO`, `UI`, `RH`, `CLI`);
+- **Center:** Vertical stack containing title header (type, name, version, documentation button), localized description, and footer (author, model status/download). Width is constrained via `ui.set_max_width((ui.available_width() - 40.0).max(100.0))` to prevent text collision with the checkbox;
+- **Right:** Plugin enable/disable checkbox cleanly aligned to the right edge via `ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), ...)`.
+
+#### C. Preventing Text Collision in Store Cards (`crates/overlay_ui/src/manager.rs`)
+In `render_store_tab`, the central `ui.vertical` now calculates an adaptive bounded width:
+```rust
+let action_btn_area_width = 110.0;
+let max_content_width = (ui.available_width() - action_btn_area_width).max(100.0);
+ui.set_max_width(max_content_width);
+```
+Plugin descriptions now wrap adaptively at least 110 px before the right card edge, leaving ample dedicated space for action buttons and download spinners across all window sizes.
+
+### 3. Verification & Definition of Done
+- All compilations and tests executed strictly under Resource Guard with `-j 1`.
+- `cargo fmt --all -- --check` confirmed clean code formatting (0 differences).
+- 100% tests passed across all workspace crates (`cargo test --workspace -j 1`).
+- `i18n_lint_test` verified that all Cyrillic strings are properly localized via `.t("En", "Ru")`.
+- `vector_first_lint_test` verified zero forbidden emoji or Unicode tofu symbols.
+- Architectural and regulatory linters passed: `architecture_integrity_test` and `dev_regulations_lint_test`.
+- Validator `plugin_validator` verified all 14 ecosystem plugins.
+- Defect `BUG-100` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 102 marked completed in `docs/CHECKLIST.md`.

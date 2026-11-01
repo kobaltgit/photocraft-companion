@@ -582,6 +582,7 @@
 | **SYS-009** | GPU Session Caching & Resilient Fallback | Кэш скомпилированных ONNX-сессий (LRU емкостью 3) с повторным использованием между тайлами и вызовами, а также автоматическая инвалидация и бесшовный откат на CPU при сбое драйвера DirectML. *(РЕАЛИЗОВАН / DONE — ядро v1.2.3)* |
 | **SYS-010** | In-App Plugin Store & Auto-Updater | Встроенная витрина маркетплейса плагинов в Менеджере с установкой `.pcpl` в 1 клик, оффлайн-кэшированием `registry.json` и встроенным обновлением приложения Компаньона через GitHub Releases. *(РЕАЛИЗОВАН / DONE — ядро v1.2.0)* |
 | **SYS-011** | Cross-Platform App Launcher & Process Tracer | Разрешение Linux `.desktop` файлов (FreeDesktop Desktop Entry Specification), поиск в XDG-каталогах, распознавание процессов AppImage в `/proc/<pid>/exe` с парсингом точек монтирования squashfs и защитой от read-only файловых систем. *(РЕАЛИЗОВАН / DONE — ядро v1.2.4)* |
+| **SYS-012** | Multi-Backend Acceleration & Inference Diagnostics | Расширение матрицы аппаратного ускорения (CoreML для macOS Apple Silicon, опциональный CUDA-пакет для Linux/Windows) и телеметрия инференса в UI (активный провайдер, имя видеокарты, время в миллисекундах, причины отката на CPU). *(Бэклог, Issue #6)* |
 
 ---
 

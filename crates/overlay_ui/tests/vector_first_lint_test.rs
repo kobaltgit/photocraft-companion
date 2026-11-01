@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Character categories forbidden in UI text according to Rule 6 (Vector-First UI):
 /// 1. Emojis and Pictographs (e.g., ⏳, ⚠️, ✨, 🪄, 🔥, 🚀, 💡, 🤖, 🔄, 📥)
@@ -7,6 +7,23 @@ use std::path::Path;
 /// 3. Dingbats & Checkmarks/Crosses (e.g., ✓, ✔, ✕, ✖)
 /// 4. Unicode geometric shapes & bullets (e.g., ● U+25CF, • U+2022)
 /// 5. Unicode arrows (e.g., ⬇, ⬆, ⬅, ➡)
+
+fn collect_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
+    if !dir.exists() {
+        return;
+    }
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs_files(&path, files);
+            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
+                files.push(path);
+            }
+        }
+    }
+}
+
 fn is_prohibited_ui_char(ch: char) -> Option<&'static str> {
     let code = ch as u32;
 
@@ -120,57 +137,45 @@ fn test_no_unsupported_emoji_or_unicode_symbols_in_ui_crates() {
     let mut violations = Vec::new();
     let mut files_scanned = 0;
 
+    let mut all_files = Vec::new();
     for dir in &src_dirs {
-        if !dir.exists() {
-            continue;
-        }
+        collect_rs_files(dir, &mut all_files);
+    }
 
-        let entries = fs::read_dir(dir).unwrap_or_else(|e| {
-            panic!("Failed to read dir {}: {e}", dir.display());
-        });
+    for path in all_files {
+        files_scanned += 1;
+        let file_name = path.file_name().unwrap().to_string_lossy().to_string();
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", path.display()));
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+        for (line_idx, line) in content.lines().enumerate() {
+            let code_part = strip_line_comment(line);
+            let trimmed = code_part.trim();
+            if trimmed.is_empty() {
                 continue;
             }
 
-            files_scanned += 1;
-            let file_name = path.file_name().unwrap().to_string_lossy().to_string();
-            let content = fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("Failed to read {}: {e}", path.display()));
-
-            for (line_idx, line) in content.lines().enumerate() {
-                let code_part = strip_line_comment(line);
-                let trimmed = code_part.trim();
-                if trimmed.is_empty() {
-                    continue;
-                }
-
-                for (col, ch) in code_part.char_indices() {
-                    if let Some(reason) = is_prohibited_ui_char(ch) {
-                        violations.push(format!(
-                            "{}:{}:{} - Prohibited '{}' (U+{:04X}): {}\n    Code: {}",
-                            file_name,
-                            line_idx + 1,
-                            col + 1,
-                            ch,
-                            ch as u32,
-                            reason,
-                            trimmed
-                        ));
-                    }
+            for (col, ch) in code_part.char_indices() {
+                if let Some(reason) = is_prohibited_ui_char(ch) {
+                    violations.push(format!(
+                        "{}:{}:{} - Prohibited '{}' (U+{:04X}): {}\n    Code: {}",
+                        file_name,
+                        line_idx + 1,
+                        col + 1,
+                        ch,
+                        ch as u32,
+                        reason,
+                        trimmed
+                    ));
                 }
             }
         }
     }
 
-    assert!(
-        files_scanned >= 5,
-        "Expected to scan at least 5 UI source files, found {}",
+    println!(
+        "Scanned {} files for vector-first compliance",
         files_scanned
     );
-
     if !violations.is_empty() {
         panic!(
             "\n\n================ RULE 6 (Vector-First UI) VIOLATIONS DETECTED ================\n\

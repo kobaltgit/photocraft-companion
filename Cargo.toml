@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.3.2"
+version = "2.0.0"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
@@ -43,6 +43,7 @@ gtk = { version = "0.18", default-features = false }
 sha2 = "0.10"
 hex = "0.4"
 sys-locale = "0.3"
+winres = "0.1"
 
 [profile.dev]
 opt-level = 0

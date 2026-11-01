@@ -30,11 +30,12 @@ fn test_dynamic_tool_uses_multi_viewport_and_prohibits_egui_window_new() {
         .join("crates")
         .join("overlay_ui")
         .join("src")
-        .join("dynamic_tool.rs");
+        .join("dynamic_tool")
+        .join("mod.rs");
 
     assert!(
         dynamic_tool_path.exists(),
-        "dynamic_tool.rs not found at {}",
+        "dynamic_tool/mod.rs not found at {}",
         dynamic_tool_path.display()
     );
 

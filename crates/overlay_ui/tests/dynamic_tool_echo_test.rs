@@ -26,6 +26,8 @@ fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
             default_width: Some(300.0),
             default_height: Some(400.0),
             script: None,
+            auto_run_model_role: None,
+            layout_mode: None,
             widgets: Vec::new(),
             ipc_subscriptions: subscriptions,
         }),

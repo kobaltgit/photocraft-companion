@@ -11,7 +11,10 @@ pub mod win32_window;
 
 pub use dynamic_tool::{DynamicToolEngine, DynamicWindowState};
 pub use eframe::egui;
-pub use icons::{get_egui_icon_data, get_icon_rgba, get_tray_icon, ICON_DARK_SVG, ICON_LIGHT_SVG};
+pub use icons::{
+    get_egui_icon_data, get_icon_rgba, get_system_small_icon_size, get_system_window_icon_size,
+    get_tray_icon, APP_ICON_SVG,
+};
 pub use manager::{ActiveTab, PluginManagerApp};
 pub use offline_modal::OfflineModalApp;
 pub use store::{
@@ -49,30 +52,7 @@ impl OverlayBar {
                     core_contracts::PluginType::InteractiveUi => Some("palette".to_string()),
                     _ => None,
                 });
-                let icon_path = match (&m.plugin_dir, &m.icon) {
-                    (Some(dir), Some(icon_file)) => {
-                        let path = dir.join(icon_file);
-                        if path.exists() {
-                            Some(path)
-                        } else {
-                            let default_svg = dir.join("icon.svg");
-                            if default_svg.exists() {
-                                Some(default_svg)
-                            } else {
-                                None
-                            }
-                        }
-                    }
-                    (Some(dir), None) => {
-                        let default_svg = dir.join("icon.svg");
-                        if default_svg.exists() {
-                            Some(default_svg)
-                        } else {
-                            None
-                        }
-                    }
-                    _ => None,
-                };
+                let icon_path = m.resolve_icon_path(None);
                 let active_sub_action = m.sub_actions.first().map(|s| s.id.clone());
                 let requires_selection = m.input == core_contracts::PluginInputSource::Selection
                     || m.interactive_ui
@@ -178,6 +158,7 @@ pub struct CompanionOverlayApp {
     pub last_saved_manager_pos: Option<[f32; 2]>,
     pub last_saved_manager_size: Option<[f32; 2]>,
     pub manager_just_opened: bool,
+    pub manager_icons_calibrated: bool,
     pub on_launch_requested: Option<Arc<dyn Fn() + Send + Sync>>,
     pub dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
 }
@@ -286,6 +267,7 @@ impl CompanionOverlayApp {
             last_saved_manager_pos: cfg.manager_window_position,
             last_saved_manager_size: cfg.manager_window_size,
             manager_just_opened: true,
+            manager_icons_calibrated: false,
             on_launch_requested: None,
             dynamic_engine,
         }
@@ -387,6 +369,7 @@ impl CompanionOverlayApp {
             self.restore_toolbar_from_tray(ctx);
             self.show_manager = true;
             self.manager_just_opened = true;
+            self.manager_icons_calibrated = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
     }
@@ -593,23 +576,10 @@ impl eframe::App for CompanionOverlayApp {
             self.toolstrip.current_theme = self.manager.current_theme;
         }
 
-        // Dynamically update icons across all locations (Tray, Toolbar, Manager) on theme switch
+        // Track theme change for dynamic widget palette and color styling
         let current_theme = self.toolstrip.current_theme;
         if current_theme != self.last_theme {
             self.last_theme = current_theme;
-            let is_dark = current_theme.is_dark();
-
-            // 1. Update Tray Icon
-            if let Ok(mut guard) = self.tray_icon_handle.lock() {
-                if let Some(ti) = guard.as_mut() {
-                    let _ = ti.set_icon(get_tray_icon(is_dark, 32));
-                }
-            }
-
-            // 2. Update Toolbar Viewport Icon
-            if let Some(icon) = get_egui_icon_data(is_dark, 32) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(std::sync::Arc::new(icon))));
-            }
         }
 
         // Render main toolbar panel if not hidden to tray
@@ -620,6 +590,12 @@ impl eframe::App for CompanionOverlayApp {
                     engine.set_language(self.manager.current_language);
                 }
                 engine.render(&ctx, &palette);
+                if engine.open_manager_requested {
+                    engine.open_manager_requested = false;
+                    self.show_manager = true;
+                    self.manager_just_opened = true;
+                    self.manager_icons_calibrated = false;
+                }
             }
 
             if connected {
@@ -672,6 +648,7 @@ impl eframe::App for CompanionOverlayApp {
                     self.toolstrip.open_manager_requested = false;
                     self.show_manager = true;
                     self.manager_just_opened = true;
+                    self.manager_icons_calibrated = false;
                 }
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
@@ -925,6 +902,7 @@ impl eframe::App for CompanionOverlayApp {
                     self.offline_modal.open_manager_requested = false;
                     self.show_manager = true;
                     self.manager_just_opened = true;
+                    self.manager_icons_calibrated = false;
                 }
                 if self.offline_modal.launch_requested {
                     self.offline_modal.launch_requested = false;
@@ -937,7 +915,6 @@ impl eframe::App for CompanionOverlayApp {
 
         // Render Plugin Manager in a separate window viewport
         if self.show_manager {
-            let is_dark = self.toolstrip.current_theme.is_dark();
             let default_size = [740.0, 480.0];
             let manager_size = self.last_saved_manager_size.unwrap_or(default_size);
 
@@ -968,7 +945,8 @@ impl eframe::App for CompanionOverlayApp {
                 vp = vp.with_position(egui::pos2(manager_pos[0], manager_pos[1]));
             }
 
-            if let Some(icon) = get_egui_icon_data(is_dark, 64) {
+            #[cfg(not(windows))]
+            if let Some(icon) = get_egui_icon_data(get_system_window_icon_size()) {
                 vp = vp.with_icon(icon);
             }
 
@@ -976,6 +954,14 @@ impl eframe::App for CompanionOverlayApp {
                 egui::ViewportId::from_hash_of("plugin_manager_window"),
                 vp,
                 |ctx, _class| {
+                    if !self.manager_icons_calibrated {
+                        if crate::win32_window::apply_crisp_window_icons_by_title(
+                            "PhotoCraft - Plugins Manager",
+                        ) {
+                            self.manager_icons_calibrated = true;
+                        }
+                    }
+
                     if self.manager_just_opened {
                         self.manager_just_opened = false;
                     }
@@ -1024,11 +1010,6 @@ impl eframe::App for CompanionOverlayApp {
                         }
                     }
 
-                    if let Some(icon) = get_egui_icon_data(is_dark, 64) {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(
-                            std::sync::Arc::new(icon),
-                        )));
-                    }
                     egui::CentralPanel::default()
                         .frame(egui::Frame::new().fill(palette.bg_fill).inner_margin(0))
                         .show(ctx, |ui| {
@@ -1087,8 +1068,8 @@ pub fn launch_companion_overlay(
     if start_with_manager {
         app.show_manager = true;
         app.manager_just_opened = true;
+        app.manager_icons_calibrated = false;
     }
-    let is_dark = app.toolstrip.current_theme.is_dark();
     let connected = app.is_connected.load(Ordering::Relaxed);
 
     let initial_size = if connected {
@@ -1143,7 +1124,8 @@ pub fn launch_companion_overlay(
         viewport = viewport.with_position(egui::Pos2::new(pos[0], pos[1]));
     }
 
-    if let Some(icon) = get_egui_icon_data(is_dark, 32) {
+    #[cfg(not(windows))]
+    if let Some(icon) = get_egui_icon_data(get_system_window_icon_size()) {
         viewport = viewport.with_icon(icon);
     }
 
@@ -1197,8 +1179,8 @@ pub fn launch_plugin_manager(
     if let Some(cb) = on_token_saved {
         app = app.with_token_callback(cb);
     }
-    let is_dark = app.current_theme.is_dark();
 
+    #[allow(unused_mut)]
     let mut viewport = eframe::egui::ViewportBuilder::default()
         .with_inner_size(manager_size)
         .with_position(egui::pos2(manager_pos[0], manager_pos[1]))
@@ -1206,7 +1188,8 @@ pub fn launch_plugin_manager(
         .with_taskbar(true)
         .with_title("PhotoCraft - Plugins Manager");
 
-    if let Some(icon) = get_egui_icon_data(is_dark, 64) {
+    #[cfg(not(windows))]
+    if let Some(icon) = get_egui_icon_data(get_system_window_icon_size()) {
         viewport = viewport.with_icon(icon);
     }
 

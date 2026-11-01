@@ -2,6 +2,10 @@ use crate::theme::{ThemeMode, ThemePalette};
 use core_contracts::ButtonConfig;
 use eframe::egui::{self, RichText, Sense, Stroke, Ui, Vec2};
 
+pub const MAX_BUTTONS_PER_TIER: usize = 8;
+pub const BUTTON_SLOT_SIZE_V: f32 = 36.0;
+pub const BUTTON_SLOT_SIZE_H: f32 = 38.0;
+
 pub struct ToolstripApp {
     pub is_vertical: bool,
     pub current_theme: ThemeMode,
@@ -59,16 +63,19 @@ impl ToolstripApp {
     /// Fully adaptive calculation based on count N of active plugins.
     /// Supports arbitrary plugin counts by any 3rd party developer without clipping.
     pub fn calculate_size(&self) -> Vec2 {
-        let count = self.buttons.len().max(1) as f32;
+        let count = self.buttons.len().max(1);
         if self.is_vertical {
-            // Header + tools (count * 36px) + comfortable bottom margin = count * 36.0 + 68.0
-            // Width 50px gives comfortable breathing room for 3-button service row (43px) and tool buttons (32px)
-            Vec2::new(50.0, count * 36.0 + 68.0)
+            let cols = ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let max_rows = count.min(MAX_BUTTONS_PER_TIER) as f32;
+            let width = 50.0 + (cols - 1.0) * BUTTON_SLOT_SIZE_V;
+            let height = max_rows * BUTTON_SLOT_SIZE_V + 68.0;
+            Vec2::new(width, height)
         } else {
-            // Each button stride 38px, margins 16px, min 116px for service controls
-            let tools_width = count * 38.0 + 16.0;
-            // Height 78px comfortably holds service row (22px) + separator (6px) + buttons (34px) + padding
-            Vec2::new(tools_width.max(116.0), 78.0)
+            let rows = ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let max_cols = count.min(MAX_BUTTONS_PER_TIER) as f32;
+            let width = (max_cols * BUTTON_SLOT_SIZE_H + 16.0).max(116.0);
+            let height = 78.0 + (rows - 1.0) * BUTTON_SLOT_SIZE_V;
+            Vec2::new(width, height)
         }
     }
 
@@ -390,19 +397,37 @@ impl ToolstripApp {
                 ui.separator();
                 ui.add_space(2.0);
 
-                ui.vertical_centered(|ui| {
-                    render_button_items(
-                        ui,
-                        &mut self.buttons,
-                        &mut self.icon_cache,
-                        &mut self.pending_action,
-                        &mut self.hovered_tooltip,
-                        &mut self.pointer_down_start,
-                        &mut self.long_press_fired_for,
-                        &mut self.suppress_click_for,
-                        &mut sub_action_open,
-                        &mut sub_action_toggle,
-                    );
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
+                    let cols_count = ((self.buttons.len() + MAX_BUTTONS_PER_TIER - 1)
+                        / MAX_BUTTONS_PER_TIER)
+                        .max(1) as f32;
+                    let total_cols_w = 32.0 * cols_count + (cols_count - 1.0) * 4.0;
+                    let avail = ui.available_width();
+                    if avail > total_cols_w {
+                        ui.add_space((avail - total_cols_w) * 0.5);
+                    }
+
+                    for chunk in self.buttons.chunks_mut(MAX_BUTTONS_PER_TIER) {
+                        ui.allocate_ui_with_layout(
+                            Vec2::new(32.0, ui.available_height()),
+                            egui::Layout::top_down(egui::Align::Center),
+                            |ui| {
+                                render_button_items(
+                                    ui,
+                                    chunk,
+                                    &mut self.icon_cache,
+                                    &mut self.pending_action,
+                                    &mut self.hovered_tooltip,
+                                    &mut self.pointer_down_start,
+                                    &mut self.long_press_fired_for,
+                                    &mut self.suppress_click_for,
+                                    &mut sub_action_open,
+                                    &mut sub_action_toggle,
+                                );
+                            },
+                        );
+                    }
                 });
                 ui.add_space(3.0);
             });
@@ -522,21 +547,26 @@ impl ToolstripApp {
                 ui.separator();
                 ui.add_space(2.0);
 
-                // Tier 2: Large plugin action buttons strictly below service row
-                ui.horizontal_centered(|ui| {
-                    ui.add_space(4.0);
-                    render_button_items(
-                        ui,
-                        &mut self.buttons,
-                        &mut self.icon_cache,
-                        &mut self.pending_action,
-                        &mut self.hovered_tooltip,
-                        &mut self.pointer_down_start,
-                        &mut self.long_press_fired_for,
-                        &mut self.suppress_click_for,
-                        &mut sub_action_open,
-                        &mut sub_action_toggle,
-                    );
+                // Tier 2: Large plugin action buttons strictly below service row (multi-row if > 8 buttons)
+                ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(0.0, 4.0);
+                    for chunk in self.buttons.chunks_mut(MAX_BUTTONS_PER_TIER) {
+                        ui.horizontal(|ui| {
+                            ui.add_space(4.0);
+                            render_button_items(
+                                ui,
+                                chunk,
+                                &mut self.icon_cache,
+                                &mut self.pending_action,
+                                &mut self.hovered_tooltip,
+                                &mut self.pointer_down_start,
+                                &mut self.long_press_fired_for,
+                                &mut self.suppress_click_for,
+                                &mut sub_action_open,
+                                &mut sub_action_toggle,
+                            );
+                        });
+                    }
                 });
             });
         }
@@ -774,15 +804,18 @@ mod tests {
 
     #[test]
     fn test_vertical_toolstrip_geometry_no_clipping() {
-        for count in [1, 2, 4] {
+        for count in [1, 2, 4, 8, 9, 14, 16, 18] {
             let ctx = egui::Context::default();
             let buttons = create_test_buttons(count);
             let mut app = ToolstripApp::new(buttons, ThemeMode::Dark);
             app.is_vertical = true;
 
             let expected_size = app.calculate_size();
-            assert_eq!(expected_size.x, 50.0);
-            assert!(expected_size.y >= (count as f32) * 36.0 + 58.0);
+            let expected_cols =
+                ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let expected_w = 50.0 + (expected_cols - 1.0) * BUTTON_SLOT_SIZE_V;
+            assert_eq!(expected_size.x, expected_w);
+            assert!(expected_size.y >= (count.min(MAX_BUTTONS_PER_TIER) as f32) * 36.0 + 58.0);
 
             let raw_input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size)),
@@ -821,14 +854,17 @@ mod tests {
 
     #[test]
     fn test_horizontal_toolstrip_geometry_no_clipping() {
-        for count in [1, 2, 4] {
+        for count in [1, 2, 4, 8, 9, 14, 16, 18] {
             let ctx = egui::Context::default();
             let buttons = create_test_buttons(count);
             let mut app = ToolstripApp::new(buttons, ThemeMode::Dark);
             app.is_vertical = false;
 
             let expected_size = app.calculate_size();
-            assert_eq!(expected_size.y, 78.0);
+            let expected_rows =
+                ((count + MAX_BUTTONS_PER_TIER - 1) / MAX_BUTTONS_PER_TIER).max(1) as f32;
+            let expected_h = 78.0 + (expected_rows - 1.0) * BUTTON_SLOT_SIZE_V;
+            assert_eq!(expected_size.y, expected_h);
 
             let raw_input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, expected_size)),
@@ -876,7 +912,7 @@ mod tests {
         assert_eq!(app_empty_v.calculate_size().x, 50.0);
         assert_eq!(app_empty_v.calculate_size().y, 1.0 * 36.0 + 68.0);
 
-        // 5 buttons
+        // 5 buttons (single tier)
         let buttons5 = create_test_buttons(5);
         let mut app5 = ToolstripApp::new(buttons5, ThemeMode::Light);
         assert_eq!(app5.calculate_size().y, 78.0);
@@ -885,6 +921,42 @@ mod tests {
         app5.is_vertical = true;
         assert_eq!(app5.calculate_size().x, 50.0);
         assert_eq!(app5.calculate_size().y, 5.0 * 36.0 + 68.0);
+
+        // 8 buttons (limit of 1 tier)
+        let buttons8 = create_test_buttons(8);
+        let mut app8 = ToolstripApp::new(buttons8, ThemeMode::Dark);
+        assert_eq!(app8.calculate_size().x, 8.0 * 38.0 + 16.0);
+        assert_eq!(app8.calculate_size().y, 78.0);
+        app8.is_vertical = true;
+        assert_eq!(app8.calculate_size().x, 50.0);
+        assert_eq!(app8.calculate_size().y, 8.0 * 36.0 + 68.0);
+
+        // 9 buttons (spans to 2 columns in vertical, 2 rows in horizontal)
+        let buttons9 = create_test_buttons(9);
+        let mut app9 = ToolstripApp::new(buttons9, ThemeMode::Dark);
+        assert_eq!(app9.calculate_size().x, 8.0 * 38.0 + 16.0);
+        assert_eq!(app9.calculate_size().y, 78.0 + 36.0);
+        app9.is_vertical = true;
+        assert_eq!(app9.calculate_size().x, 50.0 + 36.0);
+        assert_eq!(app9.calculate_size().y, 8.0 * 36.0 + 68.0);
+
+        // 16 buttons (fills 2 tiers completely)
+        let buttons16 = create_test_buttons(16);
+        let mut app16 = ToolstripApp::new(buttons16, ThemeMode::Dark);
+        assert_eq!(app16.calculate_size().x, 8.0 * 38.0 + 16.0);
+        assert_eq!(app16.calculate_size().y, 78.0 + 36.0);
+        app16.is_vertical = true;
+        assert_eq!(app16.calculate_size().x, 50.0 + 36.0);
+        assert_eq!(app16.calculate_size().y, 8.0 * 36.0 + 68.0);
+
+        // 17 buttons (spans to 3rd column / 3rd row)
+        let buttons17 = create_test_buttons(17);
+        let mut app17 = ToolstripApp::new(buttons17, ThemeMode::Dark);
+        assert_eq!(app17.calculate_size().x, 8.0 * 38.0 + 16.0);
+        assert_eq!(app17.calculate_size().y, 78.0 + 72.0);
+        app17.is_vertical = true;
+        assert_eq!(app17.calculate_size().x, 50.0 + 72.0);
+        assert_eq!(app17.calculate_size().y, 8.0 * 36.0 + 68.0);
     }
 
     #[test]

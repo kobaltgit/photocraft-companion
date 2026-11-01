@@ -3,8 +3,8 @@ use resvg::usvg;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub const ICON_DARK_SVG: &str = include_str!("../../../assets/icon-dark.svg");
-pub const ICON_LIGHT_SVG: &str = include_str!("../../../assets/icon_light.svg");
+pub const APP_ICON_SVG: &str = include_str!("../../../assets/icon.svg");
+pub const APP_ICON_SMALL_SVG: &str = include_str!("../../../assets/icon_small.svg");
 
 pub const DISCORD_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="256" height="199" viewBox="0 0 256 199"><path fill="currentColor" d="M216.856 16.597A208.5 208.5 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046q-29.538-4.442-58.533 0c-1.832-4.4-4.55-9.933-6.846-14.046a207.8 207.8 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161 161 0 0 0 79.735 175.3a136.4 136.4 0 0 1-21.846-10.632a109 109 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a132 132 0 0 0 5.355 4.237a136 136 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848c21.142-6.58 42.646-16.637 64.815-33.213c5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2s23.236 11.804 23.015 26.2c.02 14.375-10.148 26.18-23.015 26.18m85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2c0 14.375-10.148 26.18-23.015 26.18"/></svg>"##;
 pub const DISCORD_COLOR_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="256" height="199" viewBox="0 0 256 199"><path fill="#5865f2" d="M216.856 16.597A208.5 208.5 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046q-29.538-4.442-58.533 0c-1.832-4.4-4.55-9.933-6.846-14.046a207.8 207.8 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161 161 0 0 0 79.735 175.3a136.4 136.4 0 0 1-21.846-10.632a109 109 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a132 132 0 0 0 5.355 4.237a136 136 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848c21.142-6.58 42.646-16.637 64.815-33.213c5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2s23.236 11.804 23.015 26.2c.02 14.375-10.148 26.18-23.015 26.18m85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2c0 14.375-10.148 26.18-23.015 26.18"/></svg>"##;
@@ -43,17 +43,12 @@ pub fn render_svg_icon(svg_data: &str, width: u32, height: u32) -> Option<Vec<u8
     Some(pixmap.take())
 }
 
-pub fn get_icon_rgba(is_dark: bool, size: u32) -> Option<Vec<u8>> {
-    let svg = if is_dark {
-        ICON_DARK_SVG
-    } else {
-        ICON_LIGHT_SVG
-    };
-    render_svg_icon(svg, size, size)
+pub fn get_icon_rgba(size: u32) -> Option<Vec<u8>> {
+    render_svg_icon(APP_ICON_SVG, size, size)
 }
 
-pub fn get_egui_icon_data(is_dark: bool, size: u32) -> Option<egui::IconData> {
-    let rgba = get_icon_rgba(is_dark, size)?;
+pub fn get_egui_icon_data(size: u32) -> Option<egui::IconData> {
+    let rgba = get_icon_rgba(size)?;
     Some(egui::IconData {
         rgba,
         width: size,
@@ -61,9 +56,108 @@ pub fn get_egui_icon_data(is_dark: bool, size: u32) -> Option<egui::IconData> {
     })
 }
 
-pub fn get_tray_icon(is_dark: bool, size: u32) -> Option<tray_icon::Icon> {
-    let rgba = get_icon_rgba(is_dark, size)?;
+pub fn get_tray_icon(size: u32) -> Option<tray_icon::Icon> {
+    let rgba = get_icon_rgba(size)?;
     tray_icon::Icon::from_rgba(rgba, size, size).ok()
+}
+
+pub fn get_system_small_icon_size() -> u32 {
+    crate::win32_window::get_system_small_icon_size()
+}
+
+pub use crate::win32_window::apply_crisp_window_icons_by_title;
+pub use crate::win32_window::get_system_window_icon_size;
+
+pub fn encode_ico_dib(rgba: &[u8], width: u32, height: u32) -> Vec<u8> {
+    let and_row_bytes = ((width + 31) / 32) * 4;
+    let mut dib =
+        Vec::with_capacity(40 + (width * height * 4) as usize + (and_row_bytes * height) as usize);
+    dib.extend_from_slice(&40u32.to_le_bytes());
+    dib.extend_from_slice(&(width as i32).to_le_bytes());
+    dib.extend_from_slice(&((height * 2) as i32).to_le_bytes());
+    dib.extend_from_slice(&1u16.to_le_bytes());
+    dib.extend_from_slice(&32u16.to_le_bytes());
+    dib.extend_from_slice(&0u32.to_le_bytes());
+    dib.extend_from_slice(&(width * height * 4).to_le_bytes());
+    dib.extend_from_slice(&0i32.to_le_bytes());
+    dib.extend_from_slice(&0i32.to_le_bytes());
+    dib.extend_from_slice(&0u32.to_le_bytes());
+    dib.extend_from_slice(&0u32.to_le_bytes());
+
+    for y in (0..height).rev() {
+        for x in 0..width {
+            let idx = ((y * width + x) * 4) as usize;
+            let r = rgba[idx];
+            let g = rgba[idx + 1];
+            let b = rgba[idx + 2];
+            let a = rgba[idx + 3];
+            dib.push(b);
+            dib.push(g);
+            dib.push(r);
+            dib.push(a);
+        }
+    }
+
+    for _ in 0..height {
+        for _ in 0..and_row_bytes {
+            dib.push(0);
+        }
+    }
+
+    dib
+}
+
+pub fn encode_ico_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    let img = image::RgbaImage::from_raw(width, height, rgba.to_vec())?;
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    img.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+    Some(cursor.into_inner())
+}
+
+pub fn generate_hybrid_ico() -> Option<Vec<u8>> {
+    let sizes = [16u32, 24, 32, 48, 64, 128, 256];
+    let mut entries_data = Vec::new();
+
+    for &size in &sizes {
+        let rgba = render_svg_icon(APP_ICON_SVG, size, size)?;
+        let data = if size <= 64 {
+            encode_ico_dib(&rgba, size, size)
+        } else {
+            encode_ico_png(&rgba, size, size)?
+        };
+        entries_data.push((size, size, data));
+    }
+
+    let count = entries_data.len() as u16;
+    let mut ico = Vec::new();
+
+    ico.extend_from_slice(&0u16.to_le_bytes());
+    ico.extend_from_slice(&1u16.to_le_bytes());
+    ico.extend_from_slice(&count.to_le_bytes());
+
+    let mut offset = 6 + (count as u32 * 16);
+
+    for (w, h, data) in &entries_data {
+        let w_byte = if *w >= 256 { 0u8 } else { *w as u8 };
+        let h_byte = if *h >= 256 { 0u8 } else { *h as u8 };
+
+        ico.push(w_byte);
+        ico.push(h_byte);
+        ico.push(0);
+        ico.push(0);
+        ico.extend_from_slice(&1u16.to_le_bytes());
+        ico.extend_from_slice(&32u16.to_le_bytes());
+        ico.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        ico.extend_from_slice(&offset.to_le_bytes());
+
+        offset += data.len() as u32;
+    }
+
+    for (_, _, data) in &entries_data {
+        ico.extend_from_slice(data);
+    }
+
+    Some(ico)
 }
 
 /// Dynamic cache of parsed and GPU-uploaded SVG textures for overlay buttons
@@ -166,10 +260,10 @@ mod tests {
 
     #[test]
     fn test_render_svg_icon_valid() {
-        let rgba = render_svg_icon(ICON_DARK_SVG, 32, 32);
+        let rgba = render_svg_icon(APP_ICON_SVG, 64, 64);
         assert!(rgba.is_some());
         let bytes = rgba.unwrap();
-        assert_eq!(bytes.len(), 32 * 32 * 4);
+        assert_eq!(bytes.len(), 64 * 64 * 4);
     }
 
     #[test]
@@ -180,29 +274,39 @@ mod tests {
 
     #[test]
     fn test_get_icon_rgba() {
-        let dark = get_icon_rgba(true, 16);
-        assert!(dark.is_some());
-        assert_eq!(dark.unwrap().len(), 16 * 16 * 4);
+        let rgba16 = get_icon_rgba(16);
+        assert!(rgba16.is_some());
+        assert_eq!(rgba16.unwrap().len(), 16 * 16 * 4);
 
-        let light = get_icon_rgba(false, 16);
-        assert!(light.is_some());
-        assert_eq!(light.unwrap().len(), 16 * 16 * 4);
+        let rgba32 = get_icon_rgba(32);
+        assert!(rgba32.is_some());
+        assert_eq!(rgba32.unwrap().len(), 32 * 32 * 4);
     }
 
     #[test]
     fn test_get_egui_icon_data() {
-        let icon_data = get_egui_icon_data(true, 24);
+        let icon_data = get_egui_icon_data(64);
         assert!(icon_data.is_some());
         let data = icon_data.unwrap();
-        assert_eq!(data.width, 24);
-        assert_eq!(data.height, 24);
-        assert_eq!(data.rgba.len(), 24 * 24 * 4);
+        assert_eq!(data.width, 64);
+        assert_eq!(data.height, 64);
+        assert_eq!(data.rgba.len(), 64 * 64 * 4);
     }
 
     #[test]
     fn test_get_tray_icon() {
-        let tray_icon = get_tray_icon(false, 32);
+        let tray_icon = get_tray_icon(32);
         assert!(tray_icon.is_some());
+    }
+
+    #[test]
+    fn test_generate_and_verify_icon_ico() {
+        let ico_bytes = generate_hybrid_ico().expect("Must generate hybrid ICO");
+        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let root = manifest_dir.join("../../assets/icon.ico");
+        std::fs::write(&root, &ico_bytes).expect("Must write assets/icon.ico");
+        assert!(root.exists());
+        assert!(ico_bytes.len() > 1000);
     }
 
     #[test]

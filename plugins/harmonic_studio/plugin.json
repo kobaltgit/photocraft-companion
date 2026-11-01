@@ -1,0 +1,185 @@
+{
+  "id": "ui.photocraft.plugins.harmonic_studio",
+  "name": "Harmonic Color Studio",
+  "name_ru": "Студия цветовых гармоний",
+  "version": "1.0.0",
+  "description": "Interactive color harmony studio, spectral wheel, live brush sync, Swatches export and canvas swatch cards.",
+  "description_ru": "Интерактивная студия цветовых гармоний, спектральный круг, синхронизация с кистью, экспорт в палитру Swatches и отрисовка на холсте.",
+  "author": "kobaltGIT",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "interactive_ui": {
+    "ipc_subscriptions": [
+      "session.colors"
+    ],
+    "window_title": "Harmonic Color Studio",
+    "window_title_ru": "Студия цветовых гармоний",
+    "default_width": 360.0,
+    "default_height": 640.0,
+    "script": "logic.rhai",
+    "widgets": [
+      {
+        "type": "color_slot",
+        "id": "base_color",
+        "label": "Active Brush Color",
+        "label_ru": "Активный цвет кисти",
+        "default_hex": "#2563eb",
+        "read_only": false,
+        "selectable": true,
+        "target_binding": "selected_slot"
+      },
+      {
+        "type": "hue_wheel",
+        "id": "color_wheel",
+        "source_color_id": "base_color",
+        "show_pointer": true,
+        "markers_binding": "wheel_markers",
+        "connect_mode_binding": "wheel_connect_mode"
+      },
+      {
+        "type": "dropdown",
+        "id": "scheme_type",
+        "label": "Harmony Rule",
+        "label_ru": "Правило гармонии",
+        "options": [
+          "Complementary",
+          "Split-Complementary",
+          "Triadic",
+          "Analogous",
+          "Tetradic",
+          "Monochromatic"
+        ],
+        "options_ru": [
+          "Комплементарная",
+          "Сплит-комплементарная",
+          "Триада",
+          "Аналоговая",
+          "Тетраида",
+          "Монохроматическая"
+        ],
+        "default_index": 0
+      },
+      {
+        "type": "slider",
+        "id": "spread_angle",
+        "label": "Spread Angle",
+        "label_ru": "Угол разброса",
+        "min": 15.0,
+        "max": 60.0,
+        "step": 1.0,
+        "default": 30.0,
+        "enabled_binding": "spread_angle_enabled"
+      },
+      {
+        "type": "slider",
+        "id": "tone_depth",
+        "label": "Tone Contrast",
+        "label_ru": "Контраст тона",
+        "min": 10.0,
+        "max": 80.0,
+        "step": 1.0,
+        "default": 35.0
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "label",
+        "text_binding": "palette_header_label"
+      },
+      {
+        "type": "color_slot",
+        "id": "slot_base",
+        "label": "Base Dominant (60%)",
+        "label_ru": "Базовый доминирующий (60%)",
+        "default_hex": "#2563eb",
+        "read_only": true,
+        "selectable": true,
+        "target_binding": "selected_slot"
+      },
+      {
+        "type": "color_slot",
+        "id": "slot_harmony1",
+        "label": "Secondary Harmony (30%)",
+        "label_ru": "Вторичная гармония (30%)",
+        "default_hex": "#ebad25",
+        "read_only": true,
+        "selectable": true,
+        "target_binding": "selected_slot"
+      },
+      {
+        "type": "color_slot",
+        "id": "slot_accent",
+        "label": "Focal Accent (10%)",
+        "label_ru": "Фокусный акцент (10%)",
+        "default_hex": "#eb2563",
+        "read_only": true,
+        "selectable": true,
+        "target_binding": "selected_slot"
+      },
+      {
+        "type": "color_slot",
+        "id": "slot_nuance",
+        "label": "Highlight Tint",
+        "label_ru": "Блик / Светлый тон",
+        "default_hex": "#93b5f7",
+        "read_only": true,
+        "selectable": true,
+        "target_binding": "selected_slot",
+        "label_binding": "slot_nuance_label"
+      },
+      {
+        "type": "color_slot",
+        "id": "slot_shadow",
+        "label": "Deep Shadow Shade",
+        "label_ru": "Глубокая тень",
+        "default_hex": "#102a6b",
+        "read_only": true,
+        "selectable": true,
+        "target_binding": "selected_slot"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "dropdown",
+        "id": "card_layout",
+        "label": "Canvas Card Layout",
+        "label_ru": "Формат плашки на холсте",
+        "options": [
+          "Horizontal Strip",
+          "Vertical Column"
+        ],
+        "options_ru": [
+          "Горизонтальная лента",
+          "Вертикальная колонка"
+        ],
+        "default_index": 0
+      },
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "button",
+            "id": "btn_save_swatches",
+            "label": "[+] Add to Swatches",
+            "label_ru": "[+] В образцы Swatches"
+          },
+          {
+            "type": "button",
+            "id": "btn_draw_canvas",
+            "label": "[+] Draw on Canvas",
+            "label_ru": "[+] Слой на холсте"
+          }
+        ]
+      },
+      {
+        "type": "banner",
+        "id": "status_banner",
+        "message_binding": "banner_msg",
+        "style_binding": "banner_style"
+      }
+    ]
+  }
+}

@@ -67,6 +67,7 @@ pub struct PluginManagerApp {
     pub readme_modal: Option<PluginReadmeState>,
     pub photocraft_path: String,
     pub launch_requested: bool,
+    pub icons_calibrated: bool,
 }
 
 impl PluginManagerApp {
@@ -162,6 +163,7 @@ impl PluginManagerApp {
             readme_modal: None,
             photocraft_path,
             launch_requested: false,
+            icons_calibrated: false,
         }
     }
 
@@ -833,7 +835,58 @@ impl PluginManagerApp {
                 .inner_margin(8.0)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        let type_str = match manifest.plugin_type {
+                        // 1. Vector SVG Icon (24x24)
+                        let is_dark = self.current_theme.is_dark();
+                        let local_icon = manifest.resolve_icon_path(Some(&plugins_dir));
+                        let cached_icon = self.store_state.get_cached_icon_path(&manifest.id);
+                        let icon_path = local_icon.or_else(|| {
+                            if cached_icon.exists() {
+                                Some(cached_icon)
+                            } else {
+                                None
+                            }
+                        });
+
+                        let texture = self.store_icon_cache.get_or_load(
+                            ui.ctx(),
+                            &manifest.id,
+                            icon_path.as_deref(),
+                            is_dark,
+                        );
+
+                        if let Some(tex) = texture {
+                            ui.image((tex.id(), Vec2::new(24.0, 24.0)));
+                        } else {
+                            // Vector fallback badge if icon not available
+                            let badge_text = match manifest.plugin_type {
+                                PluginType::NativeAi => "AI",
+                                PluginType::NativeAlgorithm => "ALGO",
+                                PluginType::NoCode => "FX",
+                                PluginType::InteractiveUi => "UI",
+                                PluginType::Script => "RH",
+                                PluginType::ExternalCli => "CLI",
+                            };
+                            let (badge_rect, _) =
+                                ui.allocate_exact_size(Vec2::new(24.0, 24.0), egui::Sense::hover());
+                            ui.painter().rect_filled(badge_rect, 4.0, palette.card_fill);
+                            ui.painter().text(
+                                badge_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                badge_text,
+                                egui::FontId::proportional(9.0),
+                                palette.accent_blue,
+                            );
+                        }
+
+                        ui.add_space(4.0);
+
+                        // 2. Center: Content (Header, Description, Footer)
+                        ui.vertical(|ui| {
+                            let max_content_width = (ui.available_width() - 40.0).max(100.0);
+                            ui.set_max_width(max_content_width);
+
+                            ui.horizontal(|ui| {
+                                let type_str = match manifest.plugin_type {
                             PluginType::NoCode => "NO-CODE",
                             PluginType::NativeAi => "AI GPU",
                             PluginType::NativeAlgorithm => "ALGO",
@@ -925,9 +978,6 @@ impl PluginManagerApp {
                             open_readme = Some((manifest.name.clone(), plugin_dir, raw_content));
                         }
 
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.checkbox(&mut manifest.enabled, "");
-                        });
                     });
 
                     ui.add_space(2.0);
@@ -1241,6 +1291,13 @@ impl PluginManagerApp {
                         }
                     });
                 });
+
+                // 3. Right: Enabled checkbox
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.checkbox(&mut manifest.enabled, "");
+                });
+            });
+        });
             ui.add_space(4.0);
         }
 
@@ -1878,6 +1935,10 @@ impl PluginManagerApp {
 
                         // 2. Title, version, author and description
                         ui.vertical(|ui| {
+                            let action_btn_area_width = 110.0;
+                            let max_content_width =
+                                (ui.available_width() - action_btn_area_width).max(100.0);
+                            ui.set_max_width(max_content_width);
                             ui.horizontal(|ui| {
                                 let type_str = if entry.plugin_type == "native_ai" {
                                     "AI GPU"
@@ -2688,6 +2749,13 @@ impl PluginManagerApp {
 
 impl eframe::App for PluginManagerApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+        if !self.icons_calibrated {
+            if crate::win32_window::apply_crisp_window_icons_by_title(
+                "PhotoCraft - Plugins Manager",
+            ) {
+                self.icons_calibrated = true;
+            }
+        }
         let palette = ThemePalette::for_mode(self.current_theme);
         ui.ctx().set_visuals(palette.to_egui_visuals());
 

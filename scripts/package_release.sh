@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="1.3.2"
+VERSION="2.0.0"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"
@@ -28,6 +28,9 @@ if [ "${OS_NAME}" = "Darwin" ]; then
     cp target/release/photocraft-companion "${APP_BUNDLE}/Contents/MacOS/"
     chmod +x "${APP_BUNDLE}/Contents/MacOS/photocraft-companion"
     cp packaging/macos/Info.plist "${APP_BUNDLE}/Contents/"
+    if [ -f assets/icon.icns ]; then
+        cp assets/icon.icns "${APP_BUNDLE}/Contents/Resources/"
+    fi
     cp -r plugins "${APP_BUNDLE}/Contents/Resources/"
     if [ -f "${DIST_DIR}/registry.json" ]; then
         cp "${DIST_DIR}/registry.json" "${APP_BUNDLE}/Contents/Resources/" || true
@@ -81,6 +84,7 @@ elif [ "${OS_NAME}" = "Linux" ]; then
         mkdir -p "${DEB_DIR}/DEBIAN"
         mkdir -p "${DEB_DIR}/usr/bin"
         mkdir -p "${DEB_DIR}/usr/share/applications"
+        mkdir -p "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps"
         mkdir -p "${DEB_DIR}/usr/share/photocraft-companion/plugins"
 
         cat <<EOF > "${DEB_DIR}/DEBIAN/control"
@@ -96,6 +100,7 @@ EOF
         cp target/release/photocraft-companion "${DEB_DIR}/usr/bin/"
         chmod 0755 "${DEB_DIR}/usr/bin/photocraft-companion"
         cp packaging/linux/photocraft-companion.desktop "${DEB_DIR}/usr/share/applications/"
+        cp assets/icon.svg "${DEB_DIR}/usr/share/icons/hicolor/scalable/apps/photocraft-companion.svg"
         if [ -d plugins ]; then
             cp -r plugins/* "${DEB_DIR}/usr/share/photocraft-companion/plugins/" || true
         fi

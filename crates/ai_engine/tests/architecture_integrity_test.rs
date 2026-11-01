@@ -588,3 +588,92 @@ fn test_allowed_host_dispatch_invariant_catches_unauthorized_command() {
         .any(|allowed| forbidden_starts_with.contains(&format!("\"{allowed}\"")));
     assert!(!is_forbidden_sw);
 }
+
+#[test]
+fn test_no_plugin_specific_files_in_engine_crates() {
+    let workspace_root = find_workspace_root();
+    let plugins_dir = workspace_root.join("plugins");
+    if !plugins_dir.exists() {
+        return;
+    }
+
+    let mut plugin_ids = Vec::new();
+    if let Ok(entries) = fs::read_dir(&plugins_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    plugin_ids.push(name.to_lowercase());
+                }
+            }
+        }
+    }
+
+    assert!(
+        !plugin_ids.is_empty(),
+        "No plugins found to check against core crates!"
+    );
+
+    let engine_crates = [
+        "ai_engine",
+        "companion_app",
+        "photocraft_bridge",
+        "raster_engine",
+        "core_contracts",
+    ];
+
+    let mut violations = Vec::new();
+
+    for crate_name in &engine_crates {
+        let src_dir = workspace_root.join("crates").join(crate_name).join("src");
+        let mut rs_files = Vec::new();
+        collect_rs_files(&src_dir, &mut rs_files);
+
+        for file in rs_files {
+            if let Some(file_name) = file.file_name().and_then(|s| s.to_str()) {
+                let file_name_lower = file_name.to_lowercase();
+                for plugin_id in &plugin_ids {
+                    let exact_match = format!("{plugin_id}.rs");
+                    let prefix_match = format!("{plugin_id}_");
+                    if file_name_lower == exact_match || file_name_lower.starts_with(&prefix_match)
+                    {
+                        violations.push((crate_name.to_string(), file.clone(), plugin_id.clone()));
+                    }
+                }
+            }
+        }
+    }
+
+    if !violations.is_empty() {
+        eprintln!(
+            "\n================================================================================"
+        );
+        eprintln!(
+            "❌ PLUGIN-SPECIFIC FILES DETECTED IN ENGINE CRATES ({})",
+            violations.len()
+        );
+        eprintln!(
+            "================================================================================"
+        );
+        for (crate_name, file_path, plugin_id) in &violations {
+            eprintln!(
+                "\n[VIOLATION] Plugin-specific file '{}' matching plugin '{}' found in core crate '{}'!\n  Path: {}",
+                file_path.file_name().unwrap().to_string_lossy(),
+                plugin_id,
+                crate_name,
+                file_path.display()
+            );
+        }
+        eprintln!(
+            "================================================================================"
+        );
+        eprintln!("Strict Zero-Core Hardcoding Rule: Core engines must remain 100% agnostic.");
+        eprintln!("Plugins must be isolated in plugins/ and declared via plugin.json.");
+        eprintln!(
+            "================================================================================\n"
+        );
+        panic!(
+            "Architecture integrity test failed: found {} plugin-specific file(s) in core crates!",
+            violations.len()
+        );
+    }
+}

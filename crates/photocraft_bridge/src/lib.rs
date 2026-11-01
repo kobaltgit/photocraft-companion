@@ -1386,6 +1386,21 @@ impl PhotoCraftClient {
         .await
     }
 
+    /// Set layer properties (blend mode, opacity, etc.) by id using layer.setProps
+    pub async fn set_layer_props(&self, layer_id: u64, mut props: Value) -> Result<Value> {
+        if let Some(map) = props.as_object_mut() {
+            map.entry("layer").or_insert_with(|| json!(layer_id));
+            map.entry("layerId").or_insert_with(|| json!(layer_id));
+        } else {
+            props = json!({
+                "layer": layer_id,
+                "layerId": layer_id,
+                "props": props
+            });
+        }
+        self.execute_command("layer.setProps", props).await
+    }
+
     /// Paste from system clipboard into the active document
     pub async fn paste(&self) -> Result<Value> {
         self.execute_command("edit.paste", json!({})).await
@@ -1656,6 +1671,10 @@ impl core_contracts::BridgeOperations for PhotoCraftClient {
 
     async fn rename_layer(&self, layer_id: u64, new_name: &str) -> Result<Value> {
         self.rename_layer(layer_id, new_name).await
+    }
+
+    async fn set_layer_props(&self, layer_id: u64, props: Value) -> Result<Value> {
+        self.set_layer_props(layer_id, props).await
     }
 
     async fn get_document_info(&self) -> Result<DocumentInfo> {

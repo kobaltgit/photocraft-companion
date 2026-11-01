@@ -1075,3 +1075,190 @@
   - [x] Обновление тестов `test_selection_modifier_stack_rhai_script`: проверка единого канала, неразрушающего сброса, запекания при отключении чекбокса и автосброса базы при изменении границ выделения.
   - [x] Актуализация документации плагина `plugins/selection_mod/README.md` (DoD п. 3.1) на русском и английском языках.
   - [x] 100% соблюдение Definition of Done: успешный прогон всех 200+ тестов воркспейса (`cargo test --workspace -j 1 -- --test-threads=1`), чистота форматирования `cargo fmt --all -- --check` (0 расхождений), прохождение линтеров архитектурной чистоты, верстки, локализации и регламентов, валидация 12/12 плагинов через `plugin_validator`.
+
+
+- [x] **Фаза 94: Интерактивная студия цветовых гармоний (Harmonic Color Studio) и плагин harmonic_studio**
+  - [x] Полное соблюдение принципа Zero-Core Hardcoding: 0 изменений в кодовой базе ядра Rust (`crates/**`), плагин полностью автономен и размещен в `plugins/harmonic_studio/`.
+  - [x] Декларативный манифест `plugins/harmonic_studio/plugin.json`: окно 360x640px, подписка `session.colors`, спектральный круговой компас `HueWheel`, 6 классических правил гармонии (комплементарная, сплит-комплементарная, триада, аналоговая, тетраида, монохроматическая), слайдеры угла разброса (15..60°) и тонального контраста (10..80%), 5 гармонических слотов `ColorSlot` по правилу 60-30-10 (Base Dominant, Secondary Harmony, Focal Accent, Highlight Tint, Deep Shadow Shade), выпадающий список выбора макета карточки (горизонтальная лента / вертикальная колонка), кнопки экспорта и статусный векторный баннер.
+  - [x] Реактивный контроллер `plugins/harmonic_studio/logic.rhai`: точная HSL/RGB колориметрическая математика, хук `on_session_colors` с мгновенной реакцией на пипетку PhotoCraft без эхо-зацикливания, хук `on_state_changed` с переключением кисти редактора по клику на любой образец палитры (`tools.setColors`), экспорт группы образцов в системную палитру PhotoCraft (`swatches.newGroup` + `swatches.add`) и отрисовка аккуратной карточки плашек на новом слое холста (`layer.new.layer` + `select.rect` + `edit.fill` + `select.deselect`).
+  - [x] Векторная иконка `plugins/harmonic_studio/icon.svg`: чистая SVG геометрия со спектральным градиентом, гармоническим треугольником и маркерами оттенков без растровых тегов `<image>` и base64 данных.
+  - [x] Полная двуязычная документация `plugins/harmonic_studio/README.md` (DoD п. 3.1): синхронные разделы English / Русский, подробное описание всех 6 правил гармоний и 4 практических сценария применения в PhotoCraft.
+  - [x] 100% соблюдение Definition of Done: валидация 13/13 плагинов через `plugin_validator`, сборка пакета `dist/harmonic_studio.pcpl`, обновление таблиц каталога в `README.md` и `README.ru.md`, 100% успешный прогон всех тестов воркспейса (`cargo test --workspace -j 1`), нулевые расхождения `cargo fmt --all -- --check`.
+
+- [x] **Фаза 95: Унификация айдентики иконки, аппаратное вшивание в бинарники и динамическая системная калибровка DPI (BUG-091, BUG-092)**
+  - [x] **Единая айдентика бренда (Single Brand Identity)**: отказ от динамической смены иконок при переключении темы (устранено мерцание иконок в трее и окнах), внедрение нового векторного знака `assets/icon.svg` ("PC COMP") на базе `resvg` с сохранением 100% оригинальной геометрии.
+  - [x] **Динамическая калибровка размера под системный DPI (`GetSystemMetrics(SM_CXSMICON)`)**:
+    - В `crates/overlay_ui/src/win32_window.rs` реализована функция `get_system_small_icon_size()` (16px при 100% DPI, 20px при 125%, 24px при 150%, 32px при 200%).
+    - Устранен хардкод `get_tray_icon(32)` в `companion_app/src/main.rs`: иконка системного трея формируется `resvg` строго в физический размер слота 1:1, исключая размывающий даунскейлинг Explorer / GDI.
+    - В окнах (`overlay_ui/src/lib.rs`, `dynamic_tool.rs`) иконки заголовков калиброваны по `get_system_small_icon_size()`.
+    - Полностью ликвидирован ошибочный перфреймовый вызов `send_viewport_cmd(ViewportCommand::Icon)`, спамивший `WM_SETICON` 60 раз в секунду.
+  - [x] **Гибридный генератор Windows `.ico` (`crates/overlay_ui/src/icons.rs`)**:
+    - Слои 16×16, 24×24, 32×32, 48×48, 64×64 кодируются в несжатом 32-bit DIB/BMP, а 128×128 и 256×256 — в PNG (100% совместимость с Inno Setup 6 / Delphi VCL `TIcon` и Win32 GDI API).
+  - [x] **Нативное вшивание иконки в бинарник (`crates/companion_app`)**:
+    - Подключение `winres = "0.1"` под `target.'cfg(windows)'.build-dependencies`;
+    - Скрипт сборки `crates/companion_app/build.rs` с абсолютным путем через `CARGO_MANIFEST_DIR`, защитой платформы и проверкой существования `assets/icon.ico`. Аппаратная компиляция `RT_GROUP_ICON` в PE-заголовок `.exe`.
+    - Подключение `SetupIconFile=..\..\assets\icon.ico` в `packaging/windows/installer.iss`.
+    - Интеграция SVG иконки FreeDesktop (`/usr/share/icons/hicolor/scalable/apps/photocraft-companion.svg`) в Linux DEB пакет и поддержка ICNS для macOS.
+  - [x] **Динамическая реактивность локализации в Harmonic Studio (BUG-092)**:
+    - Отслеживание смены языка `cur_lang != state["last_language"]` в `logic.rhai` для немедленной актуализации строк (`slot_nuance_label`, `palette_header_label`) при переключении языка приложения без изменения параметров гармонии.
+  - [x] **100% соблюдение Definition of Done**:
+    - Валидация всех 13 плагинов каталога через `plugin_validator` (13/13 ОК);
+    - Чистота форматирования `cargo fmt --all -- --check` (0 расхождений);
+    - 100% успешный прогон всех тестов воркспейса (`cargo test --workspace -j 1`), прохождение архитектурного линтера, линтера регламентов, линтера верстки и линтеров локализации;
+    - Успешная сборка релизного бинарника `target/release/photocraft-companion.exe` без предупреждений компилятора (`-D warnings`).
+
+- [x] **Фаза 96: Декомпозиция монолита dynamic_tool, линтер размера production-файлов (File Size Guard) и изоляция движков от плагино-специфичных модулей (BUG-034)**
+  - [x] **Архитектурный сторож изоляции ядра (`crates/ai_engine/tests/architecture_integrity_test.rs`)**:
+    - Внедрен тест `test_no_plugin_specific_files_in_engine_crates`, сканирующий все крейты ядра (`ai_engine`, `companion_app`, `photocraft_bridge`, `raster_engine`, `core_contracts`) на отсутствие файлов с именами плагинов или префиксами (`<plugin_id>.rs`, `<plugin_id>_*.rs`), исключающий загрязнение универсального рантайма частными файлами плагинов.
+  - [x] **Системный линтер градации размера файлов (`crates/ai_engine/tests/dev_regulations_lint_test.rs`)**:
+    - Внедрен тест `test_production_file_size_guard` с точным подсчетом production-кода (за вычетом `#[cfg(test)]`) по шкале градаций:
+      - Tier 1 (Simple Leaf Widgets): $\le 500$ строк (`tabs.rs`, `color_slot.rs`, `vector_pad.rs`, `preview.rs`);
+      - Tier 2 (Complex Interactive Canvas Widgets): $\le 750$ строк (`hue_wheel.rs`, `modifier_stack.rs`);
+      - Tier 3 (Engine Coordinators & Dispatchers): $\le 800$ строк (`mod.rs`, `rhai_bridge.rs`, `widgets/mod.rs`);
+      - Tier 4 (State Machines & Storage Structs): $\le 500$ строк (`state.rs`);
+      - Tier 5 (Static Data Tables / Color Names): $\le 2000$ строк (`named_colors.rs`);
+      - Tier T (Test Suites): $\le 1500$ строк (`tests.rs`).
+    - Жесткий лимит Hard Cap $\le 800$ строк для монолитных модулей UI.
+  - [x] **Декомпозиция монолита `crates/overlay_ui/src/dynamic_tool.rs` (4560 строк)**:
+    - Монолит расформирован в модульный пакет `crates/overlay_ui/src/dynamic_tool/`:
+      - `mod.rs`: оркестрация окон, жизненный цикл и диспетчеризация виджетов (570 строк, Tier 3 $\le 800$);
+      - `named_colors.rs`: колориметрическая таблица именованных оттенков (1161 строка, Tier 5 $\le 2000$);
+      - `rhai_bridge.rs`: изоляция интеграции с движком Rhai и IPC-мостом (199 строк, Tier 3 $\le 800$);
+      - `state.rs`: структуры состояния окон и виджетов (351 строка, Tier 4 $\le 500$);
+      - `widgets/mod.rs`: общий роутер и трейты виджетов (432 строки, Tier 3 $\le 800$);
+      - `widgets/tabs.rs` (116 строк), `widgets/color_slot.rs` (97 строк), `widgets/vector_pad.rs` (145 строк), `widgets/preview.rs` (315 строк), `widgets/hue_wheel.rs` (366 строк), `widgets/modifier_stack.rs` (274 строки);
+      - `tests.rs`: изолированные модульные тесты подсистемы (608 строк, Tier T $\le 1500$).
+    - Устаревший монолит `dynamic_tool.rs` удален из репозитория.
+  - [x] **Рекурсивная модернизация линтеров UI**:
+    - `vector_first_lint_test.rs`: переведен на рекурсивный обход подкаталогов `collect_rs_files`;
+    - `layout_guard_lint_test.rs`: переведен на полный сбор исходных файлов `collect_all_dynamic_tool_sources`;
+    - `multi_viewport_lint_test.rs`: обновлен путь поиска на `dynamic_tool/mod.rs`.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса успешно пройдены с соблюдением Resource Guard (`cargo test --workspace -j 1`);
+    - Нулевые расхождения стиля `cargo fmt --all -- --check`;
+    - Валидация каталога плагинов через `plugin_validator` (14/14 плагинов OK), сборка `.pcpl` пакетов и актуализация `README.md` / `README.ru.md`.
+
+- [x] **Фаза 97: Интерактивная ИИ-студия глубины Depth Studio (Atmospheric Fog & Lens Bokeh), оптический фильтр lens_blur и сплит-разметка окон**
+  - [x] **Контракты и нейтральная маршрутизация (`core_contracts`)**:
+    - Контейнер вкладок `WidgetNode::Tabs { id, tabs, default_index }` и элемент `TabItem { id, title, title_ru, icon, widgets }` с поддержкой двуязычных заголовков.
+    - Декларативные поля конфигурации в `InteractiveUiConfig`: `auto_run_model_role: Option<String>` и `layout_mode: Option<String>` (`"split_preview_right"`).
+    - Полная сериализация и юнит-тесты `test_tabs_widget_and_auto_ai_role_roundtrip`.
+  - [x] **Оптический растровый фильтр (`crates/raster_engine/src/lens_blur.rs`)**:
+    - Реализация нейтрального оптического фильтра `LensBlurParams`: размытие глубины резкости (DoF bokeh) по карте значений, атмосферный туман с кривой спада и режимами наложения (`Normal`, `Screen`, `Soft Light`), усиление бликов `specular_bloom`.
+    - Высокопроизводительный алгоритм `render_lens_blur_preview` на скользящем окне $O(1)$ для гладкого превью 60 FPS на 512px прокси без блокировки UI.
+    - Полноразмерный рендеринг `render_lens_blur` и сплит-экспорт `render_lens_blur_split` для недеструктивного наложения слоев.
+  - [x] **Сплит-разметка, клик-фокусировка и векторный Busy-индикатор (`crates/overlay_ui`)**:
+    - Двухколоночный режим `layout_mode = "split_preview_right"` в `dynamic_tool/mod.rs`: левая колонка — прокручиваемые настройки и вкладки, правая колонка — превью `ImagePreview` на всю высоту окна.
+    - Интерактивная клик-фокусировка: считывание клика по превью, нормализация координат и мгновенный выбор фокусного расстояния `focus_distance` из карты глубины.
+    - Векторный пульсирующий круг `is_busy` поверх превью во время фонового инференса нейросети (100% Vector-First, zero Unicode-tofu).
+  - [x] **Нейтральный фоновый запуск моделей и экспорт (`crates/companion_app`)**:
+    - Асинхронный запуск нейросетевой модели по роли `auto_run_model_role` в `tokio::task::spawn_blocking` без задержек UI-потока.
+    - Обработка команды `raster.process` с задачей `lens_blur`: вставка в PhotoCraft либо раздельных слоев (боке + туман), либо сведенного композита поверх оригинала.
+    - Очистка кэша и обновление кадра по команде `refresh_preview`.
+  - [x] **Автономный плагин `plugins/depth_studio`**:
+    - Декларативный манифест `plugin.json` с моделью `Depth Anything V2 Small`, 2 вкладками («Атмосферный туман» и «Размытие и Боке»), пресетами и слайдерами.
+    - Реактивный скрипт `script.rhai`, векторная иконка `icon.svg` и двуязычный `README.md` с практическими сценариями применения.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`);
+    - Нулевые расхождения стиля `cargo fmt --all -- --check`;
+    - Валидация 14/14 плагинов экосистемы через `plugin_validator`, сборка пакета `dist/depth_studio.pcpl` и синхронизация каталогов в `README.md` и `README.ru.md`.
+
+- [x] **Фаза 98: Устранение дефектов рантайма Depth Studio, высокая четкость превью 1280px, исправление иконки таскбара (64px) и векторная индикация моделей (BUG-094..BUG-097)**
+  - [x] **Иконка панели задач Windows (Taskbar Icon, 64px, BUG-095)**:
+    - В `crates/overlay_ui/src/win32_window.rs` добавлена константа `SM_CXICON = 11` и функция `get_system_window_icon_size() -> u32` (`GetSystemMetrics(SM_CXICON).max(64)` на Windows и `64` на других ОС).
+    - В `crates/overlay_ui/src/icons.rs` реэкспортирована `get_system_window_icon_size`.
+    - Оконные вьюпорты `PluginManagerApp` и `dynamic_tool` переведены на 64px значок, полностью устранив размытие и билинейную пикселизацию Windows Taskbar.
+  - [x] **Высокая четкость превью и безопасный экспорт (`crates/companion_app`, BUG-096)**:
+    - Целевой габарит прокси-буфера слоя повышен с 512 px до 1280 px (`calculate_preview_scale`), обеспечивая попиксельную резкость при развертывании окна на 1080p и 2K дисплеях.
+    - В обработчике `refresh_preview` обеспечен вызов `engine.clear_preview_and_role_mask(plugin_id)`.
+    - В задаче `lens_blur` гарантирован автоматический ресайз карты глубины до фактических габаритов исходного слоя `src` перед рендерингом.
+  - [x] **Эргономика интерфейса и адаптивный Split Layout (`crates/overlay_ui`)**:
+    - Замена `ui.columns(2)` на горизонтальную компоновку: компактная панель настроек 310.0 px слева с разделителем и резиновая область `ImagePreview`, занимающая всё свободное пространство окна.
+    - Внутри панели сохранен динамический замер меток (`layout_no_wrap`, `max_label_w`) со строгим прохождением `layout_guard_lint_test.rs`.
+    - Увеличены отступы и минимальные размеры кнопок (`Vec2(12.0, 5.0)`, min_size 28 px) и вкладок (`Vec2(14.0, 5.0)`, min_size 26 px).
+    - Векторный баннер `BannerStyle::Warning` и центрированный бейдж в превью при отсутствии весов нейросети на диске с кнопкой перехода в Менеджер плагинов (BUG-097).
+  - [x] **Реактивная логика и пресеты (`plugins/depth_studio`, BUG-094)**:
+    - В `plugin.json` стартовые дефолты эффектов `fog_enabled` и `bokeh_enabled` переведены в `false` (чистый холст при старте).
+    - В `script.rhai` реализован обработчик `on_state_changed` с автоматической активацией соответствующего эффекта (`fog_enabled = true` / `bokeh_enabled = true`) при клике на пресеты тумана или боке, обработкой «Обновить сцену» и «Применить в PhotoCraft».
+    - В `dynamic_tool` внедрена двусторонняя поддержка действий `on_action` и сброс флагов в Rhai runtime.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса успешно пройдены (`cargo test --workspace -j 1`);
+    - Нулевые расхождения стиля `cargo fmt --all -- --check`;
+    - Пройдены все линтеры: `layout_guard_lint_test`, `vector_first_lint_test`, `i18n_lint_test`, `architecture_integrity_test`, `dev_regulations_lint_test`;
+    - Валидация каталога плагинов через `plugin_validator` (14/14 плагинов OK), сборка релизного бинарника `photocraft-companion.exe` и `.pcpl` пакетов.
+
+- [x] **Фаза 99: Модернизация Depth Studio — мультиязычные имена слоев для 22 языков, наложение тумана через IPC (layer.setProps), изоляция слоя тумана и векторный Busy-индикатор (BUG-098)**
+  - [x] **Мультиязычная локализация слоев (`crates/core_contracts/src/i18n.rs`)**:
+    - Внедрены методы `bokeh_suffix(&self) -> &'static str`, `format_bokeh_name(&self, source_name: &str) -> String` и `fog_layer_name(&self) -> &'static str` для всех 22 поддерживаемых языков PhotoCraft.
+    - Автоматическая дедупликация суффиксов: предотвращение накопления повторных меток при повторном рендеринге (`Фон (Боке) (Боке)` -> `Фон (Боке)`).
+    - Исчерпывающие тесты `test_bokeh_suffix_and_format_bokeh_name` и `test_fog_layer_name_all_languages`.
+  - [x] **Управление свойствами слоев через IPC и Smart Retry (`crates/core_contracts`, `plugins/depth_studio`, `crates/companion_app`)**:
+    - В трейт `BridgeOperations` и клиент `PhotoCraftClient` добавлен типизированный метод `set_layer_props(layer_id, props)` без хардкода строковых команд в вызывающих модулях.
+    - В `plugins/depth_studio/script.rhai` плагин нативно вызывает `layer.setProps` со `Screen` / `Soft Light` по стандарту остальных плагинов без модификации ядра.
+    - В общий цикл IPC `companion_app` внедрен универсальный Smart Retry с автоматическим переводом терминологии режимов наложения на все 22 языка PhotoCraft через `translate_value_to_host`.
+  - [x] **Экспорт тумана и боке в ядре (`crates/companion_app/src/main.rs`)**:
+    - Считывание текущего имени исходного слоя и локали через `Language::Auto.resolve(None)`.
+    - Слой боке именуется на языке хоста (например, `Слой 1 (Боке)`).
+    - Слой тумана экспортируется с именем `Атмосферный туман` (или аналогом на 22 языках), и плагин через `layer.setProps` выставляет ему нативный режим наложения редактора (`Screen` или `Soft Light`).
+    - Поддержка тумблера `fog_as_separate_layer` с корректным сведением при значении `false`.
+  - [x] **Эргономика интерфейса и Vector-First Busy индикация (`crates/overlay_ui`, `plugins/depth_studio`)**:
+    - В `plugin.json` удален глобальный селектор `output_mode`, а тумблер `fog_as_separate_layer` (default: `true`) перенесен внутрь вкладки «Атмосферный туман».
+    - В `script.rhai` обновлены обработчики `on_state_changed` и `on_action` для передачи флага раздельного экспорта.
+    - Для кнопок `WidgetNode::Button` внедрена индикация занятости по п. 6.3 Vector-First UI: при `is_busy` надпись заменяется на `"..."`, клики блокируются (`Sense::hover()`), рисуется активная векторная рамка свечения `palette.accent_blue` без квадратиков Unicode.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены со 100% успехом (`cargo test --workspace -j 1 -- --test-threads=1`);
+    - Нулевые расхождения форматирования (`cargo fmt --all -- --check`);
+    - Пройдены все линтеры архитектуры и регламентов (`architecture_integrity_test`, `dev_regulations_lint_test`, `vector_first_lint_test`, `layout_guard_lint_test`, `i18n_lint_test`);
+    - Реестр плагинов и каталоги в `README.md` / `README.ru.md` синхронизированы через `plugin_validator`.
+
+- [x] **Фаза 100: Адаптивный многоколоночный тулбар (Multi-Column Toolstrip), лимит 8 кнопок на ярус и геометрия без обрезания (`crates/overlay_ui`)**
+  - [x] **Автоматическая сетка (Grid Layout)**:
+    - Константа `MAX_BUTTONS_PER_TIER = 8`: до 8 плагинов тулбар сохраняет классический компактный вид в 1 ряд / 1 колонку.
+    - При превышении порога (9..16, 17..24 плагинов) автоматически создаются новые колонки (в вертикальном режиме) или новые ряды (в горизонтальном режиме) без лишних кнопок в интерфейсе.
+  - [x] **Порядок заполнения (Flow Order)**:
+    - В вертикальном режиме — столбцами сверху вниз (Column-major, как в Photoshop): первая колонка заполняется кнопками 1..8, вторая — 9..16.
+    - В горизонтальном режиме — строками слева направо (Row-major): первый ряд заполняется кнопками 1..8, второй — 9..16.
+  - [x] **Динамическая геометрия без обрезания (`calculate_size`)**:
+    - В вертикальном режиме: ширина $50.0 + (\text{cols} - 1) \times 36.0\text{ px}$, высота $\min(N, 8) \times 36.0 + 68.0\text{ px}$.
+    - В горизонтальном режиме: ширина $(\min(N, 8) \times 38.0 + 16.0).max(116.0)\text{ px}$, высота $78.0 + (\text{rows} - 1) \times 36.0\text{ px}$.
+    - Ручка перетаскивания (6 точек) и служебные кнопки идеально центрируются по расширенной ширине тулбара.
+  - [x] **100% покрытие тестами и соблюдение Definition of Done**:
+    - Расширены `test_vertical_toolstrip_geometry_no_clipping` и `test_horizontal_toolstrip_geometry_no_clipping` для наборов `[1, 2, 4, 8, 9, 14, 16, 18]` кнопок.
+    - Расширен `test_toolstrip_size_scaling` с проверкой переходов сетки при 8, 9, 16, 17 кнопках.
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+
+- [x] **Фаза 101: Фундаментальная попиксельная четкость иконок во всех контекстах ОС (Dual-Slot Crisp Window & Taskbar Icons, BUG-099)**
+  - [x] **Архитектурный нативный хук Win32 (`crates/overlay_ui/src/win32_window.rs`)**:
+    - Реализована функция `apply_crisp_window_icons_by_title(title)`: поиск HWND текущего UI-потока через `EnumThreadWindows(GetCurrentThreadId(), ...)` с проверкой свойства окна `PC_CRISP_ICONS`.
+    - Кэширование нативных дескрипторов HICON через `OnceLock<(isize, isize)>`: малый растр рендерится точно 1:1 под `SM_CXSMICON` (16 px при 100% DPI), крупный растр — под `SM_CXICON` (64 px). Дескрипторы создаются ровно 1 раз за жизнь процесса (исключена утечка ресурсов GDI).
+    - Раздельная установка слотов `SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_small)` и `SendMessageW(hwnd, WM_SETICON, ICON_BIG, h_big)`.
+    - Защита свойства окна `SetPropW(hwnd, "PC_CRISP_ICONS", 1)`: калибровка срабатывает один раз при создании окна, исключая перфреймовый спам сообщений и накладные расходы на 60 FPS.
+    - Безопасная пустая заглушка (no-op) для macOS и Linux.
+  - [x] **Интеграция во все оконные вьюпорты (`crates/overlay_ui`)**:
+    - В `CompanionOverlayApp`: калибровка окна менеджера плагинов `PhotoCraft - Plugins Manager`.
+    - В `launch_plugin_manager` (автономный запуск): калибровка нативного окна и выставление 64 px для кроссплатформенных композиторов.
+    - В `DynamicToolEngine`: калибровка окон интерактивных инструментов (Harmonic Studio, Depth Studio, ChromaSense, PopCraft 3D и др.).
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`);
+    - Нулевые расхождения форматирования (`cargo fmt --all -- --check`);
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`;
+    - Валидация каталога плагинов (14/14 плагинов OK).
+
+- [x] **Фаза 102: Полировка интерфейса Менеджера плагинов — иконки в установленных плагинах и адаптивная верстка каталога (BUG-100)**
+  - [x] **Разрешение иконок плагинов на уровне контрактов (`crates/core_contracts/src/plugin.rs`)**:
+    - В `PluginManifest` добавлен вспомогательный метод `resolve_icon_path(&self, root_plugins_dir: Option<&Path>) -> Option<PathBuf>`;
+    - Централизация алгоритма: приоритет явного `icon`, затем дефолтный `icon.svg` в директории плагина, затем фолбэк на директорию плагинов;
+    - Устранено локальное дублирование логики в `crates/overlay_ui/src/lib.rs` (`OverlayBar::from_manifests`);
+    - Добавлен юнит-тест `test_plugin_manifest_resolve_icon_path` в `core_contracts`.
+  - [x] **Отображение иконок и единый макет во вкладке «Плагины» (`crates/overlay_ui/src/manager.rs`)**:
+    - Вывод векторных SVG-иконок 24×24 px с поддержкой темной/светлой темы и кэшированием в `store_icon_cache`;
+    - Векторные fallback-бейджи при отсутствии иконки (`AI`, `FX`, `ALGO`, `UI`, `RH`, `CLI`);
+    - Перестройка карточки в 3-частный макет: слева иконка 24×24 px, по центру вертикальный стек с ограничением `ui.set_max_width((ui.available_width() - 40.0).max(100.0))`, справа выровненный через `right_to_left` чекбокс включения/выключения.
+  - [x] **Ликвидация наплыва текста описания на кнопки в каталоге «Магазин» (`crates/overlay_ui/src/manager.rs`)**:
+    - В центральном блоке `ui.vertical` каждой карточки магазина ограничена максимальная ширина `ui.set_max_width((ui.available_width() - 110.0).max(100.0))`;
+    - Текст описания теперь гарантированно переносится по словам до зоны кнопок `Installed`, `Install` и `Update`, полностью исключая перекрытие.
+  - [x] **100% соблюдение Definition of Done**:
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`);
+    - Стиль кода подтвержден (`cargo fmt --all -- --check`);
+    - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`) успешно пройдены;
+    - Валидация каталога плагинов (14/14 плагинов OK).

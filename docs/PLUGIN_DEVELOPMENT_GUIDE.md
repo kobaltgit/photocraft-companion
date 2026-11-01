@@ -502,12 +502,12 @@ PhotoCraft Companion оснащен декларативным движком р
 
 | Тип (`type`) | Параметры манифеста | Описание |
 | :--- | :--- | :--- |
-| **`color_slot`** | `id`, `label`, `label_ru`, `default_hex`, `read_only`, `selectable`, `target_binding` | Интерактивная плашка цвета. Если `selectable: true`, клик по плашке переключает фокус редактирования (записывает `id` слота в ключ `target_binding`). При `read_only: true` служит для отображения результата симуляции. |
-| **`slider`** | `id`, `label`, `label_ru`, `min`, `max`, `step`, `default` | Ползунок числового значения с плавной векторной отрисовкой. Значение автоматически доступно в состоянии по ключу `id`. |
+| **`color_slot`** | `id`, `label`, `label_ru`, `default_hex`, `read_only`, `selectable`, `target_binding`, `label_binding` | Интерактивная плашка цвета. Если `selectable: true`, клик по плашке переключает фокус редактирования (записывает `id` слота в ключ `target_binding`). При `read_only: true` служит для отображения цвета. Параметр `label_binding` позволяет динамически связывать подпись слота с ключом в состоянии Rhai (для реактивного перевода или изменения роли цвета на лету). |
+| **`slider`** | `id`, `label`, `label_ru`, `min`, `max`, `step`, `default`, `enabled_binding` | Ползунок числового значения с плавной векторной отрисовкой. Значение автоматически доступно в состоянии по ключу `id`. При `step >= 1.0` автоматически форматируется чистыми целыми числами (`0 px`, `15 px`), при дробном шаге — с одним знаком (`1.5 px`). Параметр `enabled_binding` позволяет динамически блокировать/разблокировать ползунок по булеву флагу из состояния (например, блокировка разброса угла в монохромном режиме). |
 | **`dropdown`** | `id`, `label`, `label_ru`, `options`, `options_ru`, `default_index` | Выпадающий список с поддержкой локализованных вариантов `options_ru`. Выбранный индекс хранится в `state[id]`. |
 | **`toggle`** | `id`, `label`, `label_ru`, `default` | Логический переключатель-чекбокс (хранит `true`/`false`). |
 | **`button`** | `id`, `label`, `label_ru`, `icon` | Кнопка действия. При клике выставляет флаг `action_<id> = true` в состоянии, доступный для обработки в скрипте. Поддерживает векторные иконки (например, `"swap"` для смены мест). |
-| **`hue_wheel`** | `id`, `source_color_id`, `show_pointer` | Векторный круговой цветовой спектр HSL (цветовой круг). Поддерживает динамическое связывание `source_color_id`: если указан ключ `edit_target`, круг автоматически читает hex-код текущего активного слота. |
+| **`hue_wheel`** | `id`, `source_color_id`, `show_pointer`, `markers_binding`, `connect_mode_binding` | Векторный круговой цветовой спектр HSL (цветовой круг). Поддерживает динамическое связывание `source_color_id`: если указан ключ `edit_target`, круг автоматически читает hex-код текущего активного слота. Параметр `markers_binding` принимает имя ключа состояния с массивом углов в градусах `[θ1, θ2, ...]` ($0..360$) для отображения нескольких гармонических маркеров. Параметр `connect_mode_binding` задает режим векторных соединительных линий: `"polygon"` (замкнутый многоугольник), `"spokes"` (лучи к центру спектра) или `"none"` (только маркеры). |
 | **`banner`** | `id`, `message_binding`, `style_binding` | Информационный баннер статуса с автопереносом длинного текста. `style_binding` принимает стили: `"info"`, `"warning"`, `"error"`, `"success"`. Текст читается из ключа состояния `message_binding`. |
 | **`label`** | `text_binding` | Текстовая строка, связанная со строковым значением в состоянии плагина. |
 | **`separator`** | *(без параметров)* | Тонкая визуальная горизонтальная черта для разделения логических блоков. |
@@ -602,6 +602,146 @@ fn on_selection_state(has_selection, bounds, state) {
   - `get_named_color(r, g, b) -> String` — возвращает художественное название оттенка из базы 152 цветов на активном языке;
   - `simulate_cvd(r, g, b, profile_idx) -> String` — колориметрическая симуляция восприятия цвета дальтоником по матрицам Бреттла-Вьено;
   - `calculate_contrast(r1, g1, b1, r2, g2, b2) -> Float` — вычисляет строгий симметричный коэффициент контрастности по стандарту W3C WCAG 2.1.
+
+### 7.3. Архитектурные паттерны реактивности и примеры разработки
+
+Скриптовый движок Rhai в связке с декларативными виджетами позволяет создавать богатые интерактивные плагины без перекомпиляции ядра Компаньона. Ниже приведены проверенные эталонные шаблоны реализации.
+
+#### 7.3.1. Паттерн динамической реактивности локализации (Dynamic i18n Reactivity)
+Когда пользователь меняет язык интерфейса в меню настроек Companion App, движок отправляет уведомление во все открытые плагины через вызов `on_state_changed`. Чтобы динамически сгенерированные строки интерфейса (например, в виджетах `color_slot` с `label_binding` или информационных баннерах `banner`) мгновенно переводились без необходимости двигать слайдеры, сохраняйте предыдущий язык в состоянии:
+
+```rhai
+fn on_state_changed(state) {
+    let cur_lang = current_language();
+    let lang_changed = false;
+    if !state.contains("last_language") || state["last_language"] != cur_lang {
+        state["last_language"] = cur_lang;
+        lang_changed = true;
+    }
+
+    // Если изменились параметры или сменился язык приложения — обновляем локализованные строки
+    if lang_changed || state["params_dirty"] == true {
+        state["params_dirty"] = false;
+        state = recalculate_ui_labels(state);
+    }
+
+    return state;
+}
+
+fn recalculate_ui_labels(state) {
+    state["slot_base_label"] = t("Base Dominant (60%)", "Базовый доминирующий (60%)");
+    state["slot_secondary_label"] = t("Secondary Harmony (30%)", "Вторичная гармония (30%)");
+    state["slot_accent_label"] = t("Focal Accent (10%)", "Фокусный акцент (10%)");
+    state["status_message"] = t("Ready for painting", "Готово к рисованию");
+    return state;
+}
+```
+
+#### 7.3.2. Паттерн подавления обратного эха (Echo Guard)
+Когда плагин меняет цвет в PhotoCraft через `execute_command("tools.setColors", ...)`, графический редактор обновляет рабочий цвет кисти. Это порождает событие `session.colors`, которое возвращается в плагин через хук `on_session_colors`. Без защиты это приведет к ложным повторным расчетам и мерцанию интерфейса.
+
+**Решение — фиксация исходящего цвета:**
+```rhai
+fn on_state_changed(state) {
+    if state["color_changed_by_user"] == true {
+        state["color_changed_by_user"] = false;
+        let new_fg = state["selected_hex"];
+        
+        // Запоминаем отправленный цвет перед вызовом редактора
+        state["last_sent_fg"] = new_fg;
+        execute_command("tools.setColors", #{
+            foreground: new_fg
+        });
+    }
+    return state;
+}
+
+fn on_session_colors(fg_hex, bg_hex, state) {
+    // Если цвет совпадает с только что отправленным плагином — подавляем эхо
+    if state.contains("last_sent_fg") && state["last_sent_fg"] == fg_hex {
+        return state;
+    }
+
+    // Внешнее изменение пользователем (например, пипетка на холсте)
+    state["external_brush_color"] = fg_hex;
+    state = rebuild_palette_from_brush(state);
+    return state;
+}
+```
+
+#### 7.3.3. Экспорт палитры в системные образцы PhotoCraft (`swatches`)
+Плагин может создавать именованные группы палитр в PhotoCraft и наполнять их образцами цветов одним нажатием кнопки:
+
+```rhai
+fn export_to_swatches(group_name, colors_list) {
+    // 1. Создаем именованную группу образцов в библиотеке PhotoCraft
+    execute_command("swatches.newGroup", #{
+        groupName: group_name
+    });
+
+    // 2. Добавляем образцы цветов в созданную группу
+    for item in colors_list {
+        execute_command("swatches.add", #{
+            groupName: group_name,
+            name: item["name"],
+            color: item["hex"]
+        });
+    }
+}
+```
+
+#### 7.3.4. Отрисовка плашек и графики на новом слое холста
+Плагины могут автоматизировать рисование графических элементов на холсте PhotoCraft (например, горизонтальной или вертикальной карточки палитры, рамок или сеток), используя атомарные IPC-команды выделения и заливки:
+
+```rhai
+fn draw_palette_card_on_canvas(colors_list, is_horizontal) {
+    // 1. Создаем отдельный прозрачный слой для палитры
+    execute_command("layer.new.layer", #{
+        name: "Harmonic Palette Swatches"
+    });
+
+    let swatch_w = 64;
+    let swatch_h = 64;
+    let gap = 8;
+    let start_x = 40;
+    let start_y = 40;
+
+    // 2. Последовательно выделяем и заливаем прямоугольные плашки
+    for i in 0..colors_list.len() {
+        let x = if is_horizontal { start_x + i * (swatch_w + gap) } else { start_x };
+        let y = if is_horizontal { start_y } else { start_y + i * (swatch_h + gap) };
+
+        // Задаем прямоугольное выделение на холсте
+        execute_command("select.rect", #{
+            x: x,
+            y: y,
+            width: swatch_w,
+            height: swatch_h
+        });
+
+        // Назначаем цвет переднего плана и заливаем выделенную область
+        execute_command("tools.setColors", #{
+            foreground: colors_list[i]
+        });
+        execute_command("edit.fill", #{
+            contents: "foreground"
+        });
+    }
+
+    // 3. Снимаем выделение после завершения отрисовки
+    execute_command("select.deselect");
+}
+```
+
+#### 7.3.5. Ограничения и безопасность песочницы Rhai (Rhai Sandbox Guard)
+Для обеспечения абсолютной стабильности интерфейса, отзывчивости UI (60 FPS) и защиты пользовательской системы рантайм Rhai в PhotoCraft Companion работает в строго изолированной песочнице со следующими ограничениями:
+1. **Квота операций:** Максимум `100 000` операций на один вызов хука. Запрещены бесконечные циклы `while true` без выхода.
+2. **Глубина стека вызовов:** Ограничена значением `64`. Избегайте глубокой или неконтролируемой рекурсии.
+3. **Изоляция от ОС:** Скрипты Rhai не имеют доступа к файловой системе компьютера, процессам ОС, сокетам или переменным окружения. Любое взаимодействие с внешним миром происходит строго через типизированные IPC-команды PhotoCraft (`execute_command`) и нативный растровый движок (`execute_raster_process`).
+
+#### 7.3.6. Стандарты адаптивной верстки окон (Rule 6.1 Layout Guard)
+* **Калибровка габаритов:** Задавайте `window_width` и `window_height` в манифесте точно под размер содержимого виджетов, не допуская появления черной пустой полосы внизу окна.
+* **Форматирование слайдеров:** Для дискретных шагов (пиксели, проценты, углы) всегда используйте `step: 1.0` — рантайм автоматически отформатирует вывод как чистое целое число (`0 px`, `30°`) и обеспечит дискретный шаг прокрутки колесика мыши $\pm 1$. Для непрерывных параметров (растушевка, контраст) используйте дробный шаг (`step: 0.1` $\rightarrow$ `1.5 px`).
 
 ---
 
