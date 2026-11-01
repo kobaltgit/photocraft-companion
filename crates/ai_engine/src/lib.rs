@@ -1277,7 +1277,18 @@ impl Plugin for GenericAiPlugin {
         let source_layer_id = ctx.document.active_layer;
 
         // 4. Output Integration according to output_mode
-        let paste_res = ctx.client.paste_image_in_place(&processed_img).await?;
+        let paste_target = if ai_cfg.task != AiTask::Inpainting {
+            bake_layer_offset_onto_canvas(
+                &processed_img,
+                ctx.document.active_layer_bounds,
+                ctx.document.width,
+                ctx.document.height,
+            )
+        } else {
+            processed_img.clone()
+        };
+
+        let paste_res = ctx.client.paste_image_in_place(&paste_target).await?;
         let result_layer_id = paste_res
             .get("layer")
             .or_else(|| paste_res.get("layer_id"))
@@ -1298,6 +1309,40 @@ impl Plugin for GenericAiPlugin {
         }));
         Ok(res)
     }
+}
+
+/// If `img` matches the tight bounding box of the source layer and that layer has a
+/// non-zero offset on the canvas, expand `img` back onto a full canvas at that offset.
+///
+/// `paste_image_in_place` relies on the active selection and does not carry the layer
+/// position — with no selection it pastes at `(0, 0)`. For Native AI plugins that produce
+/// a new layer, `copy_active_layer_image` returns the tight bbox of the source content
+/// (e.g. `896×1152` inside a `2480×3508` canvas), so without this expansion the result
+/// would be shifted by `active_layer_bounds.xy` toward the top-left corner.
+///
+/// Returns `img.clone()` untouched if no expansion is needed (missing bounds, zero
+/// offset, canvas size unknown, or size mismatch such as super-resolution output).
+fn bake_layer_offset_onto_canvas(
+    img: &RgbaImage,
+    layer_bounds: Option<[i32; 4]>,
+    canvas_w: u32,
+    canvas_h: u32,
+) -> RgbaImage {
+    let Some([x, y, bw, bh]) = layer_bounds else {
+        return img.clone();
+    };
+    if canvas_w == 0 || canvas_h == 0 || bw <= 0 || bh <= 0 {
+        return img.clone();
+    }
+    if img.width() != bw as u32 || img.height() != bh as u32 {
+        return img.clone();
+    }
+    if x == 0 && y == 0 {
+        return img.clone();
+    }
+    let mut full = RgbaImage::new(canvas_w, canvas_h);
+    image::imageops::overlay(&mut full, img, x as i64, y as i64);
+    full
 }
 
 #[cfg(test)]
@@ -1555,5 +1600,51 @@ mod tests {
 
         // Test invalidation on non-existent entry does not panic
         engine.invalidate_session(&model_a, false);
+    }
+
+    #[test]
+    fn test_bake_layer_offset_zero_offset_passthrough() {
+        let img = RgbaImage::from_pixel(40, 40, Rgba([200, 100, 50, 255]));
+        let result = bake_layer_offset_onto_canvas(&img, Some([0, 0, 40, 40]), 100, 100);
+        assert_eq!(result.dimensions(), (40, 40));
+    }
+
+    #[test]
+    fn test_bake_layer_offset_expands_to_canvas_at_original_position() {
+        let img = RgbaImage::from_pixel(40, 40, Rgba([200, 100, 50, 255]));
+        let result = bake_layer_offset_onto_canvas(&img, Some([20, 30, 40, 40]), 100, 100);
+
+        assert_eq!(result.dimensions(), (100, 100));
+        // Canvas corners stay transparent
+        assert_eq!(result.get_pixel(0, 0)[3], 0);
+        assert_eq!(result.get_pixel(99, 99)[3], 0);
+        // Source content lands exactly at the original (x, y)
+        assert_eq!(result.get_pixel(20, 30), &Rgba([200, 100, 50, 255]));
+        assert_eq!(result.get_pixel(59, 69), &Rgba([200, 100, 50, 255]));
+        // One pixel outside the layer stays transparent
+        assert_eq!(result.get_pixel(19, 30)[3], 0);
+    }
+
+    #[test]
+    fn test_bake_layer_offset_size_mismatch_passthrough() {
+        // Super-resolution case: processed is 2x the bbox, expansion must NOT trigger
+        let img = RgbaImage::from_pixel(80, 80, Rgba([200, 100, 50, 255]));
+        let result = bake_layer_offset_onto_canvas(&img, Some([20, 30, 40, 40]), 100, 100);
+        assert_eq!(result.dimensions(), (80, 80));
+    }
+
+    #[test]
+    fn test_bake_layer_offset_missing_bounds_passthrough() {
+        let img = RgbaImage::from_pixel(40, 40, Rgba([200, 100, 50, 255]));
+        let result = bake_layer_offset_onto_canvas(&img, None, 100, 100);
+        assert_eq!(result.dimensions(), (40, 40));
+    }
+
+    #[test]
+    fn test_bake_layer_offset_negative_offset_clips_safely() {
+        // Layer partially off-canvas; overlay must handle negative coords without panic
+        let img = RgbaImage::from_pixel(40, 40, Rgba([200, 100, 50, 255]));
+        let result = bake_layer_offset_onto_canvas(&img, Some([-10, -10, 40, 40]), 100, 100);
+        assert_eq!(result.dimensions(), (100, 100));
     }
 }
