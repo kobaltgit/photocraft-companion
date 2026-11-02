@@ -1307,3 +1307,25 @@
     - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`;
     - Валидация каталога плагинов (14/14 плагинов OK);
     - Зарегистрированы дефекты `BUG-102` и `BUG-103` в `docs/BUGS_AND_ISSUES.md`.
+
+
+- [x] **Фаза 105: Устранение ошибки доступа при установке плагинов на Windows и защита NTFS (Issue #12, BUG-104)**
+  - [x] **Защищенная распаковка .pcpl и автоматический fallback (`crates/core_contracts/src/package.rs`)**:
+    - В `install_pcpl` добавлена проверка `is_dir_writable(plugins_dir)`: если целевая папка защищена от записи (установка в `C:\Program Files`, образ DMG или системный каталог Linux), распаковка бесшовно перенаправляется в пользовательскую директорию `user_data_dir().join("plugins")`.
+    - Реализовано интеллектуальное сопоставление папок (Zero Duplicate Directories): поиск существующей папки плагина по `existing_manifest.id == manifest.id` и короткому имени папки, исключающее создание дубликатов при обновлении плагинов из Store.
+    - Реализована функция `remove_dir_all_safe`: рекурсивный сброс атрибута `readonly` через `clear_readonly_recursive` перед вызовом `fs::remove_dir_all` и retry-цикл для предотвращения падений `os error 5`.
+    - Реализована функция `rename_with_retry` с микропаузами против асинхронных файловых блокировок Windows Defender и индексатора.
+    - Написаны 3 новых модульных теста: `test_install_pcpl_fallback_when_target_readonly`, `test_install_pcpl_preserves_existing_custom_folder_name` и `test_install_pcpl_handles_readonly_files_on_replace`.
+  - [x] **Проброс каталога плагинов в Overlay UI (`crates/overlay_ui`, `crates/companion_app`)**:
+    - В `PluginManagerApp::new` добавлена проверка `is_dir_writable` для дефолтного каталога с fallback на `user_data_dir().join("plugins")`.
+    - Добавлен метод `.with_plugins_dir(...)` в `PluginManagerApp` и `CompanionOverlayApp`.
+    - В `overlay_ui::launch_companion_overlay` добавлен параметр `plugins_dir: Option<PathBuf>`, настраивающий путь в менеджере.
+    - В `companion_app/src/main.rs` передан гарантированно вычисленный и доступный для записи `plugins_dir`.
+  - [x] **Инкрементальный сидинг бандловых плагинов (`crates/companion_app/src/main.rs`)**:
+    - Внедрена функция `sync_missing_bundled_plugins(&bundled, &user_plugins)` взамен грубой проверки `is_empty`: при обновлении установленного приложения новые плагины из `Program Files\plugins` автоматически и бесшовно копируются в пользовательскую директорию.
+  - [x] **100% соблюдение Definition of Done**:
+    - 51 тест `core_contracts` пройден за 0.03s;
+    - Чистота форматирования кода (`cargo fmt --all -- --check`);
+    - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`;
+    - Валидация каталога плагинов (14/14 плагинов OK);
+    - Зарегистрирован и закрыт дефект `BUG-104` в `docs/BUGS_AND_ISSUES.md`.

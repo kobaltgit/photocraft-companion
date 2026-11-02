@@ -3925,3 +3925,46 @@ Following the v2.0.0 milestone release, reports surfaced from users running Phot
 - 100% tests passed across the entire workspace (`cargo test --workspace -j 1`).
 - Defect tickets `BUG-102` and `BUG-103` resolved in `docs/BUGS_AND_ISSUES.md`.
 - Phase 104 marked completed in `docs/CHECKLIST.md`.
+
+
+## [2026-11-02 12:25] Chapter 113: Resolving Plugin Installation Access Denied on Windows, NTFS Hardening, and Incremental Seeding (Issue #12, BUG-104)
+
+*Time: November 02, 2026, 12:25 (~35 minutes)*
+
+### 1. The Problem: Windows os error 5, Read-Only Program Files, and Duplicate Directories
+Following the v2.0.1 release, GitHub Issue #12 reported a failure when installing plugins (*Depth Studio*, *Harmonic Color Studio*, *Selection Modifiers*) through the **Store** tab on Windows 11:
+`ui.photocraft.plugins.harmonic_studio: Installation failed: Install package error: IO error: Access is denied. (os error 5)`.
+
+An in-depth investigation into the codebase and Windows NTFS filesystem constraints uncovered four root causes:
+1. **Dropped User Plugins Path in `overlay_ui`:** In `companion_app`, `find_plugins_dir()` correctly computed the user data path `%LOCALAPPDATA%\PhotoCraft Companion\plugins` when installed under `C:\Program Files`. However, this computed path was never passed to `overlay_ui::launch_companion_overlay`! Inside the UI layer, `PluginManagerApp::new` fell back to a relative `PathBuf::from("plugins")`, resolving to the protected system folder `C:\Program Files\PhotoCraft Companion\plugins`, where standard users lack write permissions.
+2. **Missing Safety Fallback in `core_contracts::install_pcpl`:** The `.pcpl` package installer attempted to extract into a temporary directory inside the supplied `plugins_dir`. If that target was read-only, unpacking failed immediately with `os error 5`.
+3. **Windows NTFS Locks & `remove_dir_all` Failures:** When replacing or updating an existing plugin directory on Windows, standard `fs::remove_dir_all` crashes with `Access is denied (os error 5)` if files retain the `readonly` attribute. Furthermore, immediate subsequent `fs::rename` calls frequently clash with asynchronous file handle locks held by Windows Defender or Windows Search Indexer.
+4. **Duplicate Directory Proliferation:** In the bundled repository, plugins used compact directory names such as `harmonic_studio` and `depth_studio`, while their package manifests declared `ui.photocraft.plugins.harmonic_studio`. Without intelligent matching, the extractor created a separate directory `plugins/ui.photocraft.plugins.harmonic_studio`, causing duplicates.
+5. **Absence of Incremental Bundled Plugin Seeding:** In `companion_app`, copying bundled plugins into `user_plugins` only occurred if the user directory was completely empty (`is_empty`). When updating an existing installation, new bundled plugins were never seeded to the user.
+
+### 2. Architectural Solution: Defense in Depth & Clean Contracts
+
+#### A. Hardened Package Installer & Zero Duplicate Directories (`crates/core_contracts/src/package.rs`)
+- **Automatic Fallback:** If `plugins_dir` is not writable (`!is_dir_writable(plugins_dir)`), the extractor transparently redirects the installation to `user_data_dir().join("plugins")`.
+- **Intelligent Folder Matching:** Before determining the target path, `install_pcpl` scans subdirectories: if an existing folder matching `manifest.id` or its trailing segment (`short_id`) is found, that existing directory is updated (e.g. `plugins/harmonic_studio`), preventing folder duplication.
+- **`remove_dir_all_safe`:** Introduced safe directory removal with recursive `readonly` attribute clearing (`clear_readonly_recursive`) before invoking `fs::remove_dir_all`, coupled with a retry loop with micro-delays against transient Windows Defender locks.
+- **`rename_with_retry`:** Atomic folder replacement with 5 retry attempts to withstand file system races.
+- Added 3 unit tests: fallback to `user_data_dir`, preservation of custom folder names, and safe replacement of `readonly` files.
+
+#### B. Path Propagation & Default Fallback (`crates/overlay_ui`, `crates/companion_app`)
+- In `PluginManagerApp::new`, added `is_dir_writable` validation for the default directory, ensuring automatic fallback to `%LOCALAPPDATA%` when launched from `Program Files`.
+- Added builder methods `.with_plugins_dir(...)` to `PluginManagerApp` and `CompanionOverlayApp`.
+- Updated `overlay_ui::launch_companion_overlay` with parameter `plugins_dir: Option<PathBuf>`, passed directly from `companion_app`.
+
+#### C. Incremental Seeding of Bundled Plugins (`crates/companion_app/src/main.rs`)
+- Replaced the coarse `is_empty` check with `sync_missing_bundled_plugins(&bundled, &user_plugins)`.
+- The function iterates over all bundled plugins and copies only those missing from the user folder (matching both folder names and `manifest.id`). When users update the application, newly introduced plugins seamlessly appear in their environment.
+
+### 3. Verification & Definition of Done
+- Compilations and tests executed strictly under Resource Guard with `-j 1`.
+- `cargo fmt --all -- --check` confirmed clean code formatting (0 differences).
+- All 51 unit tests in `core_contracts` passed (`0.03s`).
+- All regulatory linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`.
+- Validator `plugin_validator` verified all 14 ecosystem plugins.
+- Defect ticket `BUG-104` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 105 marked completed in `docs/CHECKLIST.md`.

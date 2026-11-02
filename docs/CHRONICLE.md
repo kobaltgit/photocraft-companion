@@ -3919,3 +3919,46 @@ ui.set_max_width(max_content_width);
 - 100% тестов во всем воркспейсе пройдены (`cargo test --workspace -j 1`).
 - Зарегистрированы и закрыты дефекты `BUG-102` и `BUG-103` в `docs/BUGS_AND_ISSUES.md`.
 - Отмечена Фаза 104 в `docs/CHECKLIST.md`.
+
+
+## [2026-11-02 12:25] Глава 113: Устранение ошибки доступа при установке плагинов на Windows, защита NTFS и инкрементальный сидинг (Issue #12, BUG-104)
+
+*Время: 02 ноября 2026, 12:25 (~35 минут)*
+
+### 1. Проблема: Windows os error 5, read-only папка Program Files и дубликаты плагинов
+После релиза Companion v2.0.1 в GitHub Issue #12 пришел баг-репорт: при попытке установить плагины (*Depth Studio*, *Harmonic Color Studio*, *Selection Modifiers*) через вкладку **Store** на Windows 11 установка мгновенно падала с ошибкой:
+`ui.photocraft.plugins.harmonic_studio: Installation failed: Install package error: IO error: Access is denied. (os error 5)`.
+
+Глубокий анализ кода и файловой системы Windows выявил четыре взаимосвязанных дефекта:
+1. **Потеря пользовательского пути в `overlay_ui`:** В `companion_app` функция `find_plugins_dir()` корректно вычисляла пользовательский каталог `%LOCALAPPDATA%\PhotoCraft Companion\plugins`, когда приложение установлено в `C:\Program Files`. Однако в вызов `overlay_ui::launch_companion_overlay` этот параметр вообще не передавался! Внутри интерфейса `PluginManagerApp::new` путь заново вычислялся как локальный `PathBuf::from("plugins")`, который указывал на защищенную системную директорию `C:\Program Files\PhotoCraft Companion\plugins`, куда у непривилегированного пользователя нет прав на запись.
+2. **Отсутствие защитного fallback в `core_contracts::install_pcpl`:** Распаковщик `.pcpl` пакетов пытался создать временный каталог прямо в переданном `plugins_dir`. Если путь был read-only, распаковка падала с `os error 5`.
+3. **Блокировки Windows NTFS и падения `remove_dir_all`:** При замене или обновлении директории существующего плагина стандартный `fs::remove_dir_all` на Windows падает с `Access is denied (os error 5)`, если файлы имеют атрибут `readonly`. Кроме того, последующий `fs::rename` сбоит из-за асинхронного освобождения дескрипторов антивирусом Windows Defender.
+4. **Проблема дублирования папок:** В каталоге бандловые плагины лежали в папках с короткими именами `harmonic_studio`, `depth_studio`, а в манифестах идентификаторы имели вид `ui.photocraft.plugins.harmonic_studio`. Распаковщик без проверки создавал новую параллельную директорию `plugins/ui.photocraft.plugins.harmonic_studio`, приводя к дублированию.
+5. **Отсутствие инкрементального сидинга новых плагинов:** В `companion_app` копирование бандловых плагинов в `user_plugins` производилось только при условии полной пустоты каталога (`is_empty`). При обновлении инсталлятором поверх предыдущей версии программы новые плагины пользователю не доставлялись.
+
+### 2. Архитектурное решение: эшелонированная защита и чистый контракт
+
+#### А. Защищенный распаковщик и Zero Duplicate Directories (`crates/core_contracts/src/package.rs`)
+- **Автоматический fallback:** Если `plugins_dir` недоступен для записи (`!is_dir_writable(plugins_dir)`), распаковщик прозрачно перенаправляет установку в `user_data_dir().join("plugins")`.
+- **Интеллектуальное сопоставление папок:** Перед формированием пути `install_pcpl` сканирует подкаталоги: если уже существует директория с совпадающим `manifest.id` или совпадающим коротким сегментом (`short_id`), обновляется именно существующая папка (`plugins/harmonic_studio`), исключая дубликаты.
+- **`remove_dir_all_safe`:** Внедрена функция безопасного удаления: перед удалением рекурсивно сбрасывается атрибут `readonly` (`clear_readonly_recursive`), а также добавлен retry-цикл с микропаузами против асинхронных блокировок Windows Defender.
+- **`rename_with_retry`:** Атомарное переименование с 5 попытками повтора при временной блокировке дескрипторов.
+- Написаны 3 новых модульных теста: проверка fallback на `user_data_dir`, сохранение имени папки и безопасная замена файлов с атрибутом `readonly`.
+
+#### Б. Проброс каталога и fallback по умолчанию (`crates/overlay_ui`, `crates/companion_app`)
+- В `PluginManagerApp::new` добавлена проверка доступности каталога `is_dir_writable`: если программа запущена из `Program Files`, интерфейс по умолчанию выбирает безопасную пользовательскую директорию `%LOCALAPPDATA%`.
+- Добавлен метод `.with_plugins_dir(...)` в `PluginManagerApp` и `CompanionOverlayApp`.
+- В `overlay_ui::launch_companion_overlay` добавлен параметр `plugins_dir: Option<PathBuf>`, куда `companion_app` передает гарантированно вычисленный рабочий путь.
+
+#### В. Инкрементальный сидинг бандловых плагинов (`crates/companion_app/src/main.rs`)
+- Грубая проверка `is_empty` заменена на функцию `sync_missing_bundled_plugins(&bundled, &user_plugins)`.
+- Функция обходит все бандловые плагины и копирует только те, которых еще нет в пользовательской директории (проверяя как имена папок, так и `manifest.id`). Это гарантирует, что при обновлении приложения все новые плагины сразу появляются у пользователя.
+
+### 3. Верификация и соблюдение Definition of Done
+- Компиляция и тесты выполнены строго с флагом ограничения ресурсов `-j 1`.
+- `cargo fmt --all -- --check` подтвердил нулевое число расхождений стиля (0 diffs).
+- Все 51 тест `core_contracts` пройдены успешно (`0.03s`).
+- Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`) успешно пройдены.
+- Валидатор `plugin_validator` проверил все 14 плагинов экосистемы.
+- Зарегистрирован и закрыт дефект `BUG-104` в `docs/BUGS_AND_ISSUES.md`.
+- Отмечена Фаза 105 в `docs/CHECKLIST.md`.

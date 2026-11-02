@@ -122,10 +122,15 @@ impl PluginManagerApp {
                 .unwrap_or_default()
         };
 
-        let plugins_dir = if PathBuf::from("plugins").is_dir() {
+        let candidate = if PathBuf::from("plugins").is_dir() {
             PathBuf::from("plugins")
         } else {
             data_dir.parent().unwrap_or(&data_dir).join("plugins")
+        };
+        let plugins_dir = if core_contracts::is_dir_writable(&candidate) {
+            candidate
+        } else {
+            core_contracts::user_data_dir().join("plugins")
         };
 
         let init_state = if is_connected.load(Ordering::Relaxed) {
@@ -187,6 +192,11 @@ impl PluginManagerApp {
 
     pub fn with_process_detector(mut self, callback: Arc<dyn Fn() -> bool + Send + Sync>) -> Self {
         self.is_process_running = Some(callback);
+        self
+    }
+
+    pub fn with_plugins_dir(mut self, plugins_dir: impl Into<PathBuf>) -> Self {
+        self.plugins_dir = plugins_dir.into();
         self
     }
 

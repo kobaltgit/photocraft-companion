@@ -286,6 +286,11 @@ impl CompanionOverlayApp {
         self
     }
 
+    pub fn with_plugins_dir(mut self, plugins_dir: impl Into<std::path::PathBuf>) -> Self {
+        self.manager = self.manager.with_plugins_dir(plugins_dir);
+        self
+    }
+
     pub fn save_layout_state(&self) {
         let mut cfg = core_contracts::CompanionConfig::load_or_default(&self.config_path);
         cfg.is_vertical = self.last_saved_vertical;
@@ -1062,6 +1067,7 @@ pub fn launch_companion_overlay(
     dynamic_engine: Arc<std::sync::Mutex<DynamicToolEngine>>,
     egui_ctx_holder: Arc<std::sync::Mutex<Option<egui::Context>>>,
     is_process_running: Option<Arc<dyn Fn() -> bool + Send + Sync>>,
+    plugins_dir: Option<std::path::PathBuf>,
 ) -> anyhow::Result<()> {
     let mut app = CompanionOverlayApp::new(
         buttons,
@@ -1076,6 +1082,9 @@ pub fn launch_companion_overlay(
         ipc_action_tx,
         dynamic_engine,
     );
+    if let Some(dir) = plugins_dir {
+        app = app.with_plugins_dir(dir);
+    }
     if let Some(cb) = on_launch_requested {
         app = app.with_launch_callback(cb);
     }

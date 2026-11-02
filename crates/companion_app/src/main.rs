@@ -91,21 +91,66 @@ fn find_plugins_dir() -> PathBuf {
         // If bundled directory is read-only (e.g. macOS DMG or Windows Program Files),
         // ensure writable user_plugins directory and copy bundled plugins if empty
         let _ = std::fs::create_dir_all(&user_plugins);
-        let is_empty = std::fs::read_dir(&user_plugins)
-            .map(|mut it| it.next().is_none())
-            .unwrap_or(true);
-        if is_empty {
-            tracing::info!(
-                "Bundled plugins directory is read-only. Seeding user plugins directory: {}",
-                user_plugins.display()
-            );
-            let _ = copy_dir_all(&bundled, &user_plugins);
-        }
+        sync_missing_bundled_plugins(&bundled, &user_plugins);
         return user_plugins;
     }
 
     let _ = std::fs::create_dir_all(&user_plugins);
     user_plugins
+}
+
+fn sync_missing_bundled_plugins(bundled_dir: &std::path::Path, user_dir: &std::path::Path) {
+    let bundled_entries = match std::fs::read_dir(bundled_dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    let mut existing_ids = std::collections::HashSet::new();
+    let mut existing_folders = std::collections::HashSet::new();
+    if let Ok(user_entries) = std::fs::read_dir(user_dir) {
+        for entry in user_entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                existing_folders.insert(entry.file_name().to_string_lossy().to_string());
+                let manifest_path = path.join("plugin.json");
+                if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+                    if let Ok(manifest) =
+                        serde_json::from_str::<core_contracts::PluginManifest>(&content)
+                    {
+                        existing_ids.insert(manifest.id);
+                    }
+                }
+            }
+        }
+    }
+
+    for entry in bundled_entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let folder_name = entry.file_name().to_string_lossy().to_string();
+        if existing_folders.contains(&folder_name) {
+            continue;
+        }
+
+        let manifest_path = path.join("plugin.json");
+        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
+            if let Ok(manifest) = serde_json::from_str::<core_contracts::PluginManifest>(&content) {
+                if existing_ids.contains(&manifest.id) {
+                    continue;
+                }
+            }
+        }
+
+        let target = user_dir.join(&folder_name);
+        tracing::info!(
+            "Seeding missing bundled plugin '{}' to user directory: {}",
+            folder_name,
+            target.display()
+        );
+        let _ = copy_dir_all(&path, &target);
+    }
 }
 
 fn find_photocraft_data_dir() -> PathBuf {
@@ -991,6 +1036,7 @@ fn main() -> anyhow::Result<()> {
         dynamic_engine,
         egui_ctx_holder,
         Some(is_process_running),
+        Some(plugins_dir),
     )?;
 
     Ok(())

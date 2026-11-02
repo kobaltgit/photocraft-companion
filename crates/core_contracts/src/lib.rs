@@ -105,7 +105,7 @@ pub mod config;
 pub use config::{is_dir_writable, user_data_dir, CompanionConfig};
 
 pub mod package;
-pub use package::{create_pcpl, install_pcpl};
+pub use package::{clear_readonly_recursive, create_pcpl, install_pcpl, remove_dir_all_safe};
 
 pub mod registry;
 pub use registry::{AiPluginFactory, AlgorithmPluginFactory, NoCodePlugin, PluginRegistry};
