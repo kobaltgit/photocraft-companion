@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Download, ExternalLink } from "lucide-react";
 import { useReleaseInfo } from "@/lib/release-info";
+import { assetPath } from "@/lib/asset-path";
 
 export function SiteNav() {
   const { version, installerUrl } = useReleaseInfo();
@@ -18,7 +19,7 @@ export function SiteNav() {
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.svg"
+              src={assetPath("/logo.svg")}
               alt="PhotoCraft Companion"
               className="h-6 w-auto"
             />

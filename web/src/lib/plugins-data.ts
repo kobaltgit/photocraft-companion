@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import registryData from "../../public/registry.json";
+import { assetPath } from "./asset-path";
 
 export interface PluginModel {
   name: string;
@@ -53,7 +54,7 @@ function parseRawPlugins(rawList: Array<Record<string, unknown>>): RegistryPlugi
       icon_url:
         String(p.icon_url) ||
         `https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/${dirName}/icon.svg`,
-      icon_local: `/plugins/${dirName}.svg`,
+      icon_local: assetPath(`/plugins/${dirName}.svg`),
       models: Array.isArray(p.models) ? (p.models as PluginModel[]) : [],
       github_url: `https://github.com/kobaltgit/photocraft-companion/tree/main/plugins/${dirName}`,
     };
@@ -74,8 +75,7 @@ export function usePluginsList() {
 
     async function syncRegistry() {
       try {
-        // Fetch fresh registry.json from public/ or GitHub releases
-        const res = await fetch("/registry.json");
+        const res = await fetch(assetPath("/registry.json"));
         if (!res.ok) return;
 
         const data = await res.json();

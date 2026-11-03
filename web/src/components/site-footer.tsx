@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { assetPath } from "@/lib/asset-path";
 
 export function SiteFooter() {
   return (
@@ -9,7 +10,7 @@ export function SiteFooter() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-8 pb-12 border-b border-line">
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="PhotoCraft Companion" className="h-7 w-auto" />
+            <img src={assetPath("/logo.svg")} alt="PhotoCraft Companion" className="h-7 w-auto" />
             <div>
               <span className="font-mono text-xs font-bold tracking-wider text-white block">
                 PHOTOCRAFT COMPANION

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { SectionShell, SectionEyebrow } from "@/components/section-shell";
 import { Terminal, RefreshCw, Sliders, CheckCircle2 } from "lucide-react";
+import { assetPath } from "@/lib/asset-path";
 
 interface Scenario {
   id: "remove_bg" | "depth_studio";
@@ -29,15 +30,15 @@ const SCENARIOS: Scenario[] = [
     name: "AI Remove Background",
     pillLabel: "01 // REMOVE BG",
     modelBadge: "Bria RMBG 2.0 · DirectML",
-    icon: "/plugins/remove_bg.svg",
+    icon: assetPath("/plugins/remove_bg.svg"),
     actionName: "RUN REMOVE BG",
     modelName: "bria-rmbg-2.0.onnx",
     task: "SEGMENTATION_MASK",
     input: "ACTIVE_LAYER",
     output: "LAYER_MASK",
     docTitle: "PhotoCraft 1.0 — Gemini_Generated_Image.jpg @ 54.3% (Layer 0, RGB/8)",
-    beforeImg: "/demo/photocraft-before.png",
-    afterImg: "/demo/photocraft-after.png",
+    beforeImg: assetPath("/demo/photocraft-before.png"),
+    afterImg: assetPath("/demo/photocraft-after.png"),
     beforeLabel: "BEFORE: RAW CANVAS",
     afterLabel: "AFTER: REMOVE BG (MASK COMMITTED)",
     defaultLatency: 380,
@@ -47,15 +48,15 @@ const SCENARIOS: Scenario[] = [
     name: "Depth Studio (Fog & Bokeh)",
     pillLabel: "02 // DEPTH STUDIO",
     modelBadge: "Depth Anything V2 · DirectML",
-    icon: "/plugins/depth_studio.svg",
+    icon: assetPath("/plugins/depth_studio.svg"),
     actionName: "RUN DEPTH STUDIO",
     modelName: "depth-anything-v2-small.onnx",
     task: "DEPTH_ESTIMATION",
     input: "ACTIVE_LAYER",
     output: "2 LAYERS (FOG + BOKEH)",
     docTitle: "PhotoCraft 1.0 — MAI_52d43e822818e44c.png @ 67.7% (Atmospheric Fog, RGB/8)*",
-    beforeImg: "/demo/depth-before.png",
-    afterImg: "/demo/depth-after.png",
+    beforeImg: assetPath("/demo/depth-before.png"),
+    afterImg: assetPath("/demo/depth-after.png"),
     beforeLabel: "BEFORE: SHARP BACKGROUND",
     afterLabel: "AFTER: DEPTH STUDIO (FOG & BOKEH)",
     defaultLatency: 420,
