@@ -44,3 +44,10 @@ companion_config.json
 plugins/colorize/
 plugins_quarantine_colorize/
 
+# Web (Next.js official site)
+web/node_modules/
+web/.next/
+web/out/
+web/*.tsbuildinfo
+web/.env*.local
+

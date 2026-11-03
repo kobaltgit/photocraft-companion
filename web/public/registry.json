@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-11-02T10:44:46Z",
+  "total_plugins": 14,
+  "plugins": [
+    {
+      "id": "macro.photocraft.plugins.black_and_white",
+      "name": "B&W Film Pop (No-Code)",
+      "version": "1.0.0",
+      "description": "Duplicates active layer, converts to grayscale with auto-contrast adjustment.",
+      "author": "kobaltGIT",
+      "plugin_type": "no_code",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/black_and_white.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/black_and_white/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ui.photocraft.plugins.chromasense",
+      "name": "ChromaSense",
+      "version": "1.0.0",
+      "description": "Accessibility Color Assistant for artists with color vision deficiencies",
+      "author": "kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/chromasense.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/chromasense/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ai.photocraft.plugins.depth_map",
+      "name": "AI Depth Map (Depth Anything V2)",
+      "version": "1.0.0",
+      "description": "State-of-the-art monocular 3D depth estimation for Lens Blur, bokeh and atmospheric lighting via Depth Anything V2.",
+      "author": "kobaltGIT",
+      "plugin_type": "native_ai",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/depth_map.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/depth_map/icon.svg",
+      "models": [
+        {
+          "name": "depth-anything-v2-small.onnx",
+          "required": true,
+          "size_mb": 99,
+          "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+          "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+        }
+      ]
+    },
+    {
+      "id": "ui.photocraft.plugins.depth_studio",
+      "name": "Depth Studio",
+      "version": "1.0.0",
+      "description": "Interactive AI Depth Studio for realistic atmospheric fog, aerial perspective and optical lens bokeh defocus with click-to-focus.",
+      "author": "kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/depth_studio.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/depth_studio/icon.svg",
+      "models": [
+        {
+          "name": "depth-anything-v2-small.onnx",
+          "required": true,
+          "size_mb": 99,
+          "url": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx",
+          "sha256": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c"
+        }
+      ]
+    },
+    {
+      "id": "macro.photocraft.plugins.dodge_and_burn",
+      "name": "Pro Dodge & Burn (50% Gray)",
+      "version": "1.0.0",
+      "description": "Creates a non-destructive 50% Gray Soft Light layer with a B&W visual aid layer for professional Dodge & Burn contouring.",
+      "author": "kobaltGIT",
+      "plugin_type": "no_code",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/dodge_and_burn.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/dodge_and_burn/icon.svg",
+      "models": []
+    },
+    {
+      "id": "macro.photocraft.plugins.frequency_separation",
+      "name": "Frequency Separation (Retouch)",
+      "version": "1.0.0",
+      "description": "Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching.",
+      "author": "kobaltGIT",
+      "plugin_type": "no_code",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/frequency_separation.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/frequency_separation/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ui.photocraft.plugins.harmonic_studio",
+      "name": "Harmonic Color Studio",
+      "version": "1.0.0",
+      "description": "Interactive color harmony studio, spectral wheel, live brush sync, Swatches export and canvas swatch cards.",
+      "author": "kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/harmonic_studio.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/harmonic_studio/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ai.photocraft.plugins.inpaint",
+      "name": "AI Generative Fill (LaMa)",
+      "version": "1.0.0",
+      "description": "Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU.",
+      "author": "kobaltGIT",
+      "plugin_type": "native_ai",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/inpaint.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/inpaint/icon.svg",
+      "models": [
+        {
+          "name": "lama_inpaint.onnx",
+          "required": true,
+          "size_mb": 208,
+          "url": "https://huggingface.co/Carve/LaMa-ONNX/resolve/main/lama_fp32.onnx",
+          "sha256": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6"
+        }
+      ]
+    },
+    {
+      "id": "ui.photocraft.plugins.popcraft_3d",
+      "name": "PopCraft 3D",
+      "version": "1.0.0",
+      "description": "Interactive 2.5D typography and graphic pop-out tool with vector angle pad, extrude depth, bevel contour and drop shadow.",
+      "author": "kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/popcraft_3d.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/popcraft_3d/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ai.photocraft.plugins.remove_bg",
+      "name": "AI Remove Background (RMBG-1.4)",
+      "version": "1.1.1",
+      "description": "High-fidelity neural background removal for PhotoCraft using Bria AI RMBG-1.4 model via local ONNX Runtime.",
+      "author": "kobaltGIT",
+      "plugin_type": "native_ai",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/remove_bg.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/remove_bg/icon.svg",
+      "models": [
+        {
+          "name": "rmbg-1.4.onnx",
+          "required": true,
+          "size_mb": 168,
+          "url": "https://huggingface.co/briaai/RMBG-1.4/resolve/main/onnx/model.onnx",
+          "sha256": "8cafcf770b06757c4eaced21b1a88e57fd2b66de01b8045f35f01535ba742e0f"
+        }
+      ]
+    },
+    {
+      "id": "ui.photocraft.plugins.selection_mod",
+      "name": "Selection Modifiers",
+      "version": "1.0.0",
+      "description": "Non-destructive selection modifier stack with reorderable operations (Border, Smooth, Expand, Contract, Feather).",
+      "author": "CharlieGoesMax & kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/selection_mod.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/selection_mod/icon.svg",
+      "models": []
+    },
+    {
+      "id": "macro.photocraft.plugins.teal_orange",
+      "name": "Cinematic Teal & Orange",
+      "version": "1.0.0",
+      "description": "Applies a Hollywood cinematic color grade with 3D LUT, film contrast S-curve, and skin vibrance protection.",
+      "author": "kobaltGIT",
+      "plugin_type": "no_code",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/teal_orange.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/teal_orange/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ai.photocraft.plugins.upscale",
+      "name": "AI Super-Resolution (2x)",
+      "version": "1.0.0",
+      "description": "2x neural super-resolution upscale for PhotoCraft active layer via local ONNX Runtime & DirectML GPU.",
+      "author": "kobaltGIT",
+      "plugin_type": "native_ai",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/upscale.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/upscale/icon.svg",
+      "models": [
+        {
+          "name": "realesrgan-x2.onnx",
+          "required": true,
+          "size_mb": 68,
+          "url": "https://huggingface.co/yuvraj108c/ComfyUI-Upscaler-Onnx/resolve/main/2x-ESRGAN.onnx",
+          "sha256": "f1a5e0dc1b83a7b4641078ead62fd180046fb8eb7b0231b3a29e30c071be1b6f"
+        }
+      ]
+    },
+    {
+      "id": "algorithm.photocraft.plugins.vectorize",
+      "name": "Smart Vectorizer / SVG Trace",
+      "version": "1.0.0",
+      "description": "High-fidelity vectorization and SVG tracing of raster layers with Bezier curve fitting.",
+      "author": "kobaltGIT",
+      "plugin_type": "native_algorithm",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/vectorize.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/vectorize/icon.svg",
+      "models": []
+    }
+  ]
+}

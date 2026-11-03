@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #121316;
+  --bg-raised: #18191d;
+  --bg-sunken: #0b0b0d;
+  --ink: #f2f1ee;
+  --ink-strong: #ffffff;
+  --muted: rgba(242, 241, 238, 0.62);
+  --faint: rgba(242, 241, 238, 0.38);
+  --line: rgba(242, 241, 238, 0.16);
+  --line-strong: rgba(242, 241, 238, 0.38);
+  --accent: #35b500;
+  --accent-ink: #55d61e;
+  --invert-bg: #ffffff;
+  --invert-fg: #0b0b0c;
+  --scanline: rgba(255, 255, 255, 0.02);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-raised: var(--bg-raised);
+  --color-bg-sunken: var(--bg-sunken);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-invert-bg: var(--invert-bg);
+  --color-invert-fg: var(--invert-fg);
+
+  --font-display: var(--font-inter), system-ui, sans-serif;
+  --font-serif: var(--font-playfair), Georgia, serif;
+  --font-body: var(--font-inter), system-ui, sans-serif;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  overflow-x: clip;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+::selection {
+  background: var(--accent);
+  color: #000000;
+}
+
+/* Mono HUD micro-label */
+.hud-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+/* Crosshair tick straddling a drafting grid intersection */
+.tick {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  pointer-events: none;
+}
+.tick::before,
+.tick::after {
+  content: "";
+  position: absolute;
+  background: var(--line-strong);
+}
+.tick::before {
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.tick-half::before {
+  top: 5px;
+}
+.tick::after {
+  top: 5px;
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+/* Signature ArtCraft interaction: invert block on hover */
+.invert-block {
+  transition: background-color 140ms linear, color 140ms linear;
+}
+.invert-block:hover,
+.invert-block[data-active="true"] {
+  background: var(--invert-bg);
+  color: var(--invert-fg);
+}
