@@ -593,6 +593,28 @@ impl PhotoCraftClient {
                 candidate_paths.push(dir.join("..").join("..").join(exe_name));
                 candidate_paths.push(dir.join("..").join("PhotoCraft").join(exe_name));
                 candidate_paths.push(dir.join("..").join("..").join("PhotoCraft").join(exe_name));
+
+                // Sibling portable directories in parent folder (e.g. ~/Programs/photocraft-.../bin/photocraft)
+                if let Some(grandparent) = dir.parent() {
+                    if let Ok(entries) = std::fs::read_dir(grandparent) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            if p.is_dir() {
+                                let name_lower = p
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .map(|s| s.to_lowercase())
+                                    .unwrap_or_default();
+                                if name_lower.contains("photocraft")
+                                    && !name_lower.contains("companion")
+                                {
+                                    candidate_paths.push(p.join("bin").join(exe_name));
+                                    candidate_paths.push(p.join(exe_name));
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -662,8 +684,45 @@ impl PhotoCraftClient {
             candidate_paths.push(std::path::PathBuf::from("/opt/photocraft/photocraft"));
             candidate_paths.push(std::path::PathBuf::from("/opt/PhotoCraft/PhotoCraft"));
             if let Ok(home) = std::env::var("HOME") {
-                candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/photocraft"));
-                candidate_paths.push(std::path::PathBuf::from(&home).join(".local/bin/PhotoCraft"));
+                let home_path = std::path::PathBuf::from(&home);
+                candidate_paths.push(home_path.join(".local/bin/photocraft"));
+                candidate_paths.push(home_path.join(".local/bin/PhotoCraft"));
+                candidate_paths.push(home_path.join("bin/photocraft"));
+                candidate_paths.push(home_path.join("bin/PhotoCraft"));
+                candidate_paths.push(home_path.join("Programs/photocraft/bin/photocraft"));
+                candidate_paths.push(home_path.join("Programs/photocraft/photocraft"));
+                candidate_paths.push(home_path.join("Programs/PhotoCraft/bin/PhotoCraft"));
+                candidate_paths.push(home_path.join("Programs/PhotoCraft/PhotoCraft"));
+                candidate_paths.push(home_path.join("Applications/photocraft/bin/photocraft"));
+                candidate_paths.push(home_path.join("Applications/photocraft/photocraft"));
+                candidate_paths.push(home_path.join("Applications/PhotoCraft/bin/PhotoCraft"));
+                candidate_paths.push(home_path.join("Applications/PhotoCraft/PhotoCraft"));
+
+                // Dynamic scan in ~/Programs and ~/Applications for portable extractions
+                for base in [home_path.join("Programs"), home_path.join("Applications")] {
+                    if base.is_dir() {
+                        if let Ok(entries) = std::fs::read_dir(&base) {
+                            for entry in entries.flatten() {
+                                let path = entry.path();
+                                if path.is_dir() {
+                                    let name_lower = path
+                                        .file_name()
+                                        .and_then(|n| n.to_str())
+                                        .map(|s| s.to_lowercase())
+                                        .unwrap_or_default();
+                                    if name_lower.contains("photocraft")
+                                        && !name_lower.contains("companion")
+                                    {
+                                        candidate_paths.push(path.join("bin/photocraft"));
+                                        candidate_paths.push(path.join("bin/PhotoCraft"));
+                                        candidate_paths.push(path.join("photocraft"));
+                                        candidate_paths.push(path.join("PhotoCraft"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Standard FreeDesktop Desktop Entry locations
@@ -1446,7 +1505,7 @@ impl PhotoCraftClient {
 
     /// Read image from system clipboard with automatic retry policy to handle OS clipboard locking
     pub fn read_clipboard_image() -> Result<image::RgbaImage> {
-        Self::read_clipboard_image_retry(6, std::time::Duration::from_millis(35))
+        Self::read_clipboard_image_retry(8, std::time::Duration::from_millis(40))
     }
 
     /// Read image from system clipboard with custom retry count and backoff delay
@@ -1474,6 +1533,9 @@ impl PhotoCraftClient {
                         });
                     }
                     Err(e) => {
+                        if let Some(img) = read_clipboard_image_platform_fallback() {
+                            return Ok(img);
+                        }
                         tracing::debug!(
                             "Clipboard read attempt {}/{} failed: {}",
                             attempt + 1,
@@ -1486,6 +1548,9 @@ impl PhotoCraftClient {
                     }
                 },
                 Err(e) => {
+                    if let Some(img) = read_clipboard_image_platform_fallback() {
+                        return Ok(img);
+                    }
                     tracing::debug!(
                         "Clipboard open attempt {}/{} failed: {}",
                         attempt + 1,
@@ -1511,23 +1576,29 @@ impl PhotoCraftClient {
             height: img.height() as usize,
             bytes: std::borrow::Cow::Borrowed(img.as_raw()),
         };
-        for attempt in 0..5 {
+        for attempt in 0..6 {
             if attempt > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(25));
+                std::thread::sleep(std::time::Duration::from_millis(30));
             }
             match arboard::Clipboard::new() {
                 Ok(mut clipboard) => match clipboard.set_image(img_data.clone()) {
                     Ok(()) => return Ok(()),
                     Err(e) => {
-                        tracing::debug!("Clipboard write attempt {}/5 failed: {}", attempt + 1, e);
+                        if write_clipboard_image_platform_fallback(img) {
+                            return Ok(());
+                        }
+                        tracing::debug!("Clipboard write attempt {}/6 failed: {}", attempt + 1, e);
                         last_err = Some(CompanionError::Bridge(format!(
                             "Failed to write image to clipboard: {e}"
                         )));
                     }
                 },
                 Err(e) => {
+                    if write_clipboard_image_platform_fallback(img) {
+                        return Ok(());
+                    }
                     tracing::debug!(
-                        "Clipboard open for write attempt {}/5 failed: {}",
+                        "Clipboard open for write attempt {}/6 failed: {}",
                         attempt + 1,
                         e
                     );
@@ -1545,9 +1616,9 @@ impl PhotoCraftClient {
     /// Copy active layer to clipboard and read it as RgbaImage with settling delay
     pub async fn copy_active_layer_image(&self) -> Result<image::RgbaImage> {
         self.execute_command("edit.copy", json!({})).await?;
-        // Micro-pause (40ms) allows PhotoCraft to finalize writing DIB/PNG payload and release Windows clipboard lock
+        // Micro-pause (40ms) allows PhotoCraft to finalize writing DIB/PNG payload and release clipboard lock
         tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-        Self::read_clipboard_image_retry_async(6, std::time::Duration::from_millis(35)).await
+        Self::read_clipboard_image_retry_async(8, std::time::Duration::from_millis(40)).await
     }
 
     /// Read image from system clipboard asynchronously via spawn_blocking to prevent Tokio thread blockage
@@ -1561,13 +1632,8 @@ impl PhotoCraftClient {
                 tokio::time::sleep(delay).await;
             }
             let res = tokio::task::spawn_blocking(|| {
-                arboard::Clipboard::new().and_then(|mut c| c.get_image())
-            })
-            .await;
-
-            match res {
-                Ok(Ok(img_data)) => {
-                    return image::RgbaImage::from_raw(
+                match arboard::Clipboard::new().and_then(|mut c| c.get_image()) {
+                    Ok(img_data) => image::RgbaImage::from_raw(
                         img_data.width as u32,
                         img_data.height as u32,
                         img_data.bytes.into_owned(),
@@ -1576,8 +1642,22 @@ impl PhotoCraftClient {
                         CompanionError::Bridge(
                             "Failed to construct RgbaImage from clipboard bytes".into(),
                         )
-                    });
+                    }),
+                    Err(e) => {
+                        if let Some(img) = read_clipboard_image_platform_fallback() {
+                            Ok(img)
+                        } else {
+                            Err(CompanionError::Bridge(format!(
+                                "Failed to get image from clipboard: {e}"
+                            )))
+                        }
+                    }
                 }
+            })
+            .await;
+
+            match res {
+                Ok(Ok(img_data)) => return Ok(img_data),
                 Ok(Err(e)) => {
                     tracing::debug!(
                         "Async clipboard read attempt {}/{} failed: {}",
@@ -1616,9 +1696,23 @@ impl PhotoCraftClient {
                 let img_data = arboard::ImageData {
                     width: w,
                     height: h,
-                    bytes: std::borrow::Cow::Owned(bytes_clone),
+                    bytes: std::borrow::Cow::Borrowed(&bytes_clone),
                 };
-                arboard::Clipboard::new().and_then(|mut c| c.set_image(img_data))
+                match arboard::Clipboard::new().and_then(|mut c| c.set_image(img_data)) {
+                    Ok(()) => Ok(()),
+                    Err(e) => {
+                        if let Some(r_img) =
+                            image::RgbaImage::from_raw(w as u32, h as u32, bytes_clone)
+                        {
+                            if write_clipboard_image_platform_fallback(&r_img) {
+                                return Ok(());
+                            }
+                        }
+                        Err(CompanionError::Bridge(format!(
+                            "Failed to write image to clipboard: {e}"
+                        )))
+                    }
+                }
             })
             .await;
 
@@ -1739,6 +1833,117 @@ pub fn parse_session_colors(res: &serde_json::Value) -> (String, String) {
     let bg = parse_color("background").unwrap_or_else(|| "#ffffff".to_string());
 
     (fg, bg)
+}
+
+/// Platform-specific fallback to read PNG image from system clipboard when arboard fails.
+/// On Linux, supports Wayland (wl-paste) and X11 (xclip).
+#[cfg(target_os = "linux")]
+fn read_clipboard_image_platform_fallback() -> Option<image::RgbaImage> {
+    // 1. Wayland clipboard: wl-paste --type image/png
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        if let Ok(output) = std::process::Command::new("wl-paste")
+            .args(["--type", "image/png"])
+            .output()
+        {
+            if output.status.success() && !output.stdout.is_empty() {
+                if let Ok(img) = image::load_from_memory(&output.stdout) {
+                    return Some(img.to_rgba8());
+                }
+            }
+        }
+    }
+
+    // 2. X11 clipboard: xclip -selection clipboard -t image/png -o
+    if std::env::var_os("DISPLAY").is_some() {
+        if let Ok(output) = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "image/png", "-o"])
+            .output()
+        {
+            if output.status.success() && !output.stdout.is_empty() {
+                if let Ok(img) = image::load_from_memory(&output.stdout) {
+                    return Some(img.to_rgba8());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_clipboard_image_platform_fallback() -> Option<image::RgbaImage> {
+    None
+}
+
+/// Platform-specific fallback to write PNG image into system clipboard when arboard fails.
+/// On Linux, supports Wayland (wl-copy) and X11 (xclip).
+#[cfg(target_os = "linux")]
+fn write_clipboard_image_platform_fallback(img: &image::RgbaImage) -> bool {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    let mut png_bytes = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+    if image::ImageEncoder::write_image(
+        encoder,
+        img.as_raw(),
+        img.width(),
+        img.height(),
+        image::ExtendedColorType::Rgba8,
+    )
+    .is_err()
+    {
+        return false;
+    }
+
+    // 1. Wayland clipboard: wl-copy --type image/png
+    if std::env::var_os("WAYLAND_DISPLAY").is_some() {
+        if let Ok(mut child) = Command::new("wl-copy")
+            .args(["--type", "image/png"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(&png_bytes);
+                drop(stdin); // Explicitly drop stdin to signal EOF so wl-copy can daemonize / copy
+            }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // 2. X11 clipboard: xclip -selection clipboard -t image/png -i
+    if std::env::var_os("DISPLAY").is_some() {
+        if let Ok(mut child) = Command::new("xclip")
+            .args(["-selection", "clipboard", "-t", "image/png", "-i"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(&png_bytes);
+                drop(stdin);
+            }
+            if let Ok(status) = child.wait() {
+                if status.success() {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+#[cfg(not(target_os = "linux"))]
+fn write_clipboard_image_platform_fallback(_img: &image::RgbaImage) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -2400,5 +2605,47 @@ mod tests {
 
         let _ = std::fs::remove_file(&test_bin);
         let _ = std::fs::remove_file(&valid_desktop);
+    }
+    #[test]
+    fn test_read_clipboard_fallback_decode() {
+        let original = image::RgbaImage::from_pixel(6, 6, image::Rgba([11, 22, 33, 255]));
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            original.as_raw(),
+            original.width(),
+            original.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+
+        assert!(!png_bytes.is_empty());
+        let decoded = image::load_from_memory(&png_bytes).unwrap().to_rgba8();
+        assert_eq!(decoded.width(), 6);
+        assert_eq!(decoded.height(), 6);
+        assert_eq!(decoded.get_pixel(0, 0), &image::Rgba([11, 22, 33, 255]));
+    }
+
+    #[test]
+    fn test_find_photocraft_executable_programs_directory() {
+        let temp_dir = std::env::temp_dir().join(format!("pc_test_prog_{}", std::process::id()));
+        let bin_dir = temp_dir.join("photocraft-0.20.1-linux-x86_64").join("bin");
+        std::fs::create_dir_all(&bin_dir).unwrap();
+        let exe_name = if cfg!(windows) {
+            "photocraft.exe"
+        } else {
+            "photocraft"
+        };
+        let fake_bin = bin_dir.join(exe_name);
+        std::fs::write(&fake_bin, b"fake binary").unwrap();
+
+        let resolved = PhotoCraftClient::resolve_candidate(&fake_bin);
+        assert_eq!(resolved, Some(fake_bin.clone()));
+
+        let resolved_dir = PhotoCraftClient::resolve_candidate(&bin_dir);
+        assert_eq!(resolved_dir, Some(fake_bin.clone()));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }

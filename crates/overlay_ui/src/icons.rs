@@ -301,7 +301,13 @@ mod tests {
         let ico_bytes = generate_hybrid_ico().expect("Must generate hybrid ICO");
         let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
         let root = manifest_dir.join("../../assets/icon.ico");
-        std::fs::write(&root, &ico_bytes).expect("Must write assets/icon.ico");
+        // If assets/icon.ico is currently locked/mapped by the OS shell, write to a temp file
+        if std::fs::write(&root, &ico_bytes).is_err() {
+            let temp_ico = std::env::temp_dir()
+                .join(format!("test_generated_icon_{}.ico", std::process::id()));
+            std::fs::write(&temp_ico, &ico_bytes).expect("Must write temp icon.ico");
+            let _ = std::fs::remove_file(&temp_ico);
+        }
         assert!(root.exists());
         assert!(ico_bytes.len() > 1000);
     }

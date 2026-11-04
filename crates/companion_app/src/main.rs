@@ -782,10 +782,12 @@ fn main() -> anyhow::Result<()> {
                 }
                 #[cfg(target_os = "linux")]
                 {
-                    dialog = dialog.add_filter(
-                        "PhotoCraft Executable / AppImage / Desktop Entry",
-                        &["AppImage", "appimage", "desktop", "bin", ""],
-                    );
+                    dialog = dialog
+                        .add_filter(
+                            "PhotoCraft Executable / AppImage / Desktop Entry",
+                            &["AppImage", "appimage", "desktop", "bin", ""],
+                        )
+                        .add_filter("All Files (*)", &["*"]);
                 }
                 if let Some(picked) = dialog.pick_file() {
                     let mut updated_cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);

@@ -8,7 +8,7 @@
 
 ### Сводные показатели экосистемы
 
-- **Всего плагинов и концепций в реестре:** 32
+- **Всего плагинов и концепций в реестре:** 33
 - **Реализовано в продакшне (`DONE`):** **10 плагинов** (100% Zero-Core Hardcoding, с пакетами `.pcpl` в `dist/` и автопубликацией):
   - 🤖 **4 AI GPU плагина:** `remove_bg` (RMBG-1.4), `upscale` (Real-ESRGAN Compact 2x), `inpaint` (LaMa), `depth_map` (Depth Anything V2);
   - ⚡ **4 No-Code макро-плагина:** `black_and_white` (B&W Film Pop), `frequency_separation` (Частотное разложение), `dodge_and_burn` (Pro 50% Gray Suite), `teal_orange` (Cinematic Teal & Orange);
@@ -54,6 +54,7 @@
 | 30 | **AI Seamless PBR Texture Tile** | `seamless_texture` | `AI+Rust` | `BACKLOG` | Boundary Blend + LaMa Inpaint | **Да** |
 | 31 | **Smart Color Palette Extractor** | `palette_extractor` | `Rust Alg` | `READY_FOR_DEV` | Rust K-Means + `palette.addSwatch` | **Да** |
 | 32 | **Batch Multi-Format Exporter** | `batch_export` | `Rust CLI` | `BACKLOG` | Parallel WebP/AVIF/PNG Encoder | **Да** |
+| 33 | **Timelapse Studio** | `timelapse_studio` | `UI Studio` | `READY_FOR_DEV` | Portable FFmpeg + IPC Preview | **Да (SYS-013)** |
 
 ---
 
@@ -565,6 +566,21 @@
 
 ---
 
+### 33. Timelapse Studio (`timelapse_studio`)
+
+| Тип | Статус | Приоритет | Вход | Модель / Вес | SOTA / Замена | Zero-Core |
+|---|---|---|---|---|---|---|
+| `UI Studio` | `READY_FOR_DEV` | **P1 (Киллер-фича)** | Полный холст (превью сокета) | Portable FFmpeg (~15 МБ) / WebP | Procreate & Clip Studio Paint Timelapse | **Да (SYS-013)** |
+
+* **Проблема штатного редактора и Photoshop:** В Adobe Photoshop нативный таймлапс процесса рисования отсутствует больше 10 лет, а сторонние скрипты дергают историю и вызывают катастрофические микрофризы кисти при рисовании. Художники массово уходят в Procreate и Clip Studio Paint именно ради автоматической записи спидпейнтов для соцсетей (Reels, TikTok, Shorts).
+* **Что делает наш плагин и ценность:** Легковесная фоновая запись процесса создания иллюстрации в реальном времени без единого лага кисти и без использования буфера обмена ОС. Захватывает сжатые 1080p превью сведенного холста через сокет PhotoCraft (`document.get_preview`) в гибридном режиме (по завершению мазка + таймер с отсечением дубликатов). Во время записи иконка плагина на тулбаре динамически пульсирует красной точкой `REC`. По окончании за 2-3 секунды собирает кинематографичный MP4-ролик с выбором пресетов (горизонтальный 16:9, вертикальный 9:16 с умным Blur-Fill для слабых ПК), задержкой финального кадра (Hold Frame) и водяным знаком автора.
+* **Входные данные:** Сжатое превью скомпозированного холста (Base64 WebP/JPEG через сокет 18492).
+* **Лицензия и источник:** MIT / Apache-2.0, FFmpeg (LGPL/GPL).
+* **Актуальность SOTA и альтернативы:** Полная замена сложным сетапам OBS и не имеющий аналогов инструмент в настольных фоторедакторах.
+* **Парадигма ядра и реализация:** `Interactive UI Studio` • Сессии в `plugins/timelapse_studio/sessions/` • Автоподгрузка ffmpeg в `PhotoCraftData/bin/` по аналогии с моделями • Изменения в ядре: **Расширение протокола (SYS-013: `document.get_preview` + динамический виджет тулбара)**.
+
+---
+
 ## 2. Системные и инфраструктурные концепции (Core Engine Backlog)
 
 Вспомогательные архитектурные задачи платформы (не являющиеся отдельными плагинами):
@@ -583,6 +599,7 @@
 | **SYS-010** | In-App Plugin Store & Auto-Updater | Встроенная витрина маркетплейса плагинов в Менеджере с установкой `.pcpl` в 1 клик, оффлайн-кэшированием `registry.json` и встроенным обновлением приложения Компаньона через GitHub Releases. *(РЕАЛИЗОВАН / DONE — ядро v1.2.0)* |
 | **SYS-011** | Cross-Platform App Launcher & Process Tracer | Разрешение Linux `.desktop` файлов (FreeDesktop Desktop Entry Specification), поиск в XDG-каталогах, распознавание процессов AppImage в `/proc/<pid>/exe` с парсингом точек монтирования squashfs и защитой от read-only файловых систем. *(РЕАЛИЗОВАН / DONE — ядро v1.2.4)* |
 | **SYS-012** | Multi-Backend Acceleration & Inference Diagnostics | Расширение матрицы аппаратного ускорения (CoreML для macOS Apple Silicon, опциональный CUDA-пакет для Linux/Windows) и телеметрия инференса в UI (активный провайдер, имя видеокарты, время в миллисекундах, причины отката на CPU). *(Бэклог, Issue #6)* |
+| **SYS-013** | Flattened Canvas Preview & Background Studio Sessions | Команда `document.get_preview` в сокете PhotoCraft для получения сжатого кадра без затирания буфера обмена ОС, динамическая индикация активности плагина на тулбаре (пульсирующий REC) и механизм автозагрузки портативных утилит рантайма (ffmpeg). *(READY_FOR_DEV)* |
 
 ---
 

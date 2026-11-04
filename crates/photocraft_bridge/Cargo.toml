@@ -13,5 +13,10 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 image = { workspace = true }
-arboard = { workspace = true }
 async-trait = { workspace = true }
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+arboard = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { workspace = true, features = ["wayland-data-control"] }
