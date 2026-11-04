@@ -3962,3 +3962,43 @@ ui.set_max_width(max_content_width);
 - Валидатор `plugin_validator` проверил все 14 плагинов экосистемы.
 - Зарегистрирован и закрыт дефект `BUG-104` в `docs/BUGS_AND_ISSUES.md`.
 - Отмечена Фаза 105 в `docs/CHECKLIST.md`.
+
+
+## [2026-11-04 04:30] Глава 114: Безупречный буфер обмена Wayland, многоуровневый фоллбэк и гладкий запуск на Linux (Issue #13, BUG-105)
+
+*Время: 04 ноября 2026, 04:30 (~40 минут)*
+
+### 1. Проблема: Сбой буфера обмена на Wayland, невидимый бинарник в Zenity и потеря переносимых путей
+В тикете GitHub Issue #13 пользователи Linux сообщили о комплексе проблем при запуске PhotoCraft Companion в современных сессиях **Wayland** (CachyOS, Arch Linux, KDE Plasma 6, Hyprland, Sway):
+1. **Критический отказ Native AI плагинов:** При запуске `remove_bg`, `depth_map`, `inpaint`, `upscale` операция падала с ошибкой:
+   `Bridge error: Failed to read image from clipboard after 6 attempts (last error: The clipboard contents were not available in the requested format or the clipboard is empty.)`.
+2. **Сокрытие исполняемого файла в диалоге выбора:** При попытке указать бинарник `photocraft` вручную в диалоге выбора Zenity/GTK фильтр расширений скрывал исполняемые файлы Unix без расширения, делая выбор невозможным без переключения фильтров.
+3. **Неполный автопоиск переносимых сборок:** Если пользователь распаковывал переносимый архив PhotoCraft в каталог `~/Programs/photocraft-0.20.1-linux-x86_64/bin/photocraft`, эвристика автопоиска не обнаруживала исполняемый файл.
+
+Анализ кодовой базы показал первопричину: крейт `arboard` на Linux по умолчанию компилировался без поддержки протокола Wayland (`wlr-data-control` / `wl-clipboard-rs`) и всегда обращался к X11 (`$DISPLAY`), который в чистых сессиях Wayland пуст или рассинхронизирован.
+
+### 2. Архитектурное решение: эшелонированная защита и чистый контракт
+
+#### А. Нативная поддержка Wayland в arboard и платформенные фоллбэки (`crates/photocraft_bridge`, `crates/companion_app`)
+- **Изолированная фича зависимостей:** В `crates/photocraft_bridge/Cargo.toml` и `crates/companion_app/Cargo.toml` для селектора `cfg(target_os = "linux")` подключен `arboard` с фичей `wayland-data-control`. Для остальных операционных систем (`cfg(not(target_os = "linux"))`) сборка остается легковесной и не затягивает зависимости Wayland на Windows и macOS.
+- **Многоуровневый фоллбэк чтения буфера (`read_clipboard_image_platform_fallback`):** Если `arboard` возвращает ошибку, мост проверяет `$WAYLAND_DISPLAY` и обращается к утилите `wl-paste --type image/png`, декодируя PNG-байты в `RgbaImage` через `image::load_from_memory`. Если активен `$DISPLAY`, фоллбэк обращается к `xclip -selection clipboard -t image/png -o`.
+- **Многоуровневый фоллбэк записи буфера (`write_clipboard_image_platform_fallback`):** При ошибке записи растр кодируется в PNG-байты и передается через stdin в `wl-copy --type image/png` или `xclip` с обязательным явным закрытием входного потока (`drop(stdin)`), позволяющим дочернему процессу корректно завершить передачу данных.
+- **Адаптивная retry-политика:** Количество попыток чтения увеличено до 8 с паузой 40 мс для надежной синхронизации кадров на Wayland.
+- Добавлен юнит-тест `test_read_clipboard_fallback_decode`.
+
+#### Б. Снятие ограничений фильтра диалога выбора (`crates/companion_app`, `crates/overlay_ui`)
+- В диалоги `rfd::FileDialog` в `companion_app/src/main.rs` и `overlay_ui/src/manager.rs` на Linux добавлен фильтр `All Files (*)` (`&["*"]`), благодаря чему диалоги Zenity / GTK отображают исполняемые файлы без расширения.
+
+#### В. Расширение эвристик автопоиска переносимых сборок (`crates/photocraft_bridge/src/lib.rs`)
+- В `find_photocraft_executable` внедрено динамическое сканирование каталогов `~/Programs` и `~/Applications` на наличие директорий `photocraft*`.
+- Добавлен поиск по соседним каталогам в родительской папке текущего исполняемого файла (`current_exe.parent().parent()`).
+- Добавлен юнит-тест `test_find_photocraft_executable_programs_directory`.
+
+### 3. Верификация и соблюдение Definition of Done
+- Сборка и тесты выполнены строго с соблюдением Resource Guard (`-j 1`).
+- `cargo fmt --all -- --check` подтвердил нулевое число расхождений (0 diffs).
+- 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+- Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`) зеленые.
+- Валидатор `plugin_validator` проверил все 14 плагинов каталога.
+- Зарегистрирован и закрыт дефект `BUG-105` в `docs/BUGS_AND_ISSUES.md`.
+- Отмечена Фаза 106 в `docs/CHECKLIST.md`.

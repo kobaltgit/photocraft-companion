@@ -3968,3 +3968,43 @@ An in-depth investigation into the codebase and Windows NTFS filesystem constrai
 - Validator `plugin_validator` verified all 14 ecosystem plugins.
 - Defect ticket `BUG-104` resolved in `docs/BUGS_AND_ISSUES.md`.
 - Phase 105 marked completed in `docs/CHECKLIST.md`.
+
+
+## [2026-11-04 04:30] Chapter 114: Flawless Wayland Clipboard, Multi-Tier Fallback, and Smooth Linux Launch UX (Issue #13, BUG-105)
+
+*Time: November 04, 2026, 04:30 (~40 minutes)*
+
+### 1. The Problem: Wayland Clipboard Failure, Filtered Zenity Binaries, and Missed Portable Paths
+In GitHub Issue #13, Linux users reported multiple roadblocks when running PhotoCraft Companion in modern **Wayland** sessions (CachyOS, Arch Linux, KDE Plasma 6, Hyprland, Sway):
+1. **Critical Failure of Native AI Plugins:** When running `remove_bg`, `depth_map`, `inpaint`, or `upscale`, the pipeline failed with:
+   `Bridge error: Failed to read image from clipboard after 6 attempts (last error: The clipboard contents were not available in the requested format or the clipboard is empty.)`.
+2. **Hidden Executables in File Chooser:** Manually browsing for `photocraft` in the Zenity / GTK file chooser hid extensionless Unix binaries, preventing users from selecting PhotoCraft without switching filter types.
+3. **Missed Portable Installations:** Extracting PhotoCraft into `~/Programs/photocraft-0.20.1-linux-x86_64/bin/photocraft` was not detected by auto-discovery heuristics.
+
+Root cause analysis showed that `arboard` was compiled on Linux without the `wayland-data-control` feature, causing it to fall back to X11 (`$DISPLAY`), which is empty or uncoordinated in pure Wayland environments.
+
+### 2. Architectural Solution: Defense in Depth & Clean Contracts
+
+#### A. Native Wayland arboard Support & Platform Fallbacks (`crates/photocraft_bridge`, `crates/companion_app`)
+- **Target-Scoped Dependencies:** In `crates/photocraft_bridge/Cargo.toml` and `crates/companion_app/Cargo.toml`, `arboard` is configured with `wayland-data-control` specifically for `cfg(target_os = "linux")`. Windows and macOS builds remain lightweight with zero Wayland crate bloat.
+- **Multi-Tier Clipboard Read Fallback (`read_clipboard_image_platform_fallback`):** If `arboard` encounters format errors, the bridge inspects `$WAYLAND_DISPLAY` and invokes `wl-paste --type image/png`, decoding the PNG stream into `RgbaImage` via `image::load_from_memory`. If `$DISPLAY` is set, it falls back to `xclip -selection clipboard -t image/png -o`.
+- **Multi-Tier Clipboard Write Fallback (`write_clipboard_image_platform_fallback`):** On write errors, the raster is encoded to PNG and piped through stdin to `wl-copy --type image/png` or `xclip`, explicitly closing stdin (`drop(stdin)`) to allow proper daemonization.
+- **Adaptive Retry Policy:** Read attempts increased to 8 with 40 ms delays to accommodate compositor frame composition latency on Wayland.
+- Added unit test `test_read_clipboard_fallback_decode`.
+
+#### B. File Chooser Filter Enhancement (`crates/companion_app`, `crates/overlay_ui`)
+- Added `All Files (*)` (`&["*"]`) filter to `rfd::FileDialog` on Linux in `companion_app/src/main.rs` and `overlay_ui/src/manager.rs`, ensuring extensionless executables (`photocraft`) are visible and selectable.
+
+#### C. Expanded Auto-Discovery for Portable PhotoCraft (`crates/photocraft_bridge/src/lib.rs`)
+- In `find_photocraft_executable`, added dynamic scans of `~/Programs` and `~/Applications` for `photocraft*` directories.
+- Added sibling directory traversal in the parent of `current_exe` (`current_exe.parent().parent()`).
+- Added unit test `test_find_photocraft_executable_programs_directory`.
+
+### 3. Verification & Definition of Done
+- Compilations and tests executed strictly under Resource Guard with `-j 1`.
+- `cargo fmt --all -- --check` confirmed clean code formatting (0 differences).
+- 100% tests passed across the entire workspace (`cargo test --workspace -j 1`).
+- All regulatory linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`.
+- Validator `plugin_validator` verified all 14 ecosystem plugins.
+- Defect ticket `BUG-105` resolved in `docs/BUGS_AND_ISSUES.md`.
+- Phase 106 marked completed in `docs/CHECKLIST.md`.

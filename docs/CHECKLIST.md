@@ -1329,3 +1329,22 @@
     - Пройдены все линтеры: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`;
     - Валидация каталога плагинов (14/14 плагинов OK);
     - Зарегистрирован и закрыт дефект `BUG-104` в `docs/BUGS_AND_ISSUES.md`.
+
+- [x] **Фаза 106: Устранение сбоев буфера обмена Wayland и улучшение UX запуска на Linux (Issue #13, BUG-105)**
+  - [x] **Нативная поддержка буфера Wayland и многоуровневый фоллбэк (`crates/photocraft_bridge`, `crates/companion_app`)**:
+    - Включение фичи `wayland-data-control` для целевой платформы Linux (`cfg(target_os = "linux")`) в `photocraft_bridge/Cargo.toml` и `companion_app/Cargo.toml` без затягивания лишних зависимостей на Windows/macOS.
+    - Реализация платформенного фоллбэка `read_clipboard_image_platform_fallback()`: автоматическое определение `$WAYLAND_DISPLAY` с чтением байтов PNG через `wl-paste --type image/png`, либо `$DISPLAY` через `xclip -selection clipboard -t image/png -o`.
+    - Реализация платформенного фоллбэка `write_clipboard_image_platform_fallback()`: кодирование `RgbaImage` в PNG-байты в памяти и запись через stdin в `wl-copy` (Wayland) или `xclip` (X11) с корректным закрытием входного потока (`drop(stdin)`).
+    - Увеличение retry-политики чтения буфера с 6 до 8 попыток с интервалом 40 мс для стабильности в асинхронных сессиях композиторов Wayland.
+    - Добавлен юнит-тест `test_read_clipboard_fallback_decode` на корректность декодирования PNG-потока.
+  - [x] **Отображение исполняемых файлов в диалоге выбора (`crates/companion_app`, `crates/overlay_ui`)**:
+    - В фильтры `rfd::FileDialog` на Linux добавлен паттерн `All Files (*)` (`&["*"]`), устранивший сокрытие исполняемых Unix-файлов без расширения (`photocraft`) диалогами Zenity / GTK.
+  - [x] **Расширенный поиск переносимых сборок PhotoCraft (`crates/photocraft_bridge`)**:
+    - В `find_photocraft_executable` внедрено динамическое сканирование каталогов `~/Programs` и `~/Applications` на наличие подпапок вида `photocraft*` (`bin/photocraft`, `photocraft`).
+    - Добавлен поиск по соседним каталогам в родительской папке (`current_exe.parent().parent()`) для сценариев распаковки в переносимые пользовательские каталоги.
+    - Добавлен юнит-тест `test_find_photocraft_executable_programs_directory`.
+  - [x] **100% соблюдение Definition of Done**:
+    - Чистота форматирования кода (`cargo fmt --all -- --check`);
+    - Все 38 тестов `photocraft_bridge`, 62 теста `overlay_ui`, 14 тестов `companion_app` и 51 тест `core_contracts` успешно пройдены;
+    - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`) пройдены с кодом 0;
+    - Зарегистрирован дефект `BUG-105` в `docs/BUGS_AND_ISSUES.md`.
