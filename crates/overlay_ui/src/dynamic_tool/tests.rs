@@ -932,7 +932,7 @@ fn test_dynamic_badge_and_timer_state_reactivity() {
 
     // Test to_rhai_map roundtrip
     let exported = state.to_rhai_map();
-    assert_eq!(exported.get("is_open").unwrap().as_bool().unwrap(), true);
+    assert!(exported.get("is_open").unwrap().as_bool().unwrap());
     assert_eq!(
         exported.get("timer_interval_ms").unwrap().as_int().unwrap(),
         1000
@@ -1009,7 +1009,7 @@ fn test_rhai_unit_fallback_in_state_change() {
     rhai_bridge::execute_script_state_change(&engine, &ast, &mut state);
     // Unit fallback preserves state from scope or doesn't panic
     assert!(
-        state.values.get("counter").is_none()
+        !state.values.contains_key("counter")
             || state.values.get("counter") == Some(&DynamicValue::Number(42.0))
     );
 }
@@ -1065,7 +1065,7 @@ fn test_timelapse_studio_ergonomics_and_reset_state_machine() {
         .expect("Start record must succeed");
     assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(true));
     assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(1));
-    assert!(state.get("dynamic_badge").is_some());
+    assert!(state.contains_key("dynamic_badge"));
 
     // 3. Tick increments frame_count
     state = engine
