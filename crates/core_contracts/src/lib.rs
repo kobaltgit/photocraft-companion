@@ -94,11 +94,11 @@ pub use host_i18n::{is_translatable_param, normalize_term, to_canonical, to_host
 pub mod plugin;
 pub use plugin::{
     ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
-    BridgeOperations, CanvasPreviewParams, DynamicBadgeState, ExecutionState, InteractiveUiConfig,
-    ModelRequirement, ModifierItemConfig, NormalizationMode, Plugin, PluginCommandStep,
-    PluginContext, PluginInputSource, PluginIpcAction, PluginLocaleInfo, PluginManifest,
-    PluginOutputMode, PluginResult, PluginType, RuntimeToolRequirement, SharedExecutionStatus,
-    SubAction, WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_SELECTION_STATE,
+    BridgeOperations, DynamicBadgeState, ExecutionState, InteractiveUiConfig, ModelRequirement,
+    ModifierItemConfig, NormalizationMode, Plugin, PluginCommandStep, PluginContext,
+    PluginInputSource, PluginIpcAction, PluginLocaleInfo, PluginManifest, PluginOutputMode,
+    PluginResult, PluginType, RuntimeToolRequirement, SharedExecutionStatus, SubAction, WidgetNode,
+    IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_DOCUMENT_REVISION, IPC_SUB_SELECTION_STATE,
     IPC_SUB_SESSION_COLORS,
 };
 
@@ -126,4 +126,6 @@ pub struct DocumentInfo {
     pub selection_bounds: Option<[i32; 4]>,
     #[serde(default)]
     pub active_layer_bounds: Option<[i32; 4]>,
+    #[serde(default)]
+    pub revision: u64,
 }

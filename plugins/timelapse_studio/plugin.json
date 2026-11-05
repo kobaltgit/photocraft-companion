@@ -25,7 +25,7 @@
     "default_height": 350.0,
     "script": "script.rhai",
     "ipc_subscriptions": [
-      "document.selection"
+      "document.revision"
     ],
     "widgets": [
       {

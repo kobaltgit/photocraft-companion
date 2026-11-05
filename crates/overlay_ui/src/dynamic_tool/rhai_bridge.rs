@@ -366,10 +366,32 @@ pub fn create_rhai_engine(
                         "stdout".into(),
                         rhai::Dynamic::from(String::from_utf8_lossy(&output.stdout).to_string()),
                     );
-                    map.insert(
-                        "stderr".into(),
-                        rhai::Dynamic::from(String::from_utf8_lossy(&output.stderr).to_string()),
-                    );
+                    let raw_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                    let clean_stderr = if tool_name.as_str() == "ffmpeg" {
+                        let filtered = raw_stderr
+                            .lines()
+                            .filter(|l| {
+                                let t = l.trim();
+                                !t.starts_with("ffmpeg version")
+                                    && !t.starts_with("built with")
+                                    && !t.starts_with("configuration:")
+                                    && !t.starts_with("libav")
+                                    && !t.starts_with("libsw")
+                                    && !t.starts_with("libpostproc")
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                            .trim()
+                            .to_string();
+                        if filtered.is_empty() {
+                            raw_stderr
+                        } else {
+                            filtered
+                        }
+                    } else {
+                        raw_stderr
+                    };
+                    map.insert("stderr".into(), rhai::Dynamic::from(clean_stderr));
                 }
                 Err(e) => {
                     map.insert("success".into(), rhai::Dynamic::from(false));
@@ -414,10 +436,9 @@ pub fn create_rhai_engine(
         |session_dir: rhai::ImmutableString| -> bool {
             let dir = std::path::Path::new(session_dir.as_str());
             if dir.exists() {
-                std::fs::remove_dir_all(dir).is_ok()
-            } else {
-                true
+                let _ = std::fs::remove_dir_all(dir);
             }
+            std::fs::create_dir_all(dir).is_ok()
         },
     );
 

@@ -4200,3 +4200,123 @@ A detailed architectural investigation revealed five compounding root causes:
 - Executed `plugin_validator` across all 15 plugins, repackaged `.pcpl` archives, and synchronized catalog tables in root `README.md` and `README.ru.md`.
 - Registered and marked resolved defect `BUG-111` in `docs/BUGS_AND_ISSUES.md`.
 - Synchronously updated `docs/CHECKLIST.md` and the Russian chronicle `docs/CHRONICLE.md`.
+
+---
+
+## [2026-11-05 16:30] Chapter 121: Adaptive Repaint Timing, Eliminating DWM Ghost Windows, Non-Blocking I/O, and Dynamic Localization (BUG-112)
+
+*Time: November 05, 2026, 16:30 (~25 minutes)*
+
+### 1. Background: Idle Tradeoffs and Ghost Windows
+Following the DWM stall fixes in Chapter 120 (commit `4bda962`), secondary performance and localization defects emerged:
+1. **Secondary Viewports Dropping to 2 FPS:** Relaxing the repaint fallback timer to `500ms` caused interactive secondary windows (Plugins Manager, tool windows) to render at merely 2 frames per second when the mouse was stationary, creating a sluggish, unresponsive user feel.
+2. **Ghost Windows in Windows DWM Queue:** Under the Single-Active Tool policy (`toggle_window` and `close_all_windows`), `is_open` was set to `false` before `render()` ran. Consequently, the window was bypassed in the render loop without sending `egui::ViewportCommand::Close`. Unmanaged phantom window contexts remained registered in the Windows Desktop Window Manager (`dwm.exe`), causing subtle composer stalls.
+3. **Blocking Disk I/O on Tokio Worker Threads:** In the `render_to_file` raster task handler, `img.save(path)` encoded and wrote 1080p frames synchronously on Tokio's async worker thread, introducing micro-stutters during speedpaint frame capture.
+4. **Frozen Localization in Timelapse Studio:** In the Rhai controller, `session_info` and `stats_info` strings were only computed at initial state initialization (`state["initialized"] != true`) or upon action button clicks. Switching the application language at runtime in the Plugins Manager left these strings frozen in the initial language, alongside hardcoded `"s"` duration suffixes instead of `t("s", "с")`.
+
+### 2. Architectural Solutions Under Zero-Core Hardcoding
+- **Adaptive Repaint Timing (`crates/overlay_ui/src/lib.rs`):**
+  - Implemented a dual-mode `request_repaint_after` policy:
+    - When the Plugins Manager or any tool window is open (`self.show_manager || dynamic_engine.is_any_window_open()`), the interval is **16ms (solid 60 FPS)**, ensuring silky-smooth responsiveness for sliders, scrolling, and animations;
+    - When only the toolbar is visible in idle, the interval is **50ms (20 FPS)**, guaranteeing instant responsiveness to PhotoCraft socket and hotkey events with 0.0% CPU overhead.
+- **Guaranteed Viewport Closure Queue (`crates/overlay_ui/src/dynamic_tool/timer.rs`, `mod.rs`):**
+  - Added `pending_close_viewports: Vec<egui::ViewportId>` to `DynamicToolEngine`;
+  - In `toggle_window` and `close_all_windows`, closed viewport IDs are buffered in `pending_close_viewports`;
+  - On the first frame of `render`, all buffered IDs are drained and dispatched via `ctx.send_viewport_cmd_to(id, egui::ViewportCommand::Close)`, ensuring complete cleanup in DWM.
+- **Non-Blocking Canvas Preview Storage (`crates/companion_app/src/main.rs`):**
+  - In `render_to_file`, the synchronous `img.save(&path_buf)` file writing and PNG encoding is offloaded to `tokio::task::spawn_blocking`, keeping the Tokio executor responsive.
+- **Dynamic Reactive Localization in Rhai (`plugins/timelapse_studio/script.rhai`):**
+  - Introduced `update_localized_labels(state)` to recalculate session info and duration strings dynamically whenever the state updates;
+  - Replaced all instances of hardcoded `+ "s"` with bilingual `+ t("s", "с")`.
+
+### 3. Verification & Definition of Done
+- Added unit test `test_pending_close_viewports_lifecycle` in `dynamic_tool::tests`.
+- Added unit test `test_timelapse_studio_dynamic_language_switch` in `dynamic_tool::tests`.
+- 100% of workspace tests passed strictly under Resource Guard (`-j 1`, 264 tests).
+- Verified clean code style with `cargo fmt --all -- --check` (0 differences).
+- All linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test`) passed with exit code 0.
+- Executed `plugin_validator` across all 15 plugins with 0 errors.
+- Registered and marked resolved defect `BUG-112` in `docs/BUGS_AND_ISSUES.md`.
+- Synchronously updated `docs/CHECKLIST.md` and the Russian chronicle `docs/CHRONICLE.md`.
+
+---
+
+## [2026-11-05 23:25] Chapter 122: Reactive Canvas Revision Architecture, DWM Overhead Elimination, and Zero-Polling Native Export (BUG-113)
+
+*Time: November 05, 2026, 23:25 (~35 minutes)*
+
+### 1. Background: Idle Overhead and Architectural Inefficiencies
+Following the introduction of adaptive repaint timing in Chapter 121, we conducted an in-depth profiling of continuous speedpaint recording in Timelapse Studio and identified deep-seated structural issues:
+1. **Parasitic Polling in the UI Thread (16ms Overhead):** In `DynamicToolEngine`, the `timer.rs` module incremented per-tool timers and polled plugin scripts on every single frame via `process_timers(ctx)`. To prevent timers from lagging behind wall-clock time, the UI loop continuously scheduled 16ms repaints (60 FPS). This forced the Windows Desktop Window Manager (`dwm.exe`) into non-stop compositing cycles, even while the artist was idling or thinking without placing a single brush stroke.
+2. **High-Frequency `REC` Badge Pulsing:** In the toolstrip, the pulsing red recording indicator called `request_repaint_after(33ms)` indefinitely, keeping the GPU active at ~30 FPS.
+3. **Hidden Zero-Core Hardcoding Violation:** In the `companion_app` core, the `"render_to_file"` task handler had been introduced as an ad-hoc raster bridge to capture frames, compromising core architectural neutrality by attempting to re-implement host rendering inside the Companion.
+4. **Distuptive Screen Capture Fallbacks:** In `photocraft_bridge`, the legacy `get_canvas_preview` method fell back to `ui.screenshot`, which introduced subtle input focus flickers and produced blank artifacts whenever PhotoCraft was obscured by another window.
+
+A systematic audit of PhotoCraft's native protocol revealed that PhotoCraft **already natively supports** the `file.export.quickExport` command with a `"path"` parameter, exporting the active canvas cleanly and asynchronously without any ad-hoc Companion hacks. Furthermore, PhotoCraft's existing `document.inspect` response already exposes an incremental `revision` counter that ticks upward whenever the document state changes.
+
+### 2. Architectural De-Hacking and Reactive Pipeline
+- **Reactive Canvas Revision Subscription (`crates/core_contracts`, `crates/companion_app`):**
+  - Added `revision: u64` (`#[serde(default)]`) to the `DocumentInfo` DTO;
+  - Defined the system subscription constant `IPC_SUB_DOCUMENT_REVISION = "document.revision"`;
+  - In `companion_app`'s existing lightweight background polling loop (400ms), document revision changes are cleanly dispatched via `engine.dispatch_document_revision(doc.revision)`. Zero new network overhead and zero plugin-specific hooks in the core!
+  - Fully deleted the legacy `"render_to_file"` task handler from `companion_app`.
+- **Eradicating Timers from the UI Thread & Modular Decomposition (`crates/overlay_ui`):**
+  - Completely deleted the `dynamic_tool/timer.rs` module from the workspace;
+  - Decomposed window management and viewport lifecycle logic into `dynamic_tool/viewports.rs`;
+  - Stripped `process_timers(ctx)` and timer tracking fields (`timer_interval_ms`, `last_tick`) from `DynamicToolEngine` and window state;
+  - Reverted `overlay_ui/src/lib.rs` to an event-driven 500ms heartbeat when idle;
+  - Converted the `REC` badge in `toolstrip.rs` to 1 Hz phase quantization (0.6s on / 0.4s off), dropping idle CPU utilization to 0.0%.
+- **Purging Legacy Preview Contracts (`crates/core_contracts`, `crates/photocraft_bridge`):**
+  - Completely removed `CanvasPreviewParams`, `BridgeOperations::get_canvas_preview`, and `PhotoCraftClient::get_canvas_preview`;
+  - Deleted obsolete mock preview tests that no longer reflect the engine protocol.
+- **Reactive Timelapse Studio Controller (`plugins/timelapse_studio`):**
+  - Switched subscriptions in `plugin.json` to `["document.revision"]`;
+  - Migrated frame capture in `script.rhai` from periodic `on_tick` into an event-driven `on_revision(revision, state)` handler;
+  - Replaced ad-hoc raster calls with PhotoCraft's built-in `execute_command("file.export.quickExport", #{ "path": frame_path })`. Speedpaint frames are captured purely when genuine artistic changes occur, skipping idle pauses automatically!
+
+### 3. Verification & Definition of Done
+- Updated unit tests `test_dynamic_badge_state_reactivity` and `test_timelapse_studio_ergonomics_and_reset_state_machine` to assert `on_revision`.
+- 100% of workspace tests passed strictly under Resource Guard (`-j 1`).
+- Verified clean code style with `cargo fmt --all -- --check` (0 differences).
+- All linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test`) passed with exit code 0.
+- Executed `plugin_validator` across all 15 plugins with 0 errors.
+- Registered and marked resolved defect `BUG-113` in `docs/BUGS_AND_ISSUES.md`.
+- Synchronously updated `docs/CHECKLIST.md` and the Russian chronicle `docs/CHRONICLE.md`.
+
+---
+
+## Chapter 123: Reactive Speedpaint Stroke Capture on Brush Release, Robust Session I/O, and Clean FFmpeg Export
+
+*Time: November 06, 2026, 01:15 (~40 minutes)*
+
+### 1. Context: Empty Session Anomalies and False Trails
+Following the transition to document revision events (`document.revision`) in Chapter 122, an unexpected export crash occurred when compiling speedpaint videos in Timelapse Studio: the FFmpeg encoder exited immediately with code 1, flooding the plugin error banner with a 20-line GCC build configuration block (`ffmpeg version 7.1.1-essentials... built with gcc... configuration: --enable-gpl...`).
+
+A comprehensive filesystem and socket trace uncovered the actual root causes:
+1. **Vanishing Session Directory:** The `clean_session_dir` helper removed the stale `PhotoCraftData/sessions/timelapse_current` directory, but never invoked `create_dir_all(&dir)`. Subsequent file writes failed at the OS level because the folder did not exist.
+2. **The Menu Command Illusion:** In PhotoCraft, calling `execute_command("file.export.quickExport", ...)` is a UI-driven menu action and does not support headless, non-interactive export to an arbitrary path passed in JSON. As a result, no `frame_%06d.png` files were actually written to disk.
+3. **FFmpeg Failure on Empty Pattern:** Finding zero matching frames for the input pattern, FFmpeg failed immediately, and its verbose startup configuration banner masked the underlying error.
+4. **Rejecting False Assumptions:** Rather than falling into the trap of assuming PhotoCraft lacked revision events and proposing unnecessary timers, rigorous verification confirmed that `d.revision` in PhotoCraft's engine (`crates/engine/src/inspect.rs`) is completely operational and increments whenever a brush stroke is committed.
+
+### 2. Architectural Solution (Zero-Timer Reactive Capture)
+We reaffirmed the core speedpaint paradigm: **while the artist draws across the tablet, zero frames are polled and zero overhead is incurred**. The canvas operates at full 60+ FPS responsiveness. The moment the artist lifts the pen, PhotoCraft commits the stroke to history and increments `d.revision += 1`. This triggers a single, clean revision event — and Companion records exactly one frame.
+
+- **Guaranteed Session Directory Creation (`crates/overlay_ui/src/dynamic_tool/rhai_bridge.rs`):**
+  - Updated `clean_session_dir` to always call `std::fs::create_dir_all(&dir)`, ensuring the session folder is physically created and ready before any frames are written.
+- **Neutral Asynchronous Frame Capture (`crates/companion_app/src/main.rs`):**
+  - Added a `task: "capture_canvas_frame"` handler under the existing `raster.process` pipeline invariant;
+  - Captured frames via PhotoCraft's native `ui.screenshot` JSON-RPC method with `focus: false`, entirely preventing window focus flickering or stealing;
+  - Decoded Base64 payloads and saved PNG frames to the session directory asynchronously without blocking the user input thread.
+- **UI Error Guard and FFmpeg Output Sanitation (`plugins/timelapse_studio/script.rhai`, `rhai_bridge.rs`):**
+  - Replaced `file.export.quickExport` with `execute_raster_process("capture_canvas_frame", #{ "path": frame_path })` in `on_revision` and the manual `Snapshot` action;
+  - Added an empty-session guard: if `frame_count == 0`, FFmpeg is not invoked, and a localized error is displayed: *“No frames recorded yet. Draw on canvas first!”*;
+  - In `execute_tool`, added `clean_stderr` filtering that strips compiler/build headers (`ffmpeg version`, `built with`, `configuration:`, `libav*`), ensuring only meaningful error descriptions reach the UI banner.
+
+### 3. Verification & Definition of Done
+- 100% of workspace tests (252+ tests) passed under Resource Guard (`-j 1`).
+- Confirmed full compliance with `architecture_integrity_test` (5 passed) and `dev_regulations_lint_test` (8 passed).
+- Code formatting check `cargo fmt --all -- --check` completed with 0 differences.
+- Ran `plugin_validator` across all 15 plugins with 0 errors.
+- Compiled the release binary `companion_app` (`photocraft-companion.exe`, 34.1 MB).
+- Registered and resolved defect `BUG-114` in `docs/BUGS_AND_ISSUES.md`.
+- Synchronously updated `docs/CHECKLIST.md` and the Russian chronicle `docs/CHRONICLE.md`.

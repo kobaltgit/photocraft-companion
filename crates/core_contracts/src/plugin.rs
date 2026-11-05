@@ -14,13 +14,6 @@ pub struct PluginLocaleInfo {
     pub description: Option<String>,
 }
 
-/// Parameters for requesting lightweight canvas preview
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CanvasPreviewParams {
-    pub max_size: u32,
-    pub format: String, // "webp" | "jpeg"
-}
-
 /// Binary/CLI runtime dependency needed by a plugin (e.g. ffmpeg, vtracer)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeToolRequirement {
@@ -669,6 +662,9 @@ pub const IPC_SUB_ACTIVE_LAYER_IMAGE: &str = "active_layer.image";
 /// Standard IPC subscription topic for listening to selection state in PhotoCraft
 pub const IPC_SUB_SELECTION_STATE: &str = "document.selection";
 
+/// Standard IPC subscription topic for listening to document revision changes in PhotoCraft
+pub const IPC_SUB_DOCUMENT_REVISION: &str = "document.revision";
+
 impl InteractiveUiConfig {
     pub fn window_title_for_lang(&self, lang: crate::Language) -> &str {
         if matches!(lang, crate::Language::Ru) {
@@ -954,11 +950,6 @@ pub trait BridgeOperations {
         self.execute_command("layer.setProps", full_props).await
     }
     async fn get_document_info(&self) -> Result<DocumentInfo>;
-    async fn get_canvas_preview(&self, _max_size: u32, _format: &str) -> Result<RgbaImage> {
-        Err(crate::CompanionError::Bridge(
-            "get_canvas_preview is not supported by this bridge".into(),
-        ))
-    }
 }
 
 /// Core interface implemented by any PhotoCraft plugin
@@ -1790,14 +1781,6 @@ mod tests {
         assert_eq!(decoded.runtime_tools.len(), 1);
         assert_eq!(decoded.runtime_tools[0].name, "ffmpeg");
         assert_eq!(decoded.runtime_tools[0].version, "6.1.1");
-
-        let preview_params = CanvasPreviewParams {
-            max_size: 512,
-            format: "webp".to_string(),
-        };
-        let p_json = serde_json::to_string(&preview_params).unwrap();
-        let p_decoded: CanvasPreviewParams = serde_json::from_str(&p_json).unwrap();
-        assert_eq!(preview_params, p_decoded);
     }
 
     #[test]

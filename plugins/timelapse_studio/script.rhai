@@ -15,6 +15,19 @@ fn format_frame_path(dir, idx) {
     safe_dir + "/frame_" + s + ".png"
 }
 
+fn on_revision(revision, state) {
+    if state["is_recording"] == true {
+        let count = if state["frame_count"] != () { state["frame_count"].to_int() + 1 } else { 1 };
+        state["frame_count"] = count;
+        let frame_path = format_frame_path(state["session_dir"], count);
+        execute_raster_process("capture_canvas_frame", #{
+            "path": frame_path
+        });
+        state = update_localized_labels(state);
+    }
+    return state;
+}
+
 fn on_state_changed(state) {
     if state["initialized"] != true {
         state["initialized"] = true;
@@ -38,9 +51,8 @@ fn on_state_changed(state) {
             count = 1;
             state["frame_count"] = count;
             let frame_path = format_frame_path(state["session_dir"], count);
-            execute_raster_process("render_to_file", #{
-                "path": frame_path,
-                "max_size": 1080
+            execute_raster_process("capture_canvas_frame", #{
+                "path": frame_path
             });
             state["banner_message"] = t("Recording in progress. Drawing on canvas is being recorded.", "Идет запись. Процесс рисования на холсте сохраняется.");
         } else {
@@ -49,7 +61,6 @@ fn on_state_changed(state) {
         }
         state["is_recording"] = true;
         state["is_open"] = false; // Auto-hide window to free canvas for painting
-        state["timer_interval_ms"] = 1000; // Enable 1-second background tick timer
         state.set_badge(true, "REC", [239, 68, 68, 255]); // Pulsing REC badge on toolstrip button
         state["banner_style"] = "info";
 
@@ -64,13 +75,12 @@ fn on_state_changed(state) {
         }
         let sec = (count * 1.0) / (fps * 1.0) + hold;
         state["session_info"] = t("Status: Recording Active | Frames: ", "Статус: Идет запись | Кадров: ") + count;
-        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + "s";
+        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + t("s", "с");
         return state;
     } else if state["action_btn_pause_record"] == true {
         state["action_btn_pause_record"] = false;
         if state["is_recording"] == true {
             state["is_recording"] = false;
-            state["timer_interval_ms"] = 0;
             state.clear_badge();
             state["banner_message"] = t("Recording paused. Click Record to resume.", "Запись приостановлена. Нажмите Запись для продолжения.");
             state["banner_style"] = "warning";
@@ -78,7 +88,6 @@ fn on_state_changed(state) {
         } else if state["frame_count"].to_int() > 0 {
             state["is_recording"] = true;
             state["is_open"] = false;
-            state["timer_interval_ms"] = 1000;
             state.set_badge(true, "REC", [239, 68, 68, 255]);
             state["banner_message"] = t("Recording resumed.", "Запись возобновлена.");
             state["banner_style"] = "info";
@@ -88,7 +97,6 @@ fn on_state_changed(state) {
     } else if state["action_btn_stop_record"] == true {
         state["action_btn_stop_record"] = false;
         state["is_recording"] = false;
-        state["timer_interval_ms"] = 0;
         state.clear_badge();
         let count = state["frame_count"].to_int();
         state["banner_message"] = t("Recording stopped. Ready for export.", "Запись остановлена. Готово к экспорту.");
@@ -98,7 +106,6 @@ fn on_state_changed(state) {
     } else if state["action_btn_reset_session"] == true {
         state["action_btn_reset_session"] = false;
         state["is_recording"] = false;
-        state["timer_interval_ms"] = 0;
         state.clear_badge();
         clean_session_dir(state["session_dir"]);
         state["frame_count"] = 0;
@@ -113,9 +120,8 @@ fn on_state_changed(state) {
         state["frame_count"] = count;
 
         let frame_path = format_frame_path(state["session_dir"], count);
-        execute_raster_process("render_to_file", #{
-            "path": frame_path,
-            "max_size": 1080
+        execute_raster_process("capture_canvas_frame", #{
+            "path": frame_path
         });
 
         let fps = 30;
@@ -131,7 +137,7 @@ fn on_state_changed(state) {
         state["banner_message"] = t("Captured canvas frame #", "Сохранен кадр холста #") + count;
         state["banner_style"] = "success";
         state["session_info"] = t("Status: Recording Active | Frames: ", "Статус: Идет запись | Кадров: ") + count;
-        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + "s";
+        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + t("s", "с");
         return state;
     } else if state["action_btn_export_video"] == true {
         state["action_btn_export_video"] = false;
@@ -214,7 +220,6 @@ fn on_state_changed(state) {
             if result["success"] == true || result["exit_code"] == 0 {
                 state["last_exported_path"] = out_path;
                 state["is_recording"] = false;
-                state["timer_interval_ms"] = 0;
                 state.clear_badge();
                 state["banner_message"] = t("Export successful! Video saved.", "Экспорт завершен! Видео успешно создано.");
                 state["banner_style"] = "success";
@@ -250,32 +255,37 @@ fn on_state_changed(state) {
         return state;
     }
 
+    state = update_localized_labels(state);
     return state;
 }
 
-fn on_tick(state) {
-    if state["is_recording"] == true {
-        let count = state["frame_count"].to_int() + 1;
-        state["frame_count"] = count;
+fn update_localized_labels(state) {
+    let count = if state["frame_count"] != () { state["frame_count"].to_int() } else { 0 };
+    let is_rec = if state["is_recording"] != () { state["is_recording"] == true } else { false };
 
-        let frame_path = format_frame_path(state["session_dir"], count);
-        execute_raster_process("render_to_file", #{
-            "path": frame_path,
-            "max_size": 1080
-        });
+    let fps = 30;
+    if state["framerate"] != () {
+        let f = state["framerate"].to_int();
+        if f > 0 { fps = f; }
+    }
+    let hold = 2.0;
+    if state["hold_duration"] != () {
+        hold = state["hold_duration"].to_float();
+    }
+    let sec = (count * 1.0) / (fps * 1.0) + hold;
 
-        let fps = 30;
-        if state["framerate"] != () {
-            let f = state["framerate"].to_int();
-            if f > 0 { fps = f; }
+    if count == 0 {
+        state["session_info"] = t("Status: Idle | Frames: 0", "Статус: Ожидание | Кадров: 0");
+        state["stats_info"] = t("Recorded frames: 0 | Video length: ~0.0s", "Записано кадров: 0 | Длина видео: ~0.0с");
+        if state["banner_style"] == "info" {
+            state["banner_message"] = t("Studio ready. Click Start Recording to begin.", "Студия готова. Нажмите Начать запись для старта.");
         }
-        let hold = 2.0;
-        if state["hold_duration"] != () {
-            hold = state["hold_duration"].to_float();
-        }
-        let sec = (count * 1.0) / (fps * 1.0) + hold;
+    } else if is_rec {
         state["session_info"] = t("Status: Recording Active | Frames: ", "Статус: Идет запись | Кадров: ") + count;
-        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + "s";
+        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + t("s", "с");
+    } else {
+        state["session_info"] = t("Status: Stopped | Frames: ", "Статус: Остановлено | Кадров: ") + count;
+        state["stats_info"] = t("Recorded frames: ", "Записано кадров: ") + count + t(" | Estimated length: ~", " | Примерная длина: ~") + sec + t("s", "с");
     }
     return state;
 }

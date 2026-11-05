@@ -226,13 +226,20 @@ impl ToolstripApp {
                     let center = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
                     if badge.is_pulsing {
                         let t = ui.input(|i| i.time);
-                        let alpha = (0.35 + 0.65 * (t * 4.0).sin().abs()) as f32;
+                        let phase = t.fract();
+                        let is_lit = phase < 0.6;
+                        let alpha = if is_lit { 1.0f32 } else { 0.25f32 };
                         let [r, g, b, _] = badge.pulse_color_rgba;
                         let col =
                             egui::Color32::from_rgba_premultiplied(r, g, b, (255.0 * alpha) as u8);
                         ui.painter().circle_filled(center, 3.5, col);
+                        let next_switch = if is_lit {
+                            (0.6 - phase).max(0.05)
+                        } else {
+                            (1.0 - phase).max(0.05)
+                        };
                         ui.ctx()
-                            .request_repaint_after(std::time::Duration::from_millis(33));
+                            .request_repaint_after(std::time::Duration::from_secs_f64(next_switch));
                     }
 
                     if let Some(ref lbl) = badge.label {

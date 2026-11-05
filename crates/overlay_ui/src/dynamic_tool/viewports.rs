@@ -14,89 +14,6 @@ impl DynamicToolEngine {
         map
     }
 
-    pub fn process_timers(&mut self, ctx: &egui::Context) {
-        let now = std::time::Instant::now();
-        let mut min_next_repaint: Option<std::time::Duration> = None;
-
-        let timer_candidates: Vec<(String, std::time::Duration)> = self
-            .states
-            .iter()
-            .filter_map(|(id, state)| {
-                state.timer_interval_ms.map(|ms| {
-                    let interval = std::time::Duration::from_millis(ms);
-                    (id.clone(), interval)
-                })
-            })
-            .collect();
-
-        for (id, interval) in timer_candidates {
-            let should_tick = {
-                let state = match self.states.get(&id) {
-                    Some(s) => s,
-                    None => continue,
-                };
-                match state.last_tick {
-                    Some(last) => now.duration_since(last) >= interval,
-                    None => true,
-                }
-            };
-
-            if should_tick {
-                if let Some(state) = self.states.get_mut(&id) {
-                    state.last_tick = Some(now);
-                }
-
-                let ast = self.rhai_asts.get(&id).cloned();
-                if let Some(ast) = ast {
-                    let rhai_state = self
-                        .states
-                        .get(&id)
-                        .map(|s| s.to_rhai_map())
-                        .unwrap_or_default();
-                    let mut scope = rhai::Scope::new();
-                    scope.push("state", rhai_state.clone());
-
-                    let res = self.rhai_engine.call_fn::<rhai::Dynamic>(
-                        &mut scope,
-                        &ast,
-                        "on_tick",
-                        (rhai_state,),
-                    );
-
-                    let mut updated_map = None;
-                    if let Ok(dyn_val) = res {
-                        if let Some(mutated) = dyn_val.try_cast::<rhai::Map>() {
-                            updated_map = Some(mutated);
-                        }
-                    }
-                    if updated_map.is_none() {
-                        if let Some(mutated) = scope.get_value::<rhai::Map>("state") {
-                            updated_map = Some(mutated);
-                        }
-                    }
-
-                    if let Some(map) = updated_map {
-                        if let Some(state) = self.states.get_mut(&id) {
-                            state.update_from_rhai_map(map);
-                        }
-                    }
-                }
-            }
-
-            if let Some(state) = self.states.get(&id) {
-                let next_in = match state.last_tick {
-                    Some(last) => interval.saturating_sub(now.duration_since(last)),
-                    None => interval,
-                };
-                min_next_repaint = Some(min_next_repaint.map_or(next_in, |m| m.min(next_in)));
-            }
-        }
-
-        if let Some(dur) = min_next_repaint {
-            ctx.request_repaint_after(dur);
-        }
-    }
-
     pub fn viewport_id_for_plugin(plugin_id: &str) -> egui::ViewportId {
         egui::ViewportId::from_hash_of(format!("dynamic_plugin_window_{}", plugin_id))
     }
@@ -124,6 +41,8 @@ impl DynamicToolEngine {
             }
         }
         for id in &closed_ids {
+            self.pending_close_viewports
+                .push(Self::viewport_id_for_plugin(id));
             self.execute_script_state_change(id);
         }
         closed_ids
@@ -163,9 +82,14 @@ impl DynamicToolEngine {
                     other_state
                         .values
                         .insert("is_open".to_string(), DynamicValue::Bool(false));
+                    self.pending_close_viewports
+                        .push(Self::viewport_id_for_plugin(other_id));
                     ids_to_notify.push(other_id.clone());
                 }
             }
+        } else {
+            self.pending_close_viewports
+                .push(Self::viewport_id_for_plugin(plugin_id));
         }
 
         if let Some(state) = self.states.get_mut(plugin_id) {

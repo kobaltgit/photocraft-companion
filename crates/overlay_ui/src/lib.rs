@@ -477,7 +477,7 @@ impl eframe::App for CompanionOverlayApp {
         // Process asynchronous tray commands instantly
         self.process_tray_flags(&ctx);
 
-        // Keep reactive fallback loop active (500ms idle) so connection changes are detected without CPU spinning
+        // Heartbeat repaint timer for background state & connection updates (event-driven egui)
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(500));
 

@@ -858,7 +858,12 @@ fn main() -> anyhow::Result<()> {
                         engine.has_selection = doc.has_selection;
                         let dispatched = engine
                             .dispatch_selection_state(doc.has_selection, doc.selection_bounds);
-                        dispatched || (prev != doc.has_selection)
+                        let rev_dispatched = if doc.revision > 0 {
+                            engine.dispatch_document_revision(doc.revision)
+                        } else {
+                            false
+                        };
+                        dispatched || rev_dispatched || (prev != doc.has_selection)
                     } else {
                         false
                     }
@@ -1072,30 +1077,48 @@ async fn execute_raster_process_action(
 ) -> core_contracts::Result<()> {
     let task = params.get("task").and_then(|v| v.as_str()).unwrap_or("");
     match task {
-        "render_to_file" => {
+        "capture_canvas_frame" => {
             let p_val = params.get("params").unwrap_or(params);
-            let path_str = p_val
-                .get("path")
-                .or_else(|| p_val.get("save_to_path"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let max_side = p_val
-                .get("max_size")
-                .or_else(|| p_val.get("maxSide"))
-                .and_then(|v| v.as_u64())
-                .unwrap_or(1080) as u32;
-
+            let path_str = p_val.get("path").and_then(|v| v.as_str()).unwrap_or("");
             if !path_str.is_empty() {
-                let img = client.get_canvas_preview(max_side, "png").await?;
-                let path = std::path::Path::new(path_str);
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                let target_path = std::path::PathBuf::from(path_str);
+                match client
+                    .call("ui.screenshot", serde_json::json!({ "focus": false }))
+                    .await
+                {
+                    Ok(res) => {
+                        let b64_opt = res
+                            .get("image_base64")
+                            .or_else(|| res.get("data"))
+                            .or_else(|| res.get("base64"))
+                            .and_then(|v| v.as_str());
+                        if let Some(b64) = b64_opt {
+                            let clean = if let Some(idx) = b64.find(',') {
+                                if b64.starts_with("data:") {
+                                    &b64[idx + 1..]
+                                } else {
+                                    b64
+                                }
+                            } else {
+                                b64
+                            };
+                            if let Ok(bytes) = core_contracts::decode_base64(clean) {
+                                if let Some(parent) = target_path.parent() {
+                                    let _ = std::fs::create_dir_all(parent);
+                                }
+                                if let Err(e) = std::fs::write(&target_path, bytes) {
+                                    tracing::error!(
+                                        "Failed to save captured frame to {}: {e}",
+                                        target_path.display()
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to capture ui.screenshot: {e}");
+                    }
                 }
-                img.save(path).map_err(|e| {
-                    core_contracts::CompanionError::Plugin(format!(
-                        "Failed to save canvas render to {path_str}: {e}"
-                    ))
-                })?;
             }
             Ok(())
         }

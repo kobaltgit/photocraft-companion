@@ -685,8 +685,6 @@ fn test_depth_studio_rhai_script_presets_and_actions() {
         default_height: 560.0,
         role_mask: None,
         dynamic_badge: None,
-        timer_interval_ms: None,
-        last_tick: None,
     };
     state
         .values
@@ -886,23 +884,18 @@ fn test_single_column_layout_mode() {
 }
 
 #[test]
-fn test_dynamic_badge_and_timer_state_reactivity() {
+fn test_dynamic_badge_state_reactivity() {
     let cfg = InteractiveUiConfig {
         window_title: "Test".to_string(),
         ..Default::default()
     };
     let mut state = DynamicWindowState::new(&cfg);
     assert!(!state.is_open);
-    assert!(state.timer_interval_ms.is_none());
     assert!(state.dynamic_badge.is_none());
 
-    // Update from Rhai map with is_open, timer_interval_ms, and dynamic_badge
+    // Update from Rhai map with is_open and dynamic_badge
     let mut map = rhai::Map::new();
     map.insert("is_open".into(), rhai::Dynamic::from(true));
-    map.insert(
-        "timer_interval_ms".into(),
-        rhai::Dynamic::from(1000 as rhai::INT),
-    );
 
     let mut badge_map = rhai::Map::new();
     badge_map.insert("is_pulsing".into(), rhai::Dynamic::from(true));
@@ -922,8 +915,6 @@ fn test_dynamic_badge_and_timer_state_reactivity() {
     state.update_from_rhai_map(map);
 
     assert!(state.is_open);
-    assert_eq!(state.timer_interval_ms, Some(1000));
-    assert!(state.last_tick.is_some());
     assert!(state.dynamic_badge.is_some());
     let badge = state.dynamic_badge.clone().unwrap();
     assert!(badge.is_pulsing);
@@ -933,24 +924,15 @@ fn test_dynamic_badge_and_timer_state_reactivity() {
     // Test to_rhai_map roundtrip
     let exported = state.to_rhai_map();
     assert!(exported.get("is_open").unwrap().as_bool().unwrap());
-    assert_eq!(
-        exported.get("timer_interval_ms").unwrap().as_int().unwrap(),
-        1000
-    );
     assert!(exported.contains_key("dynamic_badge"));
 
-    // Reset badge and timer
+    // Reset badge
     let mut reset_map = rhai::Map::new();
     reset_map.insert("is_open".into(), rhai::Dynamic::from(false));
-    reset_map.insert(
-        "timer_interval_ms".into(),
-        rhai::Dynamic::from(0 as rhai::INT),
-    );
     reset_map.insert("dynamic_badge".into(), rhai::Dynamic::UNIT);
 
     state.update_from_rhai_map(reset_map);
     assert!(!state.is_open);
-    assert!(state.timer_interval_ms.is_none());
     assert!(state.dynamic_badge.is_none());
 }
 
@@ -1067,11 +1049,11 @@ fn test_timelapse_studio_ergonomics_and_reset_state_machine() {
     assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(1));
     assert!(state.contains_key("dynamic_badge"));
 
-    // 3. Tick increments frame_count
+    // 3. Revision event increments frame_count
     state = engine
         .rhai_engine
-        .call_fn(&mut scope, &ast, "on_tick", (state,))
-        .expect("Tick must succeed");
+        .call_fn(&mut scope, &ast, "on_revision", (42 as rhai::INT, state))
+        .expect("on_revision must succeed");
     assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(2));
 
     // 4. Pause recording: is_recording becomes false, badge cleared, frame_count preserved
@@ -1193,4 +1175,159 @@ fn test_app_icon_rgba_caching() {
     let icon2 = crate::icons::get_icon_rgba(sz);
     assert!(icon2.is_some());
     assert_eq!(icon1.unwrap(), icon2.unwrap());
+}
+
+#[test]
+fn test_pending_close_viewports_lifecycle() {
+    let m1 = PluginManifest {
+        id: "tool_a".to_string(),
+        interactive_ui: Some(InteractiveUiConfig {
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let m2 = PluginManifest {
+        id: "tool_b".to_string(),
+        interactive_ui: Some(InteractiveUiConfig {
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut engine = DynamicToolEngine::new(&[m1, m2], None);
+    assert!(engine.pending_close_viewports.is_empty());
+
+    // 1. Open tool_a
+    engine.toggle_window("tool_a");
+    assert!(engine.is_window_open("tool_a"));
+    assert!(engine.pending_close_viewports.is_empty());
+
+    // 2. Open tool_b: tool_a is auto-closed and its viewport ID is placed into pending_close_viewports
+    engine.toggle_window("tool_b");
+    assert!(!engine.is_window_open("tool_a"));
+    assert!(engine.is_window_open("tool_b"));
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_a")]
+    );
+
+    // 3. Clear pending viewports (simulating render pass)
+    engine.pending_close_viewports.clear();
+
+    // 4. Close tool_b by toggle
+    engine.toggle_window("tool_b");
+    assert!(!engine.is_window_open("tool_b"));
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_b")]
+    );
+    engine.pending_close_viewports.clear();
+
+    // 5. Open tool_a again, then close_all_windows
+    engine.toggle_window("tool_a");
+    engine.pending_close_viewports.clear();
+    let closed = engine.close_all_windows();
+    assert_eq!(closed, vec!["tool_a".to_string()]);
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_a")]
+    );
+}
+
+#[test]
+fn test_timelapse_studio_dynamic_language_switch() {
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut engine = DynamicToolEngine::new_with_language(&[], Some(tx), Language::En);
+
+    let script = include_str!("../../../../plugins/timelapse_studio/script.rhai");
+    let ast = engine
+        .rhai_engine
+        .compile(script)
+        .expect("Timelapse Studio script must compile");
+
+    let mut scope = rhai::Scope::new();
+
+    // 1. Init in English
+    let init_map = rhai::Map::new();
+    let mut state: rhai::Map = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (init_map,))
+        .expect("Init must succeed");
+
+    let session_info_en = state
+        .get("session_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    let stats_info_en = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(session_info_en.contains("Status: Idle"));
+    assert!(stats_info_en.contains("Recorded frames: 0 | Video length: ~0.0s"));
+
+    // 2. Switch engine language to Russian
+    engine.set_language(Language::Ru);
+
+    // 3. Re-run on_state_changed (as happens dynamically via execute_script_state_change)
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("State update after language switch must succeed");
+
+    let session_info_ru = state
+        .get("session_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    let stats_info_ru = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(session_info_ru.contains("Статус: Ожидание"));
+    assert!(stats_info_ru.contains("Записано кадров: 0 | Длина видео: ~0.0с"));
+
+    // 4. Increment a frame, check that time unit suffix uses Russian "с" instead of hardcoded "s"
+    state.insert("action_btn_start_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Start record must succeed");
+
+    let stats_rec_ru = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(stats_rec_ru.contains("Примерная длина: ~"));
+    assert!(stats_rec_ru.ends_with("с"));
+    assert!(!stats_rec_ru.ends_with("s"));
+
+    // 5. Switch back to English, check that time unit suffix flips back to "s"
+    engine.set_language(Language::En);
+    state.remove("action_btn_start_record");
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("State update back to English must succeed");
+
+    let stats_rec_en = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(stats_rec_en.contains("Estimated length: ~"));
+    assert!(stats_rec_en.ends_with("s"));
+    assert!(!stats_rec_en.ends_with("с"));
 }
