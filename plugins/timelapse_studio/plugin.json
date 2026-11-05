@@ -1,0 +1,198 @@
+{
+  "id": "ui.photocraft.plugins.timelapse_studio",
+  "name": "Timelapse Studio",
+  "name_ru": "Студия таймлапсов",
+  "version": "1.0.0",
+  "description": "Automatic background canvas speedpaint / timelapse recorder with blur-fill export and zero brush freeze.",
+  "description_ru": "Автоматическая фоновая запись процесса рисования (спидпейнт / таймлапс) с экспортом под соцсети и нулевой задержкой кисти.",
+  "author": "kobaltGIT",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "models": [],
+  "runtime_tools": [
+    {
+      "name": "ffmpeg",
+      "version": "7.0",
+      "url_windows_x64": "https://github.com/GyanD/codexffmpeg/releases/download/7.0/ffmpeg-7.0-essentials_build.zip",
+      "sha256": "3cb0179261a8aa6dc94ba7a35560965bc121df4a784dc9210cfa0bfa9c336b9c"
+    }
+  ],
+  "interactive_ui": {
+    "window_title": "Timelapse Studio",
+    "window_title_ru": "Студия таймлапсов",
+    "default_width": 380.0,
+    "default_height": 350.0,
+    "script": "script.rhai",
+    "ipc_subscriptions": [
+      "document.selection"
+    ],
+    "widgets": [
+      {
+        "type": "banner",
+        "id": "status_banner",
+        "message_binding": "banner_message",
+        "style_binding": "banner_style"
+      },
+      {
+        "type": "tabs",
+        "id": "studio_tabs",
+        "default_index": 0,
+        "tabs": [
+          {
+            "id": "tab_record",
+            "title": "Recording",
+            "title_ru": "Запись",
+            "widgets": [
+              {
+                "type": "label",
+                "text_binding": "session_info"
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "btn_start_record",
+                    "label": "Record",
+                    "label_ru": "Запись"
+                  },
+                  {
+                    "type": "button",
+                    "id": "btn_pause_record",
+                    "label": "Pause",
+                    "label_ru": "Пауза"
+                  },
+                  {
+                    "type": "button",
+                    "id": "btn_stop_record",
+                    "label": "Stop",
+                    "label_ru": "Стоп"
+                  }
+                ]
+              },
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "btn_capture_frame",
+                    "label": "Snapshot",
+                    "label_ru": "Снимок"
+                  },
+                  {
+                    "type": "button",
+                    "id": "btn_reset_session",
+                    "label": "Reset",
+                    "label_ru": "Сброс"
+                  }
+                ]
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "label",
+                "text_binding": "stats_info"
+              },
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "btn_export_video",
+                    "label": "Export MP4",
+                    "label_ru": "Экспорт MP4"
+                  },
+                  {
+                    "type": "button",
+                    "id": "btn_reveal_file",
+                    "label": "Open Folder",
+                    "label_ru": "Открыть папку"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "tab_settings",
+            "title": "Settings",
+            "title_ru": "Настройки",
+            "widgets": [
+              {
+                "type": "dropdown",
+                "id": "export_preset",
+                "label": "Preset",
+                "label_ru": "Пресет",
+                "options": [
+                  "Reels / TikTok 9:16 (Blur)",
+                  "Original Canvas Ratio",
+                  "Standard Widescreen 16:9"
+                ],
+                "options_ru": [
+                  "Reels / TikTok 9:16 (Размытие)",
+                  "Исходные пропорции холста",
+                  "Широкоформатный 16:9"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "dropdown",
+                "id": "export_resolution",
+                "label": "Resolution",
+                "label_ru": "Разрешение",
+                "options": [
+                  "1080p (Full HD)",
+                  "4K (Ultra HD)",
+                  "720p (Fast)"
+                ],
+                "options_ru": [
+                  "1080p (Full HD)",
+                  "4K (Ultra HD)",
+                  "720p (Быстрое)"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "slider",
+                "id": "hold_duration",
+                "label": "Hold Final Frame (sec)",
+                "label_ru": "Задержка финала (сек)",
+                "min": 0.0,
+                "max": 5.0,
+                "step": 0.5,
+                "default": 2.0
+              },
+              {
+                "type": "slider",
+                "id": "framerate",
+                "label": "Framerate (FPS)",
+                "label_ru": "Частота кадров (FPS)",
+                "min": 24.0,
+                "max": 60.0,
+                "step": 1.0,
+                "default": 30.0
+              },
+              {
+                "type": "toggle",
+                "id": "auto_clean",
+                "label": "Auto-clean cache after export",
+                "label_ru": "Очищать кэш после экспорта",
+                "default": true
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "locales": {
+    "ru": {
+      "name": "Студия таймлапсов",
+      "description": "Автоматическая фоновая запись процесса рисования (спидпейнт / таймлапс) с экспортом под соцсети и нулевой задержкой кисти."
+    }
+  }
+}

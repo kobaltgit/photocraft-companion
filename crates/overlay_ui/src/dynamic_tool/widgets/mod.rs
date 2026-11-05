@@ -53,8 +53,9 @@ pub fn render_widget_node(
                     if is_swap {
                         ui.spacing_mut().button_padding = Vec2::new(18.0, 5.0);
                     }
+                    let btn_w = ui.available_width().max(0.0);
                     let mut btn = egui::Button::new(egui::RichText::new(label_text).size(12.0))
-                        .min_size(Vec2::new(0.0, 28.0));
+                        .min_size(Vec2::new(btn_w, 28.0));
                     if is_busy {
                         btn = btn.sense(Sense::hover());
                     }

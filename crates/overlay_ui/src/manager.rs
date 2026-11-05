@@ -234,6 +234,7 @@ impl PluginManagerApp {
                     self.active_download = Some(prog);
                 }
                 ModelDownloadEvent::Finished { model_name } => {
+                    invalidate_models_installed_cache(None);
                     self.active_download = None;
                     let msg_success = self.t(
                         "Model downloaded successfully!",
@@ -919,6 +920,8 @@ impl PluginManagerApp {
         let msg_model_missing = self.t("Model missing", "Требуется модель");
         let msg_download = self.t("Download model", "Скачать модель");
         let msg_download_started = self.t("Model download started...", "Загрузка модели начата...");
+        let msg_tool_ready = self.t("Tool ready", "Утилита готова");
+        let msg_tool_missing = self.t("Tool missing", "Утилита не установлена");
         let msg_view_doc = self.t(
             "View Documentation & Use Cases",
             "Документация и сценарии использования",
@@ -933,7 +936,7 @@ impl PluginManagerApp {
         let mut open_readme = None;
 
         for manifest in &mut self.manifests {
-            let all_models_ok = manifest.all_models_installed();
+            let all_models_ok = is_plugin_models_installed_cached(manifest);
 
             egui::Frame::new()
                 .fill(palette.card_inner)
@@ -1398,6 +1401,38 @@ impl PluginManagerApp {
                         }
                     });
                 });
+
+                        // Runtime tools status badge (clean vector circle dot + label)
+                        if !manifest.runtime_tools.is_empty() {
+                            let all_tools_ok = manifest
+                                .runtime_tools
+                                .iter()
+                                .all(|tool| is_runtime_tool_installed(&tool.name));
+
+                            let (dot_rect, _) =
+                                ui.allocate_exact_size(Vec2::new(8.0, 10.0), egui::Sense::hover());
+                            let dot_color = if all_tools_ok {
+                                Color32::from_rgb(0x28, 0xa7, 0x45)
+                            } else {
+                                Color32::from_rgb(0xea, 0x86, 0x00)
+                            };
+                            ui.painter()
+                                .circle_filled(dot_rect.center(), 2.8, dot_color);
+
+                            if all_tools_ok {
+                                ui.label(
+                                    RichText::new(msg_tool_ready)
+                                        .size(10.0)
+                                        .color(Color32::from_rgb(0x28, 0xa7, 0x45)),
+                                );
+                            } else {
+                                ui.label(
+                                    RichText::new(msg_tool_missing)
+                                        .size(10.0)
+                                        .color(Color32::from_rgb(0xea, 0x86, 0x00)),
+                                );
+                            }
+                        }
 
                 // 3. Right: Enabled checkbox
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -2990,6 +3025,116 @@ fn detect_default_token(photocraft_path: &str, prefs_path: &std::path::Path) -> 
     None
 }
 
+static RUNTIME_TOOL_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (bool, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+pub fn clear_runtime_tool_cache() {
+    if let Some(mutex) = RUNTIME_TOOL_CACHE.get() {
+        if let Ok(mut map) = mutex.lock() {
+            map.clear();
+        }
+    }
+}
+
+pub fn is_runtime_tool_installed(tool_name: &str) -> bool {
+    let mutex =
+        RUNTIME_TOOL_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let now = std::time::Instant::now();
+    if let Ok(guard) = mutex.lock() {
+        if let Some((installed, timestamp)) = guard.get(tool_name) {
+            if now.duration_since(*timestamp) < std::time::Duration::from_secs(10) {
+                return *installed;
+            }
+        }
+    }
+
+    let installed = is_runtime_tool_installed_uncached(tool_name);
+    if let Ok(mut guard) = mutex.lock() {
+        guard.insert(tool_name.to_string(), (installed, now));
+    }
+    installed
+}
+
+fn is_runtime_tool_installed_uncached(tool_name: &str) -> bool {
+    let check_candidate = |p: PathBuf| -> bool {
+        if p.is_file() {
+            return true;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            if !tool_name.ends_with(".exe") && p.with_extension("exe").is_file() {
+                return true;
+            }
+        }
+        false
+    };
+
+    // 1. Check local & user PhotoCraftData/bin/
+    let local_bin = PathBuf::from("PhotoCraftData").join("bin").join(tool_name);
+    if check_candidate(local_bin) {
+        return true;
+    }
+    let user_bin = core_contracts::user_data_dir()
+        .join("PhotoCraftData")
+        .join("bin")
+        .join(tool_name);
+    if check_candidate(user_bin) {
+        return true;
+    }
+    let direct_bin = PathBuf::from("bin").join(tool_name);
+    if check_candidate(direct_bin) {
+        return true;
+    }
+
+    // 2. Check system PATH
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            let candidate = dir.join(tool_name);
+            if check_candidate(candidate) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+static MODELS_INSTALLED_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (bool, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+pub fn is_plugin_models_installed_cached(manifest: &PluginManifest) -> bool {
+    let mutex = MODELS_INSTALLED_CACHE
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let now = std::time::Instant::now();
+    if let Ok(guard) = mutex.lock() {
+        if let Some((installed, timestamp)) = guard.get(&manifest.id) {
+            if now.duration_since(*timestamp) < std::time::Duration::from_secs(5) {
+                return *installed;
+            }
+        }
+    }
+
+    let installed = manifest.all_models_installed();
+    if let Ok(mut guard) = mutex.lock() {
+        guard.insert(manifest.id.clone(), (installed, now));
+    }
+    installed
+}
+
+pub fn invalidate_models_installed_cache(plugin_id: Option<&str>) {
+    if let Some(mutex) = MODELS_INSTALLED_CACHE.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            if let Some(id) = plugin_id {
+                guard.remove(id);
+            } else {
+                guard.clear();
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3202,6 +3347,7 @@ mod tests {
             enabled: true,
             icon: None,
             models: Vec::new(),
+            runtime_tools: Vec::new(),
             commands: Vec::new(),
             post_commands: Vec::new(),
             sub_actions: Vec::new(),
@@ -3288,5 +3434,36 @@ mod tests {
         assert_eq!(detected, Some("app_token_priority_2".to_string()));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_is_runtime_tool_installed() {
+        #[cfg(target_os = "windows")]
+        assert!(is_runtime_tool_installed("cmd"));
+        #[cfg(not(target_os = "windows"))]
+        assert!(is_runtime_tool_installed("sh"));
+
+        assert!(!is_runtime_tool_installed("nonexistent_tool_12345_xyz"));
+    }
+
+    #[test]
+    fn test_runtime_tool_cache_ttl() {
+        clear_runtime_tool_cache();
+        let res1 = is_runtime_tool_installed("nonexistent_tool_test_cache");
+        assert!(!res1);
+        let res2 = is_runtime_tool_installed("nonexistent_tool_test_cache");
+        assert!(!res2);
+        clear_runtime_tool_cache();
+    }
+
+    #[test]
+    fn test_models_installed_cache_ttl() {
+        invalidate_models_installed_cache(None);
+        let manifest = PluginManifest::default();
+        let ok1 = is_plugin_models_installed_cached(&manifest);
+        assert!(ok1);
+        let ok2 = is_plugin_models_installed_cached(&manifest);
+        assert!(ok2);
+        invalidate_models_installed_cache(Some(&manifest.id));
     }
 }

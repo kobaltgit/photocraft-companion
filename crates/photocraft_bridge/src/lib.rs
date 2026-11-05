@@ -1785,6 +1785,54 @@ impl PhotoCraftClient {
         self.execute_command("channel.delete", json!({ "channel": name }))
             .await
     }
+
+    /// Request canvas preview from PhotoCraft via document.get_preview and decode into RgbaImage
+    pub async fn get_canvas_preview(
+        &self,
+        max_size: u32,
+        format: &str,
+    ) -> Result<image::RgbaImage> {
+        let render_params = json!({
+            "maxSide": max_size,
+        });
+        // 1. Try PhotoCraft's native doc.render
+        let res = match self.call("doc.render", render_params).await {
+            Ok(val) => val,
+            Err(_) => {
+                // 2. Fallback to document.get_preview (for legacy/custom bridges)
+                let preview_params = json!({
+                    "max_size": max_size,
+                    "format": format
+                });
+                match self.call("document.get_preview", preview_params).await {
+                    Ok(val) => val,
+                    Err(_) => {
+                        // 3. Fallback to ui.screenshot
+                        self.call("ui.screenshot", json!({})).await?
+                    }
+                }
+            }
+        };
+
+        let b64_str = res
+            .get("image_base64")
+            .or_else(|| res.get("data"))
+            .or_else(|| res.get("base64"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                CompanionError::Bridge(
+                    "Missing 'base64', 'image_base64', or 'data' field in canvas preview response"
+                        .into(),
+                )
+            })?;
+
+        let bytes = decode_base64(b64_str)?;
+        let img = image::load_from_memory(&bytes).map_err(|e| {
+            CompanionError::Bridge(format!("Failed to decode preview image bytes: {e}"))
+        })?;
+
+        Ok(img.to_rgba8())
+    }
 }
 
 #[async_trait::async_trait]
@@ -1812,7 +1860,13 @@ impl core_contracts::BridgeOperations for PhotoCraftClient {
     async fn get_document_info(&self) -> Result<DocumentInfo> {
         self.get_document_info().await
     }
+
+    async fn get_canvas_preview(&self, max_size: u32, format: &str) -> Result<image::RgbaImage> {
+        self.get_canvas_preview(max_size, format).await
+    }
 }
+
+pub use core_contracts::decode_base64;
 
 /// Parse foreground and background normalized float colors from `session.inspect` JSON response into hex strings (`#rrggbb`).
 /// Falls back to `("#000000", "#ffffff")` if keys are missing or malformed.
@@ -2647,5 +2701,248 @@ mod tests {
         assert_eq!(resolved_dir, Some(fake_bin.clone()));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(test)]
+    fn encode_base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut s = String::with_capacity(bytes.len().div_ceil(3) * 4);
+        for chunk in bytes.chunks(3) {
+            let b0 = chunk[0];
+            let b1 = chunk.get(1).copied().unwrap_or(0);
+            let b2 = chunk.get(2).copied().unwrap_or(0);
+
+            s.push(TABLE[(b0 >> 2) as usize] as char);
+            s.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+
+            if chunk.len() > 1 {
+                s.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+            } else {
+                s.push('=');
+            }
+
+            if chunk.len() > 2 {
+                s.push(TABLE[(b2 & 0x3f) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+        s
+    }
+
+    #[tokio::test]
+    async fn test_mock_server_document_get_preview() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Prepare 2x2 RGBA test image and encode to PNG
+        let mut original = image::RgbaImage::new(2, 2);
+        original.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
+        original.put_pixel(1, 0, image::Rgba([0, 255, 0, 255]));
+        original.put_pixel(0, 1, image::Rgba([0, 0, 255, 255]));
+        original.put_pixel(1, 1, image::Rgba([255, 255, 0, 255]));
+
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            original.as_raw(),
+            original.width(),
+            original.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+        let b64_payload = encode_base64(&png_bytes);
+
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let b64 = b64_payload.clone();
+                tokio::spawn(async move {
+                    let (read_half, mut write_half) = stream.into_split();
+                    let mut reader = BufReader::new(read_half);
+                    let mut line = String::new();
+
+                    while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+                        if let Ok(req) = serde_json::from_str::<Value>(&line) {
+                            let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                            let resp = match method {
+                                "auth" => json!({
+                                    "id": req["id"],
+                                    "ok": true,
+                                    "result": null
+                                }),
+                                "document.get_preview" => {
+                                    let max_size = req["params"]["max_size"].as_u64().unwrap_or(0);
+                                    let fmt = req["params"]["format"].as_str().unwrap_or("");
+                                    assert!(max_size > 0);
+                                    assert!(!fmt.is_empty());
+                                    json!({
+                                        "id": req["id"],
+                                        "ok": true,
+                                        "result": {
+                                            "image_base64": b64.clone()
+                                        }
+                                    })
+                                }
+                                _ => json!({
+                                    "id": req["id"],
+                                    "ok": false,
+                                    "error": "Unknown method"
+                                }),
+                            };
+                            let _ = write_half.write_all(format!("{}\n", resp).as_bytes()).await;
+                            let _ = write_half.flush().await;
+                        }
+                        line.clear();
+                    }
+                });
+            }
+        });
+
+        let client = PhotoCraftClient::new(port, Some("test_preview_token".to_string()));
+        client.connect().await.unwrap();
+
+        let preview = client.get_canvas_preview(128, "png").await.unwrap();
+        assert_eq!(preview.width(), 2);
+        assert_eq!(preview.height(), 2);
+        assert_eq!(preview.get_pixel(0, 0), &image::Rgba([255, 0, 0, 255]));
+        assert_eq!(preview.get_pixel(1, 0), &image::Rgba([0, 255, 0, 255]));
+        assert_eq!(preview.get_pixel(0, 1), &image::Rgba([0, 0, 255, 255]));
+        assert_eq!(preview.get_pixel(1, 1), &image::Rgba([255, 255, 0, 255]));
+    }
+
+    #[tokio::test]
+    async fn test_mock_server_document_get_preview_data_url_and_fallback_field() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // 1x1 pixel image
+        let original = image::RgbaImage::from_pixel(1, 1, image::Rgba([42, 84, 126, 255]));
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            original.as_raw(),
+            original.width(),
+            original.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+        let b64_data_url = format!("data:image/png;base64,{}", encode_base64(&png_bytes));
+
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let data_url = b64_data_url.clone();
+                tokio::spawn(async move {
+                    let (read_half, mut write_half) = stream.into_split();
+                    let mut reader = BufReader::new(read_half);
+                    let mut line = String::new();
+
+                    while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+                        if let Ok(req) = serde_json::from_str::<Value>(&line) {
+                            let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                            let resp = match method {
+                                "auth" => json!({ "id": req["id"], "ok": true, "result": null }),
+                                "document.get_preview" => json!({
+                                    "id": req["id"],
+                                    "ok": true,
+                                    "result": {
+                                        "data": data_url.clone()
+                                    }
+                                }),
+                                _ => json!({ "id": req["id"], "ok": false, "error": "Unknown" }),
+                            };
+                            let _ = write_half.write_all(format!("{}\n", resp).as_bytes()).await;
+                            let _ = write_half.flush().await;
+                        }
+                        line.clear();
+                    }
+                });
+            }
+        });
+
+        let client = PhotoCraftClient::new(port, Some("test_data_token".to_string()));
+        client.connect().await.unwrap();
+
+        let preview = client.get_canvas_preview(64, "webp").await.unwrap();
+        assert_eq!(preview.width(), 1);
+        assert_eq!(preview.height(), 1);
+        assert_eq!(preview.get_pixel(0, 0), &image::Rgba([42, 84, 126, 255]));
+    }
+
+    #[tokio::test]
+    async fn test_mock_server_doc_render_native_photocraft_rpc() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let original = image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]));
+        let mut png_bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut png_bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            original.as_raw(),
+            original.width(),
+            original.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+        let b64_native = encode_base64(&png_bytes);
+
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let b64 = b64_native.clone();
+                tokio::spawn(async move {
+                    let (read_half, mut write_half) = stream.into_split();
+                    let mut reader = BufReader::new(read_half);
+                    let mut line = String::new();
+
+                    while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
+                        if let Ok(req) = serde_json::from_str::<Value>(&line) {
+                            let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+                            let resp = match method {
+                                "auth" => json!({ "id": req["id"], "ok": true, "result": null }),
+                                "doc.render" => {
+                                    let max_side = req["params"]["maxSide"].as_u64().unwrap_or(0);
+                                    assert_eq!(max_side, 1080);
+                                    json!({
+                                        "id": req["id"],
+                                        "ok": true,
+                                        "result": {
+                                            "mime": "image/png",
+                                            "base64": b64.clone()
+                                        }
+                                    })
+                                }
+                                _ => json!({ "id": req["id"], "ok": false, "error": "Unknown" }),
+                            };
+                            let _ = write_half.write_all(format!("{}\n", resp).as_bytes()).await;
+                            let _ = write_half.flush().await;
+                        }
+                        line.clear();
+                    }
+                });
+            }
+        });
+
+        let client = PhotoCraftClient::new(port, Some("test_render_token".to_string()));
+        client.connect().await.unwrap();
+
+        let preview = client.get_canvas_preview(1080, "png").await.unwrap();
+        assert_eq!(preview.width(), 2);
+        assert_eq!(preview.height(), 2);
+        assert_eq!(preview.get_pixel(0, 0), &image::Rgba([10, 20, 30, 255]));
+    }
+
+    #[test]
+    fn test_base64_decode_roundtrip() {
+        let payload = b"Hello PhotoCraft Companion preview engine!";
+        let encoded = encode_base64(payload);
+        let decoded = decode_base64(&encoded).unwrap();
+        assert_eq!(decoded, payload);
+
+        let data_uri = format!("data:application/octet-stream;base64,{encoded}");
+        let decoded_uri = decode_base64(&data_uri).unwrap();
+        assert_eq!(decoded_uri, payload);
     }
 }

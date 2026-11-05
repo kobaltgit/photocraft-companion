@@ -79,7 +79,7 @@ pub fn create_rhai_engine(
             },
         );
 
-        let tx_raster = tx;
+        let tx_raster = tx.clone();
         engine.register_fn(
             "execute_raster_process",
             move |task: rhai::ImmutableString, params: rhai::Map| {
@@ -97,6 +97,25 @@ pub fn create_rhai_engine(
                 let _ = tx_raster.send(action);
             },
         );
+
+        let tx_rpc = tx.clone();
+        engine.register_fn(
+            "execute_rpc",
+            move |method: rhai::ImmutableString, params: rhai::Map| {
+                let json_params =
+                    rhai::serde::from_dynamic::<serde_json::Value>(&rhai::Dynamic::from(params))
+                        .unwrap_or(serde_json::Value::Null);
+
+                let action = PluginIpcAction::new(format!("rpc:{}", method), json_params);
+                let _ = tx_rpc.send(action);
+            },
+        );
+
+        let tx_rpc_bare = tx;
+        engine.register_fn("execute_rpc", move |method: rhai::ImmutableString| {
+            let action = PluginIpcAction::new(format!("rpc:{}", method), serde_json::Value::Null);
+            let _ = tx_rpc_bare.send(action);
+        });
     }
 
     // I18n helpers
@@ -196,6 +215,231 @@ pub fn create_rhai_engine(
         },
     );
 
+    // File dialog
+    engine.register_fn(
+        "save_file_dialog",
+        |title: rhai::ImmutableString,
+         default_name: rhai::ImmutableString,
+         ext: rhai::ImmutableString|
+         -> String {
+            let mut dialog = rfd::FileDialog::new()
+                .set_title(title.as_str())
+                .set_file_name(default_name.as_str());
+            if !ext.is_empty() {
+                dialog = dialog.add_filter("Files", &[ext.as_str()]);
+            }
+            if let Some(path) = dialog.save_file() {
+                path.to_string_lossy().to_string()
+            } else {
+                String::new()
+            }
+        },
+    );
+
+    // Native file manager reveal
+    engine.register_fn("reveal_in_file_manager", |path: rhai::ImmutableString| {
+        let p = std::path::Path::new(path.as_str());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+
+            // Resolve file or parent directory
+            let (target_path, is_select) = if p.is_file() {
+                (p.to_path_buf(), true)
+            } else if p.is_dir() {
+                (p.to_path_buf(), false)
+            } else if let Some(parent) = p.parent() {
+                if parent.exists() {
+                    (parent.to_path_buf(), false)
+                } else {
+                    (p.to_path_buf(), false)
+                }
+            } else {
+                (p.to_path_buf(), false)
+            };
+
+            // Canonicalize if possible to normalize relative paths, then strip \\?\ prefix
+            let clean_path = if let Ok(canon) = target_path.canonicalize() {
+                let s = canon.to_string_lossy().to_string();
+                if let Some(stripped) = s.strip_prefix(r"\\?\") {
+                    stripped.to_string()
+                } else {
+                    s
+                }
+            } else {
+                target_path.to_string_lossy().replace('/', "\\")
+            };
+
+            let mut cmd = std::process::Command::new("explorer.exe");
+            if is_select {
+                // explorer.exe /select,"C:\path\to\file.mp4"
+                // Using raw_arg prevents Rust stdlib from quoting /select together with the path into "/select,C:\..."
+                cmd.raw_arg(format!("/select,\"{}\"", clean_path));
+            } else {
+                cmd.raw_arg(format!("\"{}\"", clean_path));
+            }
+            let _ = cmd.spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg("-R").arg(p).spawn();
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        {
+            let dir = if p.is_file() {
+                p.parent().unwrap_or(p)
+            } else {
+                p
+            };
+            let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+        }
+    });
+
+    // Check runtime tool installation
+    engine.register_fn(
+        "is_tool_installed",
+        |tool_name: rhai::ImmutableString| -> bool {
+            crate::manager::is_runtime_tool_installed(tool_name.as_str())
+        },
+    );
+
+    // Execute CLI tool
+    engine.register_fn(
+        "execute_tool",
+        |tool_name: rhai::ImmutableString, args: rhai::Array| -> rhai::Map {
+            let mut map = rhai::Map::new();
+            let mut bin_path = None;
+            let check_candidate = |p: std::path::PathBuf| -> Option<std::path::PathBuf> {
+                if p.is_file() {
+                    return Some(p);
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    if !tool_name.ends_with(".exe") && p.with_extension("exe").is_file() {
+                        return Some(p.with_extension("exe"));
+                    }
+                }
+                None
+            };
+
+            let local_bin = std::path::PathBuf::from("PhotoCraftData")
+                .join("bin")
+                .join(tool_name.as_str());
+            if let Some(p) = check_candidate(local_bin) {
+                bin_path = Some(p);
+            } else {
+                let user_bin = core_contracts::user_data_dir()
+                    .join("PhotoCraftData")
+                    .join("bin")
+                    .join(tool_name.as_str());
+                if let Some(p) = check_candidate(user_bin) {
+                    bin_path = Some(p);
+                } else if let Some(paths) = std::env::var_os("PATH") {
+                    for dir in std::env::split_paths(&paths) {
+                        if let Some(p) = check_candidate(dir.join(tool_name.as_str())) {
+                            bin_path = Some(p);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let exec_target =
+                bin_path.unwrap_or_else(|| std::path::PathBuf::from(tool_name.as_str()));
+            let mut cmd = std::process::Command::new(exec_target);
+            for arg in args {
+                if let Ok(s) = arg.into_string() {
+                    cmd.arg(s);
+                }
+            }
+            match cmd.output() {
+                Ok(output) => {
+                    map.insert(
+                        "success".into(),
+                        rhai::Dynamic::from(output.status.success()),
+                    );
+                    map.insert(
+                        "exit_code".into(),
+                        rhai::Dynamic::from(output.status.code().unwrap_or(-1) as i64),
+                    );
+                    map.insert(
+                        "stdout".into(),
+                        rhai::Dynamic::from(String::from_utf8_lossy(&output.stdout).to_string()),
+                    );
+                    map.insert(
+                        "stderr".into(),
+                        rhai::Dynamic::from(String::from_utf8_lossy(&output.stderr).to_string()),
+                    );
+                }
+                Err(e) => {
+                    map.insert("success".into(), rhai::Dynamic::from(false));
+                    map.insert("exit_code".into(), rhai::Dynamic::from(-1_i64));
+                    map.insert("error".into(), rhai::Dynamic::from(e.to_string()));
+                }
+            }
+            map
+        },
+    );
+
+    // Save session frame from base64
+    engine.register_fn(
+        "save_session_frame",
+        |session_dir: rhai::ImmutableString,
+         frame_idx: i64,
+         data_base64: rhai::ImmutableString|
+         -> bool {
+            let clean = if let Some(idx) = data_base64.find(',') {
+                if data_base64.starts_with("data:") {
+                    &data_base64[idx + 1..]
+                } else {
+                    data_base64.as_str()
+                }
+            } else {
+                data_base64.as_str()
+            };
+            if let Ok(bytes) = core_contracts::decode_base64(clean) {
+                let dir = std::path::Path::new(session_dir.as_str());
+                let _ = std::fs::create_dir_all(dir);
+                let frame_path = dir.join(format!("frame_{:06}.webp", frame_idx));
+                std::fs::write(frame_path, bytes).is_ok()
+            } else {
+                false
+            }
+        },
+    );
+
+    // Clean session directory
+    engine.register_fn(
+        "clean_session_dir",
+        |session_dir: rhai::ImmutableString| -> bool {
+            let dir = std::path::Path::new(session_dir.as_str());
+            if dir.exists() {
+                std::fs::remove_dir_all(dir).is_ok()
+            } else {
+                true
+            }
+        },
+    );
+
+    // Dynamic badge state management on rhai::Map
+    engine.register_fn(
+        "set_badge",
+        |state: &mut rhai::Map,
+         is_pulsing: bool,
+         label: rhai::ImmutableString,
+         rgba: rhai::Array| {
+            let mut badge = rhai::Map::new();
+            badge.insert("is_pulsing".into(), rhai::Dynamic::from(is_pulsing));
+            badge.insert("label".into(), rhai::Dynamic::from(label.to_string()));
+            badge.insert("pulse_color_rgba".into(), rhai::Dynamic::from(rgba));
+            state.insert("dynamic_badge".into(), rhai::Dynamic::from(badge));
+        },
+    );
+
+    engine.register_fn("clear_badge", |state: &mut rhai::Map| {
+        state.insert("dynamic_badge".into(), rhai::Dynamic::UNIT);
+    });
+
     engine
 }
 
@@ -217,12 +461,17 @@ pub fn execute_script_state_change(
         Err(_) => engine.call_fn::<rhai::Dynamic>(&mut scope, ast, "on_state_changed", ()),
     };
 
+    let mut state_updated = false;
     if let Ok(dyn_val) = final_res {
         if let Some(mutated_map) = dyn_val.try_cast::<rhai::Map>() {
             state.update_from_rhai_map(mutated_map);
+            state_updated = true;
         }
-    } else if let Some(mutated_map) = scope.get_value::<rhai::Map>("state") {
-        state.update_from_rhai_map(mutated_map);
+    }
+    if !state_updated {
+        if let Some(mutated_map) = scope.get_value::<rhai::Map>("state") {
+            state.update_from_rhai_map(mutated_map);
+        }
     }
 
     // 2. Dispatch on_action(action_id) / on_action(action_id, state)

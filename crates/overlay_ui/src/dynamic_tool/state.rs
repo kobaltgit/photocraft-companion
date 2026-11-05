@@ -74,6 +74,9 @@ pub struct DynamicWindowState {
     pub default_width: f32,
     pub default_height: f32,
     pub role_mask: Option<image::GrayImage>,
+    pub dynamic_badge: Option<core_contracts::DynamicBadgeState>,
+    pub timer_interval_ms: Option<u64>,
+    pub last_tick: Option<std::time::Instant>,
 }
 
 impl DynamicWindowState {
@@ -102,6 +105,9 @@ impl DynamicWindowState {
             }),
             default_height: config.default_height.unwrap_or(480.0),
             role_mask: None,
+            dynamic_badge: config.dynamic_badge.clone(),
+            timer_interval_ms: None,
+            last_tick: None,
         }
     }
 
@@ -250,6 +256,30 @@ impl DynamicWindowState {
 
     pub fn to_rhai_map(&self) -> rhai::Map {
         let mut map = rhai::Map::new();
+        map.insert("is_open".into(), rhai::Dynamic::from(self.is_open));
+        if let Some(interval) = self.timer_interval_ms {
+            map.insert(
+                "timer_interval_ms".into(),
+                rhai::Dynamic::from(interval as rhai::INT),
+            );
+        }
+        if let Some(ref badge) = self.dynamic_badge {
+            let mut b_map = rhai::Map::new();
+            b_map.insert("is_pulsing".into(), rhai::Dynamic::from(badge.is_pulsing));
+            if let Some(ref lbl) = badge.label {
+                b_map.insert("label".into(), rhai::Dynamic::from(lbl.clone()));
+            }
+            let rgba_arr: rhai::Array = badge
+                .pulse_color_rgba
+                .iter()
+                .map(|&c| rhai::Dynamic::from(c as rhai::INT))
+                .collect();
+            b_map.insert(
+                "pulse_color_rgba".into(),
+                rhai::Dynamic::from_array(rgba_arr),
+            );
+            map.insert("dynamic_badge".into(), rhai::Dynamic::from(b_map));
+        }
         for (k, v) in &self.values {
             let key = k.clone().into();
             match v {
@@ -257,7 +287,11 @@ impl DynamicWindowState {
                     map.insert(key, rhai::Dynamic::from(s.clone()));
                 }
                 DynamicValue::Number(n) => {
-                    map.insert(key, rhai::Dynamic::from(*n));
+                    if n.fract() == 0.0 && *n >= (i64::MIN as f64) && *n <= (i64::MAX as f64) {
+                        map.insert(key, rhai::Dynamic::from(*n as rhai::INT));
+                    } else {
+                        map.insert(key, rhai::Dynamic::from(*n));
+                    }
                 }
                 DynamicValue::Bool(b) => {
                     map.insert(key, rhai::Dynamic::from(*b));
@@ -294,8 +328,70 @@ impl DynamicWindowState {
     }
 
     pub fn update_from_rhai_map(&mut self, map: rhai::Map) {
+        if self.dynamic_badge.is_some() && !map.contains_key("dynamic_badge") {
+            self.dynamic_badge = None;
+        }
         for (k, v) in map {
             let key = k.to_string();
+
+            if key == "timer_interval_ms" {
+                let int_val = if v.is_int() {
+                    v.as_int().ok()
+                } else if v.is_float() {
+                    v.as_float().ok().map(|f| f as i64)
+                } else {
+                    None
+                };
+                if let Some(i) = int_val {
+                    if i > 0 {
+                        if self.timer_interval_ms != Some(i as u64) {
+                            self.last_tick = Some(std::time::Instant::now());
+                        }
+                        self.timer_interval_ms = Some(i as u64);
+                    } else {
+                        self.timer_interval_ms = None;
+                        self.last_tick = None;
+                    }
+                } else if v.is_unit() {
+                    self.timer_interval_ms = None;
+                    self.last_tick = None;
+                }
+                continue;
+            }
+
+            if key == "dynamic_badge" {
+                if let Some(b_map) = v.clone().try_cast::<rhai::Map>() {
+                    let is_pulsing = b_map
+                        .get("is_pulsing")
+                        .and_then(|x| x.as_bool().ok())
+                        .unwrap_or(false);
+                    let label = b_map
+                        .get("label")
+                        .and_then(|x| x.clone().into_string().ok());
+                    let mut pulse_color_rgba = [255, 50, 50, 255];
+                    if let Some(rgba_val) = b_map.get("pulse_color_rgba") {
+                        if let Ok(arr) = rgba_val.clone().into_array() {
+                            if arr.len() >= 4 {
+                                pulse_color_rgba = [
+                                    arr[0].as_int().unwrap_or(255) as u8,
+                                    arr[1].as_int().unwrap_or(50) as u8,
+                                    arr[2].as_int().unwrap_or(50) as u8,
+                                    arr[3].as_int().unwrap_or(255) as u8,
+                                ];
+                            }
+                        }
+                    }
+                    self.dynamic_badge = Some(core_contracts::DynamicBadgeState {
+                        is_pulsing,
+                        pulse_color_rgba,
+                        label,
+                    });
+                } else if v.is_unit() {
+                    self.dynamic_badge = None;
+                }
+                continue;
+            }
+
             if v.is_string() {
                 if let Ok(s) = v.into_string() {
                     if let Some(existing) = self.values.get_mut(&key) {
@@ -328,6 +424,9 @@ impl DynamicWindowState {
                 }
             } else if v.is_bool() {
                 if let Ok(b) = v.as_bool() {
+                    if key == "is_open" {
+                        self.is_open = b;
+                    }
                     self.values.insert(key, DynamicValue::Bool(b));
                 }
             } else if v.is_array() {
@@ -354,6 +453,12 @@ impl DynamicWindowState {
                     }
                 }
             } else if v.is_unit() {
+                if key == "timer_interval_ms" {
+                    self.timer_interval_ms = None;
+                    self.last_tick = None;
+                } else if key == "dynamic_badge" {
+                    self.dynamic_badge = None;
+                }
                 self.values.remove(&key);
             }
         }

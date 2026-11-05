@@ -24,6 +24,7 @@ pub struct ToolstripApp {
     pub pointer_down_start: Option<(String, std::time::Instant)>,
     pub suppress_click_for: Option<String>,
     pub long_press_fired_for: Option<String>,
+    pub dynamic_badges: std::collections::HashMap<String, core_contracts::DynamicBadgeState>,
 }
 
 impl ToolstripApp {
@@ -46,6 +47,19 @@ impl ToolstripApp {
             pointer_down_start: None,
             suppress_click_for: None,
             long_press_fired_for: None,
+            dynamic_badges: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn set_dynamic_badge(
+        &mut self,
+        action_id: &str,
+        badge: Option<core_contracts::DynamicBadgeState>,
+    ) {
+        if let Some(b) = badge {
+            self.dynamic_badges.insert(action_id.to_string(), b);
+        } else {
+            self.dynamic_badges.remove(action_id);
         }
     }
 
@@ -100,177 +114,219 @@ impl ToolstripApp {
         let mut sub_action_open = None;
         let mut sub_action_toggle = None;
         let current_lang = self.language;
-        let render_button_items =
-            |ui: &mut Ui,
-             buttons: &mut [ButtonConfig],
-             icon_cache: &mut crate::icons::SvgIconCache,
-             pending: &mut Option<String>,
-             hovered_tt: &mut Option<(String, egui::Rect)>,
-             pointer_down: &mut Option<(String, std::time::Instant)>,
-             long_press_fired: &mut Option<String>,
-             suppress_click: &mut Option<String>,
-             sub_open: &mut Option<(String, egui::Rect)>,
-             sub_toggle: &mut Option<(String, egui::Rect)>| {
-                ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-                for btn in buttons.iter_mut() {
-                    let is_this_active = active_action
-                        .as_deref()
-                        .map(|a| a == btn.action || a.starts_with(&format!("{}#", btn.action)))
-                        .unwrap_or(false);
+        let render_button_items = |ui: &mut Ui,
+                                   buttons: &mut [ButtonConfig],
+                                   icon_cache: &mut crate::icons::SvgIconCache,
+                                   pending: &mut Option<String>,
+                                   hovered_tt: &mut Option<(String, egui::Rect)>,
+                                   pointer_down: &mut Option<(String, std::time::Instant)>,
+                                   long_press_fired: &mut Option<String>,
+                                   suppress_click: &mut Option<String>,
+                                   sub_open: &mut Option<(String, egui::Rect)>,
+                                   sub_toggle: &mut Option<(String, egui::Rect)>,
+                                   badges: &std::collections::HashMap<
+            String,
+            core_contracts::DynamicBadgeState,
+        >| {
+            ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+            for btn in buttons.iter_mut() {
+                let is_this_active = active_action
+                    .as_deref()
+                    .map(|a| a == btn.action || a.starts_with(&format!("{}#", btn.action)))
+                    .unwrap_or(false);
 
-                    let has_sub_actions = !btn.sub_actions.is_empty();
+                let has_sub_actions = !btn.sub_actions.is_empty();
 
-                    let effective_icon_path = btn.effective_icon_path();
-                    let active_sub = btn
-                        .active_sub_action
-                        .as_ref()
-                        .and_then(|sub_id| btn.sub_actions.iter().find(|s| &s.id == sub_id));
+                let effective_icon_path = btn.effective_icon_path();
+                let active_sub = btn
+                    .active_sub_action
+                    .as_ref()
+                    .and_then(|sub_id| btn.sub_actions.iter().find(|s| &s.id == sub_id));
 
-                    let cache_key = match active_sub {
-                        Some(sub) => format!("{}:{}", btn.action, sub.id),
-                        None => btn.action.clone(),
-                    };
-                    let maybe_texture = icon_cache.get_or_load(
-                        ui.ctx(),
-                        &cache_key,
-                        effective_icon_path.as_deref(),
-                        is_dark,
-                    );
+                let cache_key = match active_sub {
+                    Some(sub) => format!("{}:{}", btn.action, sub.id),
+                    None => btn.action.clone(),
+                };
+                let maybe_texture = icon_cache.get_or_load(
+                    ui.ctx(),
+                    &cache_key,
+                    effective_icon_path.as_deref(),
+                    is_dark,
+                );
 
-                    let btn_name = btn.name_for_lang(current_lang);
-                    let tooltip = if let Some(sub) = active_sub {
-                        let sub_name = sub.name_for_lang(current_lang);
-                        if btn_name.ends_with(')') {
-                            format!("{}: {}", btn_name, sub_name)
-                        } else {
-                            format!("{} ({})", btn_name, sub_name)
-                        }
+                let btn_name = btn.name_for_lang(current_lang);
+                let tooltip = if let Some(sub) = active_sub {
+                    let sub_name = sub.name_for_lang(current_lang);
+                    if btn_name.ends_with(')') {
+                        format!("{}: {}", btn_name, sub_name)
                     } else {
-                        btn_name.to_string()
-                    };
+                        format!("{} ({})", btn_name, sub_name)
+                    }
+                } else {
+                    btn_name.to_string()
+                };
 
-                    let b = if let Some(tex) = maybe_texture {
-                        let img = egui::Image::new(&tex).fit_to_exact_size(Vec2::new(20.0, 20.0));
-                        egui::Button::image(img)
-                            .min_size(Vec2::new(32.0, 32.0))
-                            .corner_radius(3.0)
-                    } else {
-                        let display_label = if is_this_active {
-                            "..."
-                        } else if btn.label.len() <= 3 {
-                            &btn.label
-                        } else {
-                            &btn.label[..3]
-                        };
-
-                        let text_color = if is_this_active {
-                            palette.accent_blue
-                        } else {
-                            palette.text_primary
-                        };
-
-                        egui::Button::new(
-                            RichText::new(display_label)
-                                .strong()
-                                .size(11.0)
-                                .color(text_color),
-                        )
+                let b = if let Some(tex) = maybe_texture {
+                    let img = egui::Image::new(&tex).fit_to_exact_size(Vec2::new(20.0, 20.0));
+                    egui::Button::image(img)
                         .min_size(Vec2::new(32.0, 32.0))
                         .corner_radius(3.0)
+                } else {
+                    let display_label = if is_this_active {
+                        "..."
+                    } else if btn.label.len() <= 3 {
+                        &btn.label
+                    } else {
+                        &btn.label[..3]
                     };
 
-                    let resp = ui.add_enabled(!is_busy || is_this_active, b);
-                    if is_this_active {
-                        ui.painter().rect_stroke(
-                            resp.rect,
-                            3.0,
-                            Stroke::new(1.5, palette.accent_blue),
-                            egui::StrokeKind::Inside,
-                        );
+                    let text_color = if is_this_active {
+                        palette.accent_blue
+                    } else {
+                        palette.text_primary
+                    };
+
+                    egui::Button::new(
+                        RichText::new(display_label)
+                            .strong()
+                            .size(11.0)
+                            .color(text_color),
+                    )
+                    .min_size(Vec2::new(32.0, 32.0))
+                    .corner_radius(3.0)
+                };
+
+                let resp = ui.add_enabled(!is_busy || is_this_active, b);
+                if is_this_active {
+                    ui.painter().rect_stroke(
+                        resp.rect,
+                        3.0,
+                        Stroke::new(1.5, palette.accent_blue),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+
+                if has_selection && btn.requires_selection {
+                    let dot_center = resp.rect.right_top() + Vec2::new(-4.5, 4.5);
+                    let glow_color = if is_dark {
+                        egui::Color32::from_rgba_unmultiplied(56, 189, 248, 120)
+                    } else {
+                        egui::Color32::from_rgba_unmultiplied(14, 165, 233, 120)
+                    };
+                    let dot_color = if is_dark {
+                        egui::Color32::from_rgb(56, 189, 248)
+                    } else {
+                        egui::Color32::from_rgb(14, 165, 233)
+                    };
+                    ui.painter().circle_filled(dot_center, 3.5, glow_color);
+                    ui.painter().circle_filled(dot_center, 2.0, dot_color);
+                }
+
+                if let Some(badge) = badges.get(&btn.action) {
+                    let center = egui::pos2(resp.rect.right() - 8.0, resp.rect.top() + 8.0);
+                    if badge.is_pulsing {
+                        let t = ui.input(|i| i.time);
+                        let alpha = (0.35 + 0.65 * (t * 4.0).sin().abs()) as f32;
+                        let [r, g, b, _] = badge.pulse_color_rgba;
+                        let col =
+                            egui::Color32::from_rgba_premultiplied(r, g, b, (255.0 * alpha) as u8);
+                        ui.painter().circle_filled(center, 3.5, col);
+                        ui.ctx()
+                            .request_repaint_after(std::time::Duration::from_millis(33));
                     }
 
-                    if has_selection && btn.requires_selection {
-                        let dot_center = resp.rect.right_top() + Vec2::new(-4.5, 4.5);
-                        let glow_color = if is_dark {
-                            egui::Color32::from_rgba_unmultiplied(56, 189, 248, 120)
-                        } else {
-                            egui::Color32::from_rgba_unmultiplied(14, 165, 233, 120)
-                        };
-                        let dot_color = if is_dark {
-                            egui::Color32::from_rgb(56, 189, 248)
-                        } else {
-                            egui::Color32::from_rgb(14, 165, 233)
-                        };
-                        ui.painter().circle_filled(dot_center, 3.5, glow_color);
-                        ui.painter().circle_filled(dot_center, 2.0, dot_color);
-                    }
-
-                    if has_sub_actions {
-                        let p1 = resp.rect.right_bottom() - Vec2::new(6.0, 1.0);
-                        let p2 = resp.rect.right_bottom() - Vec2::new(1.0, 6.0);
-                        let p3 = resp.rect.right_bottom() - Vec2::new(1.0, 1.0);
-                        ui.painter().add(egui::Shape::convex_polygon(
-                            vec![p1, p2, p3],
-                            palette.text_muted,
-                            egui::Stroke::NONE,
-                        ));
-                    }
-
-                    if resp.hovered() {
-                        *hovered_tt = Some((tooltip, resp.rect));
-                    }
-
-                    if has_sub_actions {
-                        if resp.secondary_clicked() {
-                            *sub_toggle = Some((btn.action.clone(), resp.rect));
-                        } else if resp.is_pointer_button_down_on() {
-                            if long_press_fired.as_deref() == Some(&btn.action) {
-                                // Already fired long-press: keep sub-actions open steadily, NO flicker!
+                    if let Some(ref lbl) = badge.label {
+                        if !lbl.is_empty() {
+                            let font_id = egui::FontId::proportional(9.0);
+                            let galley = ui.painter().layout_no_wrap(
+                                lbl.clone(),
+                                font_id,
+                                palette.text_primary,
+                            );
+                            let label_pos = if badge.is_pulsing {
+                                egui::pos2(
+                                    center.x - galley.size().x - 3.0,
+                                    center.y - galley.size().y * 0.5,
+                                )
                             } else {
-                                match pointer_down.as_ref() {
-                                    Some((act, start)) if act == &btn.action => {
-                                        if start.elapsed().as_millis() >= 250 {
-                                            *sub_open = Some((btn.action.clone(), resp.rect));
-                                            *long_press_fired = Some(btn.action.clone());
-                                            *suppress_click = Some(btn.action.clone());
-                                            ui.ctx().request_repaint();
-                                        }
+                                egui::pos2(
+                                    resp.rect.right() - galley.size().x - 4.0,
+                                    resp.rect.top() + 2.0,
+                                )
+                            };
+                            ui.painter().galley(label_pos, galley, palette.text_primary);
+                        }
+                    }
+                }
+
+                if has_sub_actions {
+                    let p1 = resp.rect.right_bottom() - Vec2::new(6.0, 1.0);
+                    let p2 = resp.rect.right_bottom() - Vec2::new(1.0, 6.0);
+                    let p3 = resp.rect.right_bottom() - Vec2::new(1.0, 1.0);
+                    ui.painter().add(egui::Shape::convex_polygon(
+                        vec![p1, p2, p3],
+                        palette.text_muted,
+                        egui::Stroke::NONE,
+                    ));
+                }
+
+                if resp.hovered() {
+                    *hovered_tt = Some((tooltip, resp.rect));
+                }
+
+                if has_sub_actions {
+                    if resp.secondary_clicked() {
+                        *sub_toggle = Some((btn.action.clone(), resp.rect));
+                    } else if resp.is_pointer_button_down_on() {
+                        if long_press_fired.as_deref() == Some(&btn.action) {
+                            // Already fired long-press: keep sub-actions open steadily, NO flicker!
+                        } else {
+                            match pointer_down.as_ref() {
+                                Some((act, start)) if act == &btn.action => {
+                                    if start.elapsed().as_millis() >= 250 {
+                                        *sub_open = Some((btn.action.clone(), resp.rect));
+                                        *long_press_fired = Some(btn.action.clone());
+                                        *suppress_click = Some(btn.action.clone());
+                                        ui.ctx().request_repaint_after(
+                                            std::time::Duration::from_millis(50),
+                                        );
                                     }
-                                    _ => {
-                                        *pointer_down =
-                                            Some((btn.action.clone(), std::time::Instant::now()));
-                                    }
+                                }
+                                _ => {
+                                    *pointer_down =
+                                        Some((btn.action.clone(), std::time::Instant::now()));
                                 }
                             }
                         }
                     }
+                }
 
-                    if resp.clicked() && !is_busy {
-                        let is_chevron_click = has_sub_actions
-                            && ui
-                                .input(|i| i.pointer.interact_pos())
-                                .map(|pos| {
-                                    pos.x >= resp.rect.right() - 10.0
-                                        && pos.y >= resp.rect.bottom() - 10.0
-                                })
-                                .unwrap_or(false);
+                if resp.clicked() && !is_busy {
+                    let is_chevron_click = has_sub_actions
+                        && ui
+                            .input(|i| i.pointer.interact_pos())
+                            .map(|pos| {
+                                pos.x >= resp.rect.right() - 10.0
+                                    && pos.y >= resp.rect.bottom() - 10.0
+                            })
+                            .unwrap_or(false);
 
-                        if is_chevron_click {
-                            *sub_toggle = Some((btn.action.clone(), resp.rect));
-                        } else if suppress_click.as_deref() == Some(&btn.action) {
-                            *suppress_click = None;
-                        } else if has_sub_actions {
-                            if let Some(ref sub_id) = btn.active_sub_action {
-                                *pending = Some(format!("{}#{}", btn.action, sub_id));
-                            } else {
-                                *pending = Some(btn.action.clone());
-                            }
+                    if is_chevron_click {
+                        *sub_toggle = Some((btn.action.clone(), resp.rect));
+                    } else if suppress_click.as_deref() == Some(&btn.action) {
+                        *suppress_click = None;
+                    } else if has_sub_actions {
+                        if let Some(ref sub_id) = btn.active_sub_action {
+                            *pending = Some(format!("{}#{}", btn.action, sub_id));
                         } else {
                             *pending = Some(btn.action.clone());
                         }
+                    } else {
+                        *pending = Some(btn.action.clone());
                     }
                 }
-            };
+            }
+        };
 
         if self.is_vertical {
             // Vertical Layout: Top service bar + column of tools
@@ -423,6 +479,7 @@ impl ToolstripApp {
                                     &mut self.suppress_click_for,
                                     &mut sub_action_open,
                                     &mut sub_action_toggle,
+                                    &self.dynamic_badges,
                                 );
                             },
                         );
@@ -563,6 +620,7 @@ impl ToolstripApp {
                                 &mut self.suppress_click_for,
                                 &mut sub_action_open,
                                 &mut sub_action_toggle,
+                                &self.dynamic_badges,
                             );
                         });
                     }
@@ -1059,5 +1117,28 @@ mod tests {
         assert_eq!(resolved, Some(mask_svg));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_dynamic_badge_lifecycle() {
+        let btn = ButtonConfig {
+            label: "Harmonizer".to_string(),
+            action: "ui.harmonizer".to_string(),
+            ..Default::default()
+        };
+        let mut app = ToolstripApp::new(vec![btn], ThemeMode::Dark);
+        assert!(app.dynamic_badges.is_empty());
+
+        let badge = core_contracts::DynamicBadgeState {
+            is_pulsing: true,
+            pulse_color_rgba: [255, 0, 0, 255],
+            label: Some("REC".to_string()),
+        };
+
+        app.set_dynamic_badge("ui.harmonizer", Some(badge.clone()));
+        assert_eq!(app.dynamic_badges.get("ui.harmonizer"), Some(&badge));
+
+        app.set_dynamic_badge("ui.harmonizer", None);
+        assert!(!app.dynamic_badges.contains_key("ui.harmonizer"));
     }
 }

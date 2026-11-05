@@ -1,4 +1,4 @@
-﻿use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use core_contracts::{PluginManifest, PluginType};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -890,6 +890,7 @@ mod tests {
             ai: None,
             algorithm: None,
             interactive_ui: None,
+            runtime_tools: vec![],
             enabled: true,
             plugin_dir: None,
         };
@@ -1022,6 +1023,7 @@ Awesome AI plugin description for tests.
             ai: None,
             algorithm: None,
             interactive_ui: None,
+            runtime_tools: vec![],
             enabled: true,
             plugin_dir: None,
         };
@@ -1089,6 +1091,7 @@ Awesome AI plugin description for tests.
             ai: None,
             algorithm: None,
             interactive_ui: None,
+            runtime_tools: vec![],
             enabled: true,
             plugin_dir: None,
         };
@@ -1156,6 +1159,7 @@ Awesome AI plugin description for tests.
             ai: None,
             algorithm: None,
             interactive_ui: None,
+            runtime_tools: vec![],
             enabled: true,
             plugin_dir: None,
         };

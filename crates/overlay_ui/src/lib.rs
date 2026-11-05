@@ -141,6 +141,7 @@ pub struct CompanionOverlayApp {
     pub offline_modal: OfflineModalApp,
     pub show_manager: bool,
     pub is_hidden_to_tray: bool,
+    pub tray_restore_cooldown_frames: u8,
     pub is_connected: Arc<AtomicBool>,
     pub connection_state: Arc<std::sync::RwLock<core_contracts::ConnectionState>>,
     pub action_tx: Option<UnboundedSender<String>>,
@@ -214,6 +215,14 @@ impl CompanionOverlayApp {
             .with_orientation(cfg.is_vertical)
             .with_language(effective_lang);
 
+        for m in &manifests {
+            if let Some(ref ui) = m.interactive_ui {
+                if let Some(ref badge) = ui.dynamic_badge {
+                    toolstrip.set_dynamic_badge(&m.id, Some(badge.clone()));
+                }
+            }
+        }
+
         for btn in &mut toolstrip.buttons {
             if let Some(sub_id) = cfg.active_sub_actions.get(&btn.action) {
                 if btn.sub_actions.iter().any(|s| &s.id == sub_id) {
@@ -251,6 +260,7 @@ impl CompanionOverlayApp {
             offline_modal,
             show_manager: false,
             is_hidden_to_tray: false,
+            tray_restore_cooldown_frames: 0,
             is_connected,
             connection_state: conn_state_arc,
             action_tx,
@@ -286,6 +296,14 @@ impl CompanionOverlayApp {
         self
     }
 
+    pub fn set_dynamic_badge(
+        &mut self,
+        action_id: &str,
+        badge: Option<core_contracts::DynamicBadgeState>,
+    ) {
+        self.toolstrip.set_dynamic_badge(action_id, badge);
+    }
+
     pub fn with_plugins_dir(mut self, plugins_dir: impl Into<std::path::PathBuf>) -> Self {
         self.manager = self.manager.with_plugins_dir(plugins_dir);
         self
@@ -318,7 +336,9 @@ impl CompanionOverlayApp {
     /// Restores the floating toolbar from the system tray back to its active size, saved position, and visibility.
     pub fn restore_toolbar_from_tray(&mut self, ctx: &egui::Context) {
         self.is_hidden_to_tray = false;
+        self.tray_restore_cooldown_frames = 2;
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.request_repaint();
 
         let connected = self.is_connected.load(Ordering::Relaxed);
         if connected {
@@ -372,6 +392,15 @@ impl CompanionOverlayApp {
     }
 
     /// Processes atomic flags triggered by the system tray menu or tray icon clicks.
+    pub fn open_manager(&mut self) {
+        self.show_manager = true;
+        self.manager_just_opened = true;
+        self.manager_icons_calibrated = false;
+        if let Ok(mut engine) = self.dynamic_engine.lock() {
+            engine.close_all_windows();
+        }
+    }
+
     pub fn process_tray_flags(&mut self, ctx: &egui::Context) {
         if self.restore_toolbar_flag.swap(false, Ordering::Relaxed) {
             self.restore_toolbar_from_tray(ctx);
@@ -380,9 +409,7 @@ impl CompanionOverlayApp {
             // Restore toolbar first so event loop is in active WindowEvent::RedrawRequested context,
             // preventing the eframe `new_events` panic on secondary viewports (BUG-042).
             self.restore_toolbar_from_tray(ctx);
-            self.show_manager = true;
-            self.manager_just_opened = true;
-            self.manager_icons_calibrated = false;
+            self.open_manager();
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         }
     }
@@ -391,6 +418,10 @@ impl CompanionOverlayApp {
 impl eframe::App for CompanionOverlayApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.process_tray_flags(ctx);
+        if self.tray_restore_cooldown_frames > 0 {
+            self.tray_restore_cooldown_frames -= 1;
+            ctx.request_repaint();
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -446,9 +477,9 @@ impl eframe::App for CompanionOverlayApp {
         // Process asynchronous tray commands instantly
         self.process_tray_flags(&ctx);
 
-        // Keep reactive loop active so IPC connection state is updated
+        // Keep reactive fallback loop active (500ms idle) so connection changes are detected without CPU spinning
         ui.ctx()
-            .request_repaint_after(std::time::Duration::from_millis(50));
+            .request_repaint_after(std::time::Duration::from_millis(500));
 
         let palette = ThemePalette::for_mode(self.toolstrip.current_theme);
         ui.ctx().set_visuals(palette.to_egui_visuals());
@@ -569,6 +600,9 @@ impl eframe::App for CompanionOverlayApp {
             let handled_by_dynamic = if let Ok(mut engine) = self.dynamic_engine.lock() {
                 if engine.has_plugin(&action) {
                     engine.toggle_window(&action);
+                    if engine.is_window_open(&action) {
+                        self.show_manager = false;
+                    }
                     true
                 } else {
                     false
@@ -598,16 +632,22 @@ impl eframe::App for CompanionOverlayApp {
         // Render main toolbar panel if not hidden to tray
         if !self.is_hidden_to_tray {
             // Render dynamic interactive plugin windows (HueWheel, Sliders, Banners, etc.)
-            if let Ok(mut engine) = self.dynamic_engine.lock() {
-                if engine.current_language() != self.manager.current_language {
-                    engine.set_language(self.manager.current_language);
+            // Only render secondary viewports when tray restore cooldown reaches 0 to avoid eframe event loop panic
+            if self.tray_restore_cooldown_frames == 0 {
+                let mut open_mgr = false;
+                if let Ok(mut engine) = self.dynamic_engine.lock() {
+                    if engine.current_language() != self.manager.current_language {
+                        engine.set_language(self.manager.current_language);
+                    }
+                    engine.render(&ctx, &palette);
+                    self.toolstrip.dynamic_badges = engine.get_active_badges();
+                    if engine.open_manager_requested {
+                        engine.open_manager_requested = false;
+                        open_mgr = true;
+                    }
                 }
-                engine.render(&ctx, &palette);
-                if engine.open_manager_requested {
-                    engine.open_manager_requested = false;
-                    self.show_manager = true;
-                    self.manager_just_opened = true;
-                    self.manager_icons_calibrated = false;
+                if open_mgr {
+                    self.open_manager();
                 }
             }
 
@@ -659,9 +699,7 @@ impl eframe::App for CompanionOverlayApp {
 
                 if self.toolstrip.open_manager_requested {
                     self.toolstrip.open_manager_requested = false;
-                    self.show_manager = true;
-                    self.manager_just_opened = true;
-                    self.manager_icons_calibrated = false;
+                    self.open_manager();
                 }
                 if self.toolstrip.hide_requested {
                     self.toolstrip.hide_requested = false;
@@ -918,9 +956,7 @@ impl eframe::App for CompanionOverlayApp {
                 }
                 if self.offline_modal.open_manager_requested {
                     self.offline_modal.open_manager_requested = false;
-                    self.show_manager = true;
-                    self.manager_just_opened = true;
-                    self.manager_icons_calibrated = false;
+                    self.open_manager();
                 }
                 if self.offline_modal.launch_requested {
                     self.offline_modal.launch_requested = false;
@@ -932,7 +968,8 @@ impl eframe::App for CompanionOverlayApp {
         }
 
         // Render Plugin Manager in a separate window viewport
-        if self.show_manager {
+        // Secondary viewports are rendered only when tray restore cooldown has settled (BUG-109)
+        if self.show_manager && self.tray_restore_cooldown_frames == 0 {
             let default_size = [740.0, 480.0];
             let manager_size = self.last_saved_manager_size.unwrap_or(default_size);
 
@@ -1462,6 +1499,59 @@ mod tests {
         assert!(!app.is_hidden_to_tray);
         assert!(!app.restore_toolbar_flag.load(Ordering::Relaxed));
         assert_eq!(app.last_saved_pos, Some([300.0, 200.0]));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_tray_restore_cooldown_frames_lifecycle() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "tray_cooldown_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let prefs_file = temp_dir.join("preferences.json");
+        std::fs::write(&prefs_file, "{}").unwrap();
+
+        let is_connected = Arc::new(AtomicBool::new(true));
+        let dynamic_engine = Arc::new(std::sync::Mutex::new(DynamicToolEngine::new(&[], None)));
+        let mut app = CompanionOverlayApp::new(
+            OverlayBar::default_buttons(),
+            vec![],
+            &prefs_file,
+            is_connected,
+            None,
+            Arc::new(std::sync::Mutex::new(None)),
+            None,
+            None,
+            None,
+            None,
+            dynamic_engine,
+        );
+
+        let ctx = egui::Context::default();
+        app.hide_toolbar_to_tray(&ctx);
+        assert!(app.is_hidden_to_tray);
+        assert_eq!(app.tray_restore_cooldown_frames, 0);
+
+        // Restoring from tray activates a 2-frame cooldown buffer (BUG-109)
+        app.restore_toolbar_from_tray(&ctx);
+        assert!(!app.is_hidden_to_tray);
+        assert_eq!(app.tray_restore_cooldown_frames, 2);
+
+        // Frame ticks decrement cooldown
+        if app.tray_restore_cooldown_frames > 0 {
+            app.tray_restore_cooldown_frames -= 1;
+        }
+        assert_eq!(app.tray_restore_cooldown_frames, 1);
+
+        if app.tray_restore_cooldown_frames > 0 {
+            app.tray_restore_cooldown_frames -= 1;
+        }
+        assert_eq!(app.tray_restore_cooldown_frames, 0);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
     }

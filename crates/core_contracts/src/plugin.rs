@@ -14,6 +14,30 @@ pub struct PluginLocaleInfo {
     pub description: Option<String>,
 }
 
+/// Parameters for requesting lightweight canvas preview
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CanvasPreviewParams {
+    pub max_size: u32,
+    pub format: String, // "webp" | "jpeg"
+}
+
+/// Binary/CLI runtime dependency needed by a plugin (e.g. ffmpeg, vtracer)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RuntimeToolRequirement {
+    pub name: String,
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_windows_x64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_linux_x64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_macos_arm64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url_macos_x64: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
 /// Manifest definition for any plugin (No-Code, AI, Script, or External)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
@@ -45,6 +69,8 @@ pub struct PluginManifest {
     pub output_mode: PluginOutputMode,
     #[serde(default)]
     pub models: Vec<ModelRequirement>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runtime_tools: Vec<RuntimeToolRequirement>,
     #[serde(default)]
     pub action_id: Option<String>,
     #[serde(default)]
@@ -320,6 +346,7 @@ impl Default for PluginManifest {
             input: PluginInputSource::default(),
             output_mode: PluginOutputMode::default(),
             models: Vec::new(),
+            runtime_tools: Vec::new(),
             action_id: None,
             entrypoint: None,
             ai: None,
@@ -599,6 +626,16 @@ impl WidgetNode {
     }
 }
 
+/// Dynamic pulsing badge state for plugin buttons in companion UI
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct DynamicBadgeState {
+    pub is_pulsing: bool,
+    #[serde(default)]
+    pub pulse_color_rgba: [u8; 4],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
 /// Configuration for dynamic interactive UI plugins
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct InteractiveUiConfig {
@@ -615,6 +652,8 @@ pub struct InteractiveUiConfig {
     pub auto_run_model_role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dynamic_badge: Option<DynamicBadgeState>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub widgets: Vec<WidgetNode>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -915,6 +954,11 @@ pub trait BridgeOperations {
         self.execute_command("layer.setProps", full_props).await
     }
     async fn get_document_info(&self) -> Result<DocumentInfo>;
+    async fn get_canvas_preview(&self, _max_size: u32, _format: &str) -> Result<RgbaImage> {
+        Err(crate::CompanionError::Bridge(
+            "get_canvas_preview is not supported by this bridge".into(),
+        ))
+    }
 }
 
 /// Core interface implemented by any PhotoCraft plugin
@@ -1266,6 +1310,7 @@ mod tests {
             script: Some("ui.rhai".to_string()),
             auto_run_model_role: None,
             layout_mode: None,
+            dynamic_badge: None,
             ipc_subscriptions: vec!["photocraft.layer.color_picked".to_string()],
             widgets: vec![
                 WidgetNode::Banner {
@@ -1380,6 +1425,7 @@ mod tests {
             script: Some("logic.rhai".to_string()),
             auto_run_model_role: Some("depth_estimation".to_string()),
             layout_mode: Some("split_preview_right".to_string()),
+            dynamic_badge: None,
             ipc_subscriptions: vec![],
             widgets: vec![WidgetNode::Tabs {
                 id: "studio_tabs".to_string(),
@@ -1718,5 +1764,60 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_canvas_preview_params_and_runtime_tools_serialization() {
+        let manifest = PluginManifest {
+            id: "video_cut".to_string(),
+            name: "Video Cutter".to_string(),
+            runtime_tools: vec![RuntimeToolRequirement {
+                name: "ffmpeg".to_string(),
+                version: "6.1.1".to_string(),
+                url_windows_x64: Some("https://example.com/ffmpeg.zip".to_string()),
+                url_linux_x64: None,
+                url_macos_arm64: None,
+                url_macos_x64: None,
+                sha256: Some(
+                    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+                ),
+            }],
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&manifest).unwrap();
+        let decoded: PluginManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.runtime_tools.len(), 1);
+        assert_eq!(decoded.runtime_tools[0].name, "ffmpeg");
+        assert_eq!(decoded.runtime_tools[0].version, "6.1.1");
+
+        let preview_params = CanvasPreviewParams {
+            max_size: 512,
+            format: "webp".to_string(),
+        };
+        let p_json = serde_json::to_string(&preview_params).unwrap();
+        let p_decoded: CanvasPreviewParams = serde_json::from_str(&p_json).unwrap();
+        assert_eq!(preview_params, p_decoded);
+    }
+
+    #[test]
+    fn test_dynamic_badge_state_roundtrip() {
+        let config = InteractiveUiConfig {
+            window_title: "Color Studio".to_string(),
+            dynamic_badge: Some(DynamicBadgeState {
+                is_pulsing: true,
+                pulse_color_rgba: [255, 100, 50, 255],
+                label: Some("LIVE".to_string()),
+            }),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let decoded: InteractiveUiConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(config, decoded);
+        let badge = decoded.dynamic_badge.unwrap();
+        assert!(badge.is_pulsing);
+        assert_eq!(badge.pulse_color_rgba, [255, 100, 50, 255]);
+        assert_eq!(badge.label.as_deref(), Some("LIVE"));
     }
 }

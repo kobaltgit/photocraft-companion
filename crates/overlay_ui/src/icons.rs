@@ -43,8 +43,21 @@ pub fn render_svg_icon(svg_data: &str, width: u32, height: u32) -> Option<Vec<u8
     Some(pixmap.take())
 }
 
+static APP_ICON_RGBA_CACHE: std::sync::OnceLock<std::sync::Mutex<HashMap<u32, Vec<u8>>>> =
+    std::sync::OnceLock::new();
+
 pub fn get_icon_rgba(size: u32) -> Option<Vec<u8>> {
-    render_svg_icon(APP_ICON_SVG, size, size)
+    let cache = APP_ICON_RGBA_CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(rgba) = guard.get(&size) {
+            return Some(rgba.clone());
+        }
+    }
+    let rgba = render_svg_icon(APP_ICON_SVG, size, size)?;
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(size, rgba.clone());
+    }
+    Some(rgba)
 }
 
 pub fn get_egui_icon_data(size: u32) -> Option<egui::IconData> {

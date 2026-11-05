@@ -1,4 +1,4 @@
-﻿use core_contracts::{InteractiveUiConfig, PluginManifest, PluginType};
+use core_contracts::{InteractiveUiConfig, PluginManifest, PluginType};
 use overlay_ui::DynamicToolEngine;
 
 fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
@@ -11,6 +11,7 @@ fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
         plugin_type: PluginType::InteractiveUi,
         icon: None,
         models: Vec::new(),
+        runtime_tools: Vec::new(),
         commands: Vec::new(),
         post_commands: Vec::new(),
         sub_actions: Vec::new(),
@@ -28,6 +29,7 @@ fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
             script: None,
             auto_run_model_role: None,
             layout_mode: None,
+            dynamic_badge: None,
             widgets: Vec::new(),
             ipc_subscriptions: subscriptions,
         }),

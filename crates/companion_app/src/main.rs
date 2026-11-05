@@ -1072,6 +1072,33 @@ async fn execute_raster_process_action(
 ) -> core_contracts::Result<()> {
     let task = params.get("task").and_then(|v| v.as_str()).unwrap_or("");
     match task {
+        "render_to_file" => {
+            let p_val = params.get("params").unwrap_or(params);
+            let path_str = p_val
+                .get("path")
+                .or_else(|| p_val.get("save_to_path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let max_side = p_val
+                .get("max_size")
+                .or_else(|| p_val.get("maxSide"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(1080) as u32;
+
+            if !path_str.is_empty() {
+                let img = client.get_canvas_preview(max_side, "png").await?;
+                let path = std::path::Path::new(path_str);
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                img.save(path).map_err(|e| {
+                    core_contracts::CompanionError::Plugin(format!(
+                        "Failed to save canvas render to {path_str}: {e}"
+                    ))
+                })?;
+            }
+            Ok(())
+        }
         "refresh_preview" => {
             if let Some(plugin_id) = params.get("plugin_id").and_then(|v| v.as_str()) {
                 if let Ok(mut engine) = dynamic_engine.lock() {

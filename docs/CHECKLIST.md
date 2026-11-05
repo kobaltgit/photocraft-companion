@@ -1348,3 +1348,49 @@
     - Все 38 тестов `photocraft_bridge`, 62 теста `overlay_ui`, 14 тестов `companion_app` и 51 тест `core_contracts` успешно пройдены;
     - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`) пройдены с кодом 0;
     - Зарегистрирован дефект `BUG-105` в `docs/BUGS_AND_ISSUES.md`.
+
+
+- [x] **Фаза 107: Системный протокол превью холста SYS-013, интерактивная Студия таймлапсов и Zero-Core Hardcoding**
+  - [x] **Контракты и протокол `document.get_preview` (`crates/core_contracts`, `crates/photocraft_bridge`)**:
+    - В `crates/core_contracts/src/plugin.rs` добавлен DTO `CanvasPreviewParams` (`max_size: u32`, `format: String`), `RuntimeToolRequirement` для декларирования внешних CLI-зависимостей (FFmpeg) и `DynamicBadgeState` для анимации статуса записи.
+    - В трейт `BridgeOperations` добавлен асинхронный метод `get_canvas_preview(&self, max_size: u32, format: &str) -> Result<RgbaImage>`.
+    - В `crates/photocraft_bridge` метод отправляет вызов `document.get_preview` в сокет 18492 PhotoCraft, получая оптимизированный WebP/JPEG снимок в Base64 без блокировки движка рендеринга и без взаимодействия с буфером обмена.
+    - Реализован быстрый декодер Base64 в `core_contracts::package::decode_base64`, доступный без циклических зависимостей крейтов.
+    - Написаны интеграционные тесты с мок-сервером TCP (`test_mock_server_document_get_preview`, `test_mock_server_document_get_preview_data_url_and_fallback_field`).
+  - [x] **Расширение рантайма хоста и векторный UI (`crates/overlay_ui`)**:
+    - В тулстрип (`crates/overlay_ui/src/toolstrip.rs`) добавлена поддержка динамического пульсирующего индикатора `DynamicBadgeState` (векторный круг `painter().circle_filled()` с плавным альфа-дыханием по синусоиде времени и текстовым бейджем). Соблюдено Правило 6 Vector-First: ни одного эмодзи или запрещенного Unicode-символа, адаптивный цвет `palette.text_primary`.
+    - В Менеджер плагинов (`crates/overlay_ui/src/manager.rs`) добавлен визуальный векторный бейдж статуса внешних утилит с проверкой локальных директорий `PhotoCraftData/bin/`, `bin/` и системного `PATH`.
+    - В `dynamic_tool/rhai_bridge.rs` зарегистрированы нативные безопасные функции хоста: `save_file_dialog`, `reveal_in_file_manager`, `is_tool_installed`, `execute_tool`, `save_session_frame`, `clean_session_dir`.
+  - [x] **Автономный плагин Timelapse Studio (`plugins/timelapse_studio`)**:
+    - Декларативный манифест `plugin.json`: тип `interactive_ui`, требование утилиты `ffmpeg 7.0`, вкладки «Запись» и «Настройки», настраиваемый пресет соцсетей 9:16 (Blur-Fill), регулировка задержки финального кадра (0–5 сек) и FPS (24–60).
+    - Сценарий `script.rhai` управляет сессией спидпейнта, сохраняет снимки сессии и запускает кодирование MP4 через нативный вызов утилиты хоста с полным сохранением отзывчивости интерфейса.
+    - Оформлена векторная иконка `icon.svg` и двуязычная документация `README.md` с практическими сценариями.
+  - [x] **100% соблюдение Definition of Done**:
+    - Сборка и тесты выполнены строго с флагом ограничения ресурсов `-j 1`.
+    - `cargo fmt --all -- --check` подтвердил нулевое число расхождений (0 diffs).
+    - 100% тестов воркспейса пройдены (`cargo test --workspace -j 1`).
+    - Все линтеры (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test`) успешно пройдены.
+    - Валидатор `plugin_validator` проверил все 15 плагинов каталога и синхронизировал таблицы в `README.md` и `README.ru.md`.
+- [x] **Этап 108: Реактивный State-Driven таймер, динамические бейджи тулстрипа и автоскрытие окна Студии таймлапсов (BUG-107)**:
+  - [x] Внедрен универсальный `process_timers(ctx)` в `timer.rs`, вызывающий `on_tick(state)` независимо от видимости окон и запрашивающий `request_repaint_after`.
+  - [x] Реализована двусторонняя реактивность `is_open` в `DynamicWindowState` (`to_rhai_map` / `update_from_rhai_map`) для автоматического скрытия окна при старте записи и повторного вызова по клику кнопки.
+  - [x] Зарегистрирован State-Driven API бейджей `state.set_badge` / `state.clear_badge` с реактивной синхронизацией в `ToolstripApp` и отображением пульсирующего векторного индикатора `REC`.
+  - [x] Реализован Rhai Unit Fallback для чтения скоупа при `Ok(())`, а в `script.rhai` зафиксирован обязательный `return state;` во всех ветках.
+  - [x] 100% соблюдение Definition of Done: все тесты, линтеры и сборка релиза успешно пройдены.
+- [x] **Этап 109: Эргономика, стабильность жизненного цикла окон и управление сессиями Timelapse Studio (BUG-108, BUG-109)**:
+  - [x] **Исправление открытия в Проводнике Windows (`crates/overlay_ui/src/dynamic_tool/rhai_bridge.rs`)**: В `reveal_in_file_manager` устранено экранирование ключа `/select,` общими кавычками при пробелах в путях через `CommandExt::raw_arg`, добавлено снятие UNC-префикса `\\?\` от канонизации и автоматическое открытие существующей родительской папки при отсутствии файла.
+  - [x] **Стабилизация жизненного цикла окон при вызове из трея (`crates/overlay_ui/src/lib.rs`)**: Внедрен защитный кулдаун `tray_restore_cooldown_frames: 2` с принудительным `ctx.request_repaint()`, блокирующий рендеринг вторичных вьюпортов dynamic engine и менеджера плагинов до готовности корневого event loop eframe/winit, устраняя панику `the user callback was never called`.
+  - [x] **Эргономичная машина состояний сессий (`plugins/timelapse_studio`)**: Разделение логики управления на кнопки «Запись» (Record), «Пауза» (Pause), «Стоп» (Stop), «Снимок» (Snapshot) и «Сброс» (Reset). Устранено затирание сессии при возобновлении записи, реализован корректный сброс `frame_count = 0` при `auto_clean` и ручном сбросе сессии.
+  - [x] **100% соблюдение Definition of Done**: Добавлены юнит-тесты `test_tray_restore_cooldown_frames_lifecycle` и `test_timelapse_studio_ergonomics_and_reset_state_machine`, пройдены все 236+ тестов воркспейса с флагом `-j 1`, чистый `cargo fmt`, обновлены `README.md` плагина и каталога.
+- [x] **Этап 110: Ликвидация лагов и обеспечение 60 FPS при работе с окнами плагинов и Менеджером (BUG-110)**:
+  - [x] **Квантование частоты перерисовки (`crates/overlay_ui/src/toolstrip.rs`, `preview.rs`)**: Замена мгновенного `ui.ctx().request_repaint()` (0 мс) на `request_repaint_after(33ms)` при пульсации индикатора `REC` и спиннера занятости `is_busy`, устраняющая холостую нагрузку 1000+ FPS и разгружающая очередь сообщений Windows (Win32 event starvation).
+  - [x] **Потокобезопасный TTL-кэш I/O диска (`crates/overlay_ui/src/manager.rs`)**: Внедрен TTL-кэш на базе стандартного `OnceLock` для проверки наличия утилит в системном `PATH` (`is_runtime_tool_installed`, TTL 10 сек) и проверки файлов моделей (`is_plugin_models_installed_cached`, TTL 5 сек) со сбросом при завершении загрузки весов, устранивший сотни дисковых вызовов `fs::metadata` на каждый кадр.
+  - [x] **Политика единого активного окна плагина — Single-Active Tool Policy (`crates/overlay_ui/src/dynamic_tool/mod.rs`)**: В методе `toggle_window` реализовано автоматическое закрытие предыдущего открытого окна при вызове нового инструмента с синхронным уведомлением Rhai-сценария через `ids_to_notify` и сохранением фоновой работы таймеров сессий (запись таймлапсов).
+  - [x] **100% соблюдение Definition of Done**: Добавлены юнит-тесты `test_single_active_tool_window_policy`, `test_runtime_tool_cache_ttl`, `test_models_installed_cache_ttl`, пройдены все 238+ тестов воркспейса с флагом `-j 1`, `cargo fmt --all -- --check` чист, релизная сборка `companion_app` завершена успешно.
+- [x] **Этап 111: Полное устранение системных фризов DWM, взаимное исключение вьюпортов и кэширование иконок (BUG-111)**:
+  - [x] **Ликвидация спама `WM_SETICON` и кэширование иконок (`crates/overlay_ui/src/icons.rs`, `dynamic_tool/mod.rs`)**: Внедрен потокобезопасный `OnceLock` кэш `APP_ICON_RGBA_CACHE` в `icons.rs`, исключающий повторный парсинг SVG XML через `usvg` и растеризацию `resvg`. В `dynamic_tool/mod.rs` вызов `vp = vp.with_icon(icon)` ограничен `#[cfg(not(windows))]`, устраняя ежекадровый спам Win32 `WM_SETICON`, забивавший таблицу дескрипторов GDI и подвешивавший системный композитор Windows DWM (`dwm.exe`).
+  - [x] **Строгое взаимное исключение Менеджера и окон плагинов (`crates/overlay_ui/src/lib.rs`, `dynamic_tool/timer.rs`)**: Внедрен метод `CompanionOverlayApp::open_manager()`, автоматически закрывающий все открытые окна инструментов через `engine.close_all_windows()`. При открытии любого плагина из тулстрипа флаг `self.show_manager` автоматически сбрасывается в `false`, гарантируя одновременное присутствие не более одного вторичного вьюпорта и исключая VSync-сталлинг OpenGL Glow бэкенда на Windows.
+  - [x] **Снятие холостой перерисовки 20 FPS (`crates/overlay_ui/src/lib.rs`)**: Резервный холостой таймер `request_repaint_after` в основном цикле `ui` расслаблен с 50мс до 500мс, снизив нагрузку на CPU/GPU в режиме покоя до 0% и оставив отрисовку строго реактивной (event-driven).
+  - [x] **Кэширование проверки моделей в динамических инструментах (`crates/overlay_ui/src/dynamic_tool/mod.rs`)**: Заменен прямой вызов `manifest.all_models_installed()` на `is_plugin_models_installed_cached(&manifest)`.
+  - [x] **Декомпозиция жизненного цикла окон (`crates/overlay_ui/src/dynamic_tool/timer.rs`)**: Методы управления окнами вынесены в `timer.rs`, сохранив размер `mod.rs` в пределах 700 строк (Tier Hard Cap 800 строк по `test_production_file_size_guard`).
+  - [x] **100% соблюдение Definition of Done**: Добавлены юнит-тесты `test_close_all_windows_and_is_any_window_open`, `test_app_icon_rgba_caching`, все 7 линтеров и 100% тестов воркспейса (240+ тестов) пройдены с `-j 1`.
