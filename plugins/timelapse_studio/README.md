@@ -1,7 +1,7 @@
 # Timelapse Studio (Студия таймлапсов)
 
 ![Plugin Type](https://img.shields.io/badge/Type-Interactive%20UI-blue.svg)
-![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)
 ![Status](https://img.shields.io/badge/Platform-Zero--Freeze%20Speedpaint-orange.svg)
 
 ---

@@ -148,6 +148,12 @@ fn on_state_changed(state) {
             return state;
         }
 
+        if is_tool_installed("ffmpeg") != true {
+            state["banner_message"] = t("FFmpeg is not installed! Click 'Download FFmpeg' below.", "FFmpeg не установлен! Нажмите 'Скачать FFmpeg' ниже.");
+            state["banner_style"] = "error";
+            return state;
+        }
+
         let default_name = "photocraft_timelapse.mp4";
         let out_path = save_file_dialog(
             t("Export Timelapse Video", "Экспорт видео таймлапса"),
@@ -251,6 +257,41 @@ fn on_state_changed(state) {
         } else {
             state["banner_message"] = t("No exported file to show yet.", "Файл еще не экспортирован.");
             state["banner_style"] = "warning";
+        }
+        return state;
+    } else if state["action_btn_download_ffmpeg"] == true {
+        state["action_btn_download_ffmpeg"] = false;
+        if is_tool_installed("ffmpeg") == true {
+            state["banner_message"] = t("FFmpeg is already installed and ready!", "FFmpeg уже установлен и готов к работе!");
+            state["banner_style"] = "success";
+            return state;
+        }
+
+        state["banner_message"] = t("Downloading FFmpeg, please wait...", "Скачивание FFmpeg, пожалуйста подождите...");
+        state["banner_style"] = "info";
+
+        let ps_cmd = "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $zip = 'PhotoCraftData/sessions/ffmpeg_setup.zip'; $extractDir = 'PhotoCraftData/sessions/ffmpeg_temp'; $binDir = 'PhotoCraftData/bin'; if (!(Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }; if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }; Invoke-WebRequest -Uri 'https://github.com/GyanD/codexffmpeg/releases/download/7.0/ffmpeg-7.0-essentials_build.zip' -OutFile $zip; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Filter 'ffmpeg.exe' -Recurse | Select-Object -First 1; if ($exe) { Copy-Item -Path $exe.FullName -Destination (Join-Path $binDir 'ffmpeg.exe') -Force; } else { throw 'ffmpeg.exe not found in archive' }; Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue; Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue;";
+
+        let res = execute_tool("powershell", [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            ps_cmd
+        ]);
+
+        if res["success"] == true || is_tool_installed("ffmpeg") == true {
+            state["banner_message"] = t("FFmpeg installed successfully! Ready to export.", "FFmpeg успешно установлен! Готово к экспорту.");
+            state["banner_style"] = "success";
+        } else {
+            let err = if res["error"] != () && res["error"] != "" {
+                res["error"]
+            } else if res["stderr"] != () && res["stderr"] != "" {
+                res["stderr"]
+            } else {
+                t("Download failed.", "Ошибка загрузки.")
+            };
+            state["banner_message"] = t("Failed to setup FFmpeg: ", "Не удалось установить FFmpeg: ") + err;
+            state["banner_style"] = "error";
         }
         return state;
     }

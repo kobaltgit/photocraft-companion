@@ -2,7 +2,7 @@
   "id": "ui.photocraft.plugins.timelapse_studio",
   "name": "Timelapse Studio",
   "name_ru": "Студия таймлапсов",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Automatic background canvas speedpaint / timelapse recorder with blur-fill export and zero brush freeze.",
   "description_ru": "Автоматическая фоновая запись процесса рисования (спидпейнт / таймлапс) с экспортом под соцсети и нулевой задержкой кисти.",
   "author": "kobaltGIT",
@@ -22,7 +22,7 @@
     "window_title": "Timelapse Studio",
     "window_title_ru": "Студия таймлапсов",
     "default_width": 380.0,
-    "default_height": 350.0,
+    "default_height": 380.0,
     "script": "script.rhai",
     "ipc_subscriptions": [
       "document.revision"
@@ -112,6 +112,17 @@
                     "id": "btn_reveal_file",
                     "label": "Open Folder",
                     "label_ru": "Открыть папку"
+                  }
+                ]
+              },
+              {
+                "type": "row",
+                "items": [
+                  {
+                    "type": "button",
+                    "id": "btn_download_ffmpeg",
+                    "label": "Download FFmpeg",
+                    "label_ru": "Скачать FFmpeg"
                   }
                 ]
               }
