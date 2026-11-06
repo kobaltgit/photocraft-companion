@@ -20,10 +20,11 @@
 [![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
 [![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
 [![Tests: 194 Passing](https://img.shields.io/badge/Tests-194_Passing-success.svg)](crates/)
+[![Поддержать: Lava.top](https://img.shields.io/badge/Поддержать-Lava.top-FF5C35?logo=githubsponsors&logoColor=white)](https://app.lava.top/kobaltgit)
 
 **Экосистема плагинов, локальных нейросетей и оверлей-панелей для графического редактора PhotoCraft.**
 
-[Почему Companion?](#-почему-companion-преимущества-перед-встроенной-системой-плагинов-photocraft) • [Возможности](#-основные-возможности) • [Установка и дистрибутивы](#-установка-и-дистрибутивы-installers--portable) • [Первый запуск](#-инструкция-первый-запуск-и-быстрое-подключение) • [Магазин плагинов](#-витрина-и-каталог-плагинов-community-marketplace) • [Быстрый старт](#-быстрый-старт-для-разработчиков) • [Архитектура](#-архитектура-монорепозитория) • [Пакеты .pcpl](#-пакетный-формат-pcpl) • [Документация](#-документация-проекта) • [Discord](#-сообщество-и-discord) • [Лицензия](#-лицензия)
+[Почему Companion?](#-почему-companion-преимущества-перед-встроенной-системой-плагинов-photocraft) • [Возможности](#-основные-возможности) • [Установка и дистрибутивы](#-установка-и-дистрибутивы-installers--portable) • [Первый запуск](#-инструкция-первый-запуск-и-быстрое-подключение) • [Магазин плагинов](#-витрина-и-каталог-плагинов-community-marketplace) • [Быстрый старт](#-быстрый-старт-для-разработчиков) • [Архитектура](#-архитектура-монорепозитория) • [Пакеты .pcpl](#-пакетный-формат-pcpl) • [Документация](#-документация-проекта) • [Discord](#-сообщество-и-discord) • [Поддержка](#-поддержка-и-донаты) • [Лицензия](#-лицензия)
 
 
 </div>
@@ -363,6 +364,22 @@ my_plugin.pcpl
 <p align="center">
   <img src="assets/star-history.svg" alt="PhotoCraft Companion Star History" width="100%">
 </p>
+
+---
+
+## 💖 Поддержка и донаты
+
+Если вам полезен **PhotoCraft Companion** и вы хотите поддержать дальнейшую разработку ядра программы, новых плагинов и локальных нейросетевых инструментов:
+
+<div align="center">
+
+[![Поддержать на Lava.top](https://img.shields.io/badge/Поддержать_проект-Lava.top-FF5C35?style=for-the-badge&logo=heart&logoColor=white)](https://app.lava.top/kobaltgit)
+
+**👉 [https://app.lava.top/kobaltgit](https://app.lava.top/kobaltgit)**
+
+*(Поддерживаются карты банков РФ, СНГ и зарубежные способы оплаты)*
+
+</div>
 
 ---
 
