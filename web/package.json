@@ -4,7 +4,10 @@
   "private": true,
   "packageManager": "pnpm@12.6.0",
   "scripts": {
+    "sync-plugins": "node scripts/sync-plugins.mjs",
+    "predev": "node scripts/sync-plugins.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-plugins.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

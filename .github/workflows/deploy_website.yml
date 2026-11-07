@@ -41,16 +41,15 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: 'web/pnpm-lock.yaml'
 
-      - name: Sync registry.json into public
-        run: |
-          if [ -f "dist/registry.json" ]; then
-            cp dist/registry.json web/public/registry.json
-          fi
-
       - name: Install dependencies
         run: |
           cd web
           pnpm install --no-frozen-lockfile
+
+      - name: Sync plugins & icons into web
+        run: |
+          cd web
+          pnpm run sync-plugins
 
       - name: Build static export
         env:

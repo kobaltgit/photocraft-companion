@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-02T10:44:46Z",
-  "total_plugins": 14,
+  "generated_at": "2026-11-07T15:05:16.904Z",
+  "total_plugins": 15,
   "plugins": [
     {
       "id": "macro.photocraft.plugins.black_and_white",
@@ -164,6 +164,17 @@
       "plugin_type": "no_code",
       "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/teal_orange.pcpl",
       "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/teal_orange/icon.svg",
+      "models": []
+    },
+    {
+      "id": "ui.photocraft.plugins.timelapse_studio",
+      "name": "Timelapse Studio",
+      "version": "1.1.0",
+      "description": "Automatic background canvas speedpaint / timelapse recorder with blur-fill export and zero brush freeze.",
+      "author": "kobaltGIT",
+      "plugin_type": "interactive_ui",
+      "download_url": "https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/timelapse_studio.pcpl",
+      "icon_url": "https://github.com/kobaltgit/photocraft-companion/raw/main/plugins/timelapse_studio/icon.svg",
       "models": []
     },
     {
