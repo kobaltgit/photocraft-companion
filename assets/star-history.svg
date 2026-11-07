@@ -99,14 +99,14 @@
       <g transform="translate(0, 0)">
         <rect width="115" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#334155" stroke-width="1" />
         <text x="16" y="27" font-size="12" font-weight="600" fill="#64748b">Age:</text>
-        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">25 days</text>
+        <text x="52" y="27" font-size="15" font-weight="700" fill="#e2e8f0">26 days</text>
       </g>
 
       <!-- Star Counter Badge -->
       <g transform="translate(130, 0)">
         <rect width="170" height="44" rx="10" fill="#0f172a" fill-opacity="0.8" stroke="#38bdf8" stroke-opacity="0.4" stroke-width="1" />
         <text x="20" y="27" font-size="13" font-weight="600" fill="#94a3b8">Total Stars:</text>
-        <text x="105" y="28" font-size="18" font-weight="700" fill="#38bdf8">35</text>
+        <text x="105" y="28" font-size="18" font-weight="700" fill="#38bdf8">36</text>
       </g>
     </g>
   </g>
@@ -139,123 +139,123 @@
 
     <text x="650.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 24</text>
 
-    <text x="940.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 30</text>
+    <text x="940.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Oct 31</text>
 
-    <text x="1230.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Nov 5</text>
+    <text x="1230.0" y="486.0" font-size="12" font-weight="500" fill="#64748b" text-anchor="middle">Nov 6</text>
   </g>
 
   <!-- Release Vertical Markers (Clean, vertical labels) -->
   <g>
     
     <!-- Release: v1.0.0 -->
-    <line x1="139.6" y1="100" x2="139.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="135.6" y="138.0" transform="rotate(-90 135.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.0</text>
+    <line x1="136.9" y1="100" x2="136.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="132.9" y="138.0" transform="rotate(-90 132.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.0</text>
 
     <!-- Release: v1.0.3 -->
-    <line x1="193.7" y1="100" x2="193.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="189.7" y="138.0" transform="rotate(-90 189.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.3</text>
+    <line x1="188.8" y1="100" x2="188.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="184.8" y="138.0" transform="rotate(-90 184.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.3</text>
 
     <!-- Release: v1.0.6 -->
-    <line x1="240.9" y1="100" x2="240.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="236.9" y="138.0" transform="rotate(-90 236.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.6</text>
+    <line x1="234.2" y1="100" x2="234.2" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="230.2" y="138.0" transform="rotate(-90 230.2,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.6</text>
 
     <!-- Release: v1.0.7 -->
-    <line x1="285.7" y1="100" x2="285.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="281.7" y="138.0" transform="rotate(-90 281.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.7</text>
+    <line x1="277.3" y1="100" x2="277.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="273.3" y="138.0" transform="rotate(-90 273.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.7</text>
 
     <!-- Release: v1.0.8 -->
-    <line x1="396.7" y1="100" x2="396.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="392.7" y="138.0" transform="rotate(-90 392.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.8</text>
+    <line x1="383.9" y1="100" x2="383.9" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="379.9" y="138.0" transform="rotate(-90 379.9,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.0.8</text>
 
     <!-- Release: v1.2.0 -->
-    <line x1="469.0" y1="100" x2="469.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="465.0" y="138.0" transform="rotate(-90 465.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.0</text>
+    <line x1="453.3" y1="100" x2="453.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="449.3" y="138.0" transform="rotate(-90 449.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.0</text>
 
     <!-- Release: v1.2.3 -->
-    <line x1="564.5" y1="100" x2="564.5" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="560.5" y="138.0" transform="rotate(-90 560.5,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.3</text>
+    <line x1="545.1" y1="100" x2="545.1" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="541.1" y="138.0" transform="rotate(-90 541.1,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.2.3</text>
 
     <!-- Release: v1.3.0 -->
-    <line x1="692.3" y1="100" x2="692.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="688.3" y="138.0" transform="rotate(-90 688.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.0</text>
+    <line x1="667.8" y1="100" x2="667.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="663.8" y="138.0" transform="rotate(-90 663.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.0</text>
 
     <!-- Release: v1.3.1 -->
-    <line x1="761.4" y1="100" x2="761.4" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="757.4" y="138.0" transform="rotate(-90 757.4,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.1</text>
+    <line x1="734.3" y1="100" x2="734.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="730.3" y="138.0" transform="rotate(-90 730.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.1</text>
 
     <!-- Release: v1.3.2 -->
-    <line x1="915.5" y1="100" x2="915.5" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="911.5" y="138.0" transform="rotate(-90 911.5,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.2</text>
+    <line x1="882.3" y1="100" x2="882.3" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="878.3" y="138.0" transform="rotate(-90 878.3,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v1.3.2</text>
 
     <!-- Release: v2.0.0 -->
-    <line x1="1027.7" y1="100" x2="1027.7" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1023.7" y="138.0" transform="rotate(-90 1023.7,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.0</text>
+    <line x1="990.1" y1="100" x2="990.1" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="986.1" y="138.0" transform="rotate(-90 986.1,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.0</text>
 
     <!-- Release: v2.0.2 -->
-    <line x1="1075.4" y1="100" x2="1075.4" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1071.4" y="138.0" transform="rotate(-90 1071.4,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.2</text>
+    <line x1="1036.0" y1="100" x2="1036.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1032.0" y="138.0" transform="rotate(-90 1032.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.2</text>
 
     <!-- Release: v2.0.3 -->
-    <line x1="1155.0" y1="100" x2="1155.0" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1151.0" y="138.0" transform="rotate(-90 1151.0,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.3</text>
+    <line x1="1112.4" y1="100" x2="1112.4" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1108.4" y="138.0" transform="rotate(-90 1108.4,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.0.3</text>
 
     <!-- Release: v2.1.0-beta.1 -->
-    <line x1="1221.8" y1="100" x2="1221.8" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
-    <text x="1217.8" y="138.0" transform="rotate(-90 1217.8,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.1.0-beta.1</text>
+    <line x1="1176.6" y1="100" x2="1176.6" y2="460" stroke="#6366f1" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 3" />
+    <text x="1172.6" y="138.0" transform="rotate(-90 1172.6,138.0)" font-size="11" font-weight="600" fill="#a5b4fc" letter-spacing="0.05em">v2.1.0-beta.1</text>
   </g>
 
   <!-- Chart Area Gradient Fill -->
-  <path d="M 70.0,460.0 C 70.0,458.7 52.3,454.8 70.0,452.3 C 87.7,449.7 151.0,447.1 176.2,444.5 C 201.4,441.9 212.4,439.3 221.4,436.8 C 230.5,434.2 220.9,431.6 230.4,429.0 C 240.0,426.4 259.2,423.8 278.7,421.3 C 298.3,418.7 325.0,416.1 347.5,413.5 C 370.0,410.9 400.0,408.3 413.7,405.8 C 427.5,403.2 410.3,400.6 430.2,398.0 C 450.0,395.4 512.6,392.8 532.9,390.3 C 553.2,387.7 546.7,385.1 552.0,382.5 C 557.4,379.9 559.9,377.3 565.0,374.8 C 570.1,372.2 578.9,369.6 582.8,367.0 C 586.7,364.4 583.8,361.8 588.4,359.3 C 593.0,356.7 590.7,354.1 610.4,351.5 C 630.0,348.9 685.9,346.3 706.1,343.8 C 726.4,341.2 723.8,338.6 731.8,336.0 C 739.7,333.4 747.0,330.8 753.9,328.3 C 760.8,325.7 763.9,323.1 773.4,320.5 C 782.8,317.9 803.1,315.3 810.6,312.8 C 818.2,310.2 808.5,307.6 818.7,305.0 C 828.9,302.4 858.9,299.8 871.8,297.3 C 884.6,294.7 888.5,292.1 896.0,289.5 C 903.6,286.9 909.6,284.3 917.1,281.8 C 924.5,279.2 933.1,276.6 940.6,274.0 C 948.2,271.4 954.8,268.8 962.4,266.3 C 970.0,263.7 982.3,261.1 986.3,258.5 C 990.4,255.9 986.5,253.3 986.7,250.8 C 986.9,248.2 979.7,245.6 987.5,243.0 C 995.3,240.4 1024.3,237.8 1033.6,235.3 C 1042.9,232.7 1037.6,230.1 1043.4,227.5 C 1049.2,224.9 1056.7,222.3 1068.2,219.8 C 1079.7,217.2 1103.2,214.6 1112.3,212.0 C 1121.4,209.4 1103.1,206.8 1122.7,204.3 C 1142.2,201.7 1211.5,199.1 1229.4,196.5 C 1247.3,193.9 1229.9,190.0 1230.0,188.8 L 1230.0,460.0 L 70.0,460.0 Z" fill="url(#area-gradient)" />
+  <path d="M 70.0,460.0 C 70.0,458.7 53.0,454.8 70.0,452.3 C 87.0,449.7 147.8,447.1 172.0,444.5 C 196.3,441.9 206.8,439.3 215.5,436.8 C 224.2,434.2 215.0,431.6 224.1,429.0 C 233.3,426.4 251.8,423.8 270.5,421.3 C 289.3,418.7 315.0,416.1 336.6,413.5 C 358.3,410.9 387.0,408.3 400.2,405.8 C 413.5,403.2 396.9,400.6 416.0,398.0 C 435.1,395.4 495.2,392.8 514.7,390.3 C 534.3,387.7 528.0,385.1 533.1,382.5 C 538.2,379.9 540.6,377.3 545.6,374.8 C 550.5,372.2 558.9,369.6 562.7,367.0 C 566.4,364.4 563.6,361.8 568.1,359.3 C 572.5,356.7 570.3,354.1 589.2,351.5 C 608.0,348.9 661.7,346.3 681.2,343.8 C 700.6,341.2 698.1,338.6 705.8,336.0 C 713.4,333.4 720.4,330.8 727.0,328.3 C 733.7,325.7 736.7,323.1 745.8,320.5 C 754.9,317.9 774.3,315.3 781.5,312.8 C 788.8,310.2 779.5,307.6 789.3,305.0 C 799.1,302.4 827.9,299.8 840.3,297.3 C 852.7,294.7 856.3,292.1 863.6,289.5 C 870.9,286.9 876.7,284.3 883.8,281.8 C 891.0,279.2 899.2,276.6 906.5,274.0 C 913.7,271.4 920.0,268.8 927.4,266.3 C 934.7,263.7 946.5,261.1 950.4,258.5 C 954.2,255.9 950.5,253.3 950.7,250.8 C 950.9,248.2 944.0,245.6 951.5,243.0 C 959.0,240.4 986.8,237.8 995.8,235.3 C 1004.7,232.7 999.6,230.1 1005.2,227.5 C 1010.7,224.9 1018.0,222.3 1029.0,219.8 C 1040.1,217.2 1062.7,214.6 1071.4,212.0 C 1080.1,209.4 1062.6,206.8 1081.3,204.3 C 1100.1,201.7 1166.7,199.1 1183.9,196.5 C 1201.1,193.9 1176.8,191.3 1184.5,188.8 C 1192.2,186.2 1222.4,182.3 1230.0,181.0 L 1230.0,460.0 L 70.0,460.0 Z" fill="url(#area-gradient)" />
 
   <!-- Chart Glow & Main Spline Line -->
-  <path d="M 70.0,460.0 C 70.0,458.7 52.3,454.8 70.0,452.3 C 87.7,449.7 151.0,447.1 176.2,444.5 C 201.4,441.9 212.4,439.3 221.4,436.8 C 230.5,434.2 220.9,431.6 230.4,429.0 C 240.0,426.4 259.2,423.8 278.7,421.3 C 298.3,418.7 325.0,416.1 347.5,413.5 C 370.0,410.9 400.0,408.3 413.7,405.8 C 427.5,403.2 410.3,400.6 430.2,398.0 C 450.0,395.4 512.6,392.8 532.9,390.3 C 553.2,387.7 546.7,385.1 552.0,382.5 C 557.4,379.9 559.9,377.3 565.0,374.8 C 570.1,372.2 578.9,369.6 582.8,367.0 C 586.7,364.4 583.8,361.8 588.4,359.3 C 593.0,356.7 590.7,354.1 610.4,351.5 C 630.0,348.9 685.9,346.3 706.1,343.8 C 726.4,341.2 723.8,338.6 731.8,336.0 C 739.7,333.4 747.0,330.8 753.9,328.3 C 760.8,325.7 763.9,323.1 773.4,320.5 C 782.8,317.9 803.1,315.3 810.6,312.8 C 818.2,310.2 808.5,307.6 818.7,305.0 C 828.9,302.4 858.9,299.8 871.8,297.3 C 884.6,294.7 888.5,292.1 896.0,289.5 C 903.6,286.9 909.6,284.3 917.1,281.8 C 924.5,279.2 933.1,276.6 940.6,274.0 C 948.2,271.4 954.8,268.8 962.4,266.3 C 970.0,263.7 982.3,261.1 986.3,258.5 C 990.4,255.9 986.5,253.3 986.7,250.8 C 986.9,248.2 979.7,245.6 987.5,243.0 C 995.3,240.4 1024.3,237.8 1033.6,235.3 C 1042.9,232.7 1037.6,230.1 1043.4,227.5 C 1049.2,224.9 1056.7,222.3 1068.2,219.8 C 1079.7,217.2 1103.2,214.6 1112.3,212.0 C 1121.4,209.4 1103.1,206.8 1122.7,204.3 C 1142.2,201.7 1211.5,199.1 1229.4,196.5 C 1247.3,193.9 1229.9,190.0 1230.0,188.8" fill="none" stroke="url(#curve-gradient)" stroke-width="5" filter="url(#glow-line)" opacity="0.6" />
-  <path d="M 70.0,460.0 C 70.0,458.7 52.3,454.8 70.0,452.3 C 87.7,449.7 151.0,447.1 176.2,444.5 C 201.4,441.9 212.4,439.3 221.4,436.8 C 230.5,434.2 220.9,431.6 230.4,429.0 C 240.0,426.4 259.2,423.8 278.7,421.3 C 298.3,418.7 325.0,416.1 347.5,413.5 C 370.0,410.9 400.0,408.3 413.7,405.8 C 427.5,403.2 410.3,400.6 430.2,398.0 C 450.0,395.4 512.6,392.8 532.9,390.3 C 553.2,387.7 546.7,385.1 552.0,382.5 C 557.4,379.9 559.9,377.3 565.0,374.8 C 570.1,372.2 578.9,369.6 582.8,367.0 C 586.7,364.4 583.8,361.8 588.4,359.3 C 593.0,356.7 590.7,354.1 610.4,351.5 C 630.0,348.9 685.9,346.3 706.1,343.8 C 726.4,341.2 723.8,338.6 731.8,336.0 C 739.7,333.4 747.0,330.8 753.9,328.3 C 760.8,325.7 763.9,323.1 773.4,320.5 C 782.8,317.9 803.1,315.3 810.6,312.8 C 818.2,310.2 808.5,307.6 818.7,305.0 C 828.9,302.4 858.9,299.8 871.8,297.3 C 884.6,294.7 888.5,292.1 896.0,289.5 C 903.6,286.9 909.6,284.3 917.1,281.8 C 924.5,279.2 933.1,276.6 940.6,274.0 C 948.2,271.4 954.8,268.8 962.4,266.3 C 970.0,263.7 982.3,261.1 986.3,258.5 C 990.4,255.9 986.5,253.3 986.7,250.8 C 986.9,248.2 979.7,245.6 987.5,243.0 C 995.3,240.4 1024.3,237.8 1033.6,235.3 C 1042.9,232.7 1037.6,230.1 1043.4,227.5 C 1049.2,224.9 1056.7,222.3 1068.2,219.8 C 1079.7,217.2 1103.2,214.6 1112.3,212.0 C 1121.4,209.4 1103.1,206.8 1122.7,204.3 C 1142.2,201.7 1211.5,199.1 1229.4,196.5 C 1247.3,193.9 1229.9,190.0 1230.0,188.8" fill="none" stroke="url(#curve-gradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+  <path d="M 70.0,460.0 C 70.0,458.7 53.0,454.8 70.0,452.3 C 87.0,449.7 147.8,447.1 172.0,444.5 C 196.3,441.9 206.8,439.3 215.5,436.8 C 224.2,434.2 215.0,431.6 224.1,429.0 C 233.3,426.4 251.8,423.8 270.5,421.3 C 289.3,418.7 315.0,416.1 336.6,413.5 C 358.3,410.9 387.0,408.3 400.2,405.8 C 413.5,403.2 396.9,400.6 416.0,398.0 C 435.1,395.4 495.2,392.8 514.7,390.3 C 534.3,387.7 528.0,385.1 533.1,382.5 C 538.2,379.9 540.6,377.3 545.6,374.8 C 550.5,372.2 558.9,369.6 562.7,367.0 C 566.4,364.4 563.6,361.8 568.1,359.3 C 572.5,356.7 570.3,354.1 589.2,351.5 C 608.0,348.9 661.7,346.3 681.2,343.8 C 700.6,341.2 698.1,338.6 705.8,336.0 C 713.4,333.4 720.4,330.8 727.0,328.3 C 733.7,325.7 736.7,323.1 745.8,320.5 C 754.9,317.9 774.3,315.3 781.5,312.8 C 788.8,310.2 779.5,307.6 789.3,305.0 C 799.1,302.4 827.9,299.8 840.3,297.3 C 852.7,294.7 856.3,292.1 863.6,289.5 C 870.9,286.9 876.7,284.3 883.8,281.8 C 891.0,279.2 899.2,276.6 906.5,274.0 C 913.7,271.4 920.0,268.8 927.4,266.3 C 934.7,263.7 946.5,261.1 950.4,258.5 C 954.2,255.9 950.5,253.3 950.7,250.8 C 950.9,248.2 944.0,245.6 951.5,243.0 C 959.0,240.4 986.8,237.8 995.8,235.3 C 1004.7,232.7 999.6,230.1 1005.2,227.5 C 1010.7,224.9 1018.0,222.3 1029.0,219.8 C 1040.1,217.2 1062.7,214.6 1071.4,212.0 C 1080.1,209.4 1062.6,206.8 1081.3,204.3 C 1100.1,201.7 1166.7,199.1 1183.9,196.5 C 1201.1,193.9 1176.8,191.3 1184.5,188.8 C 1192.2,186.2 1222.4,182.3 1230.0,181.0" fill="none" stroke="url(#curve-gradient)" stroke-width="5" filter="url(#glow-line)" opacity="0.6" />
+  <path d="M 70.0,460.0 C 70.0,458.7 53.0,454.8 70.0,452.3 C 87.0,449.7 147.8,447.1 172.0,444.5 C 196.3,441.9 206.8,439.3 215.5,436.8 C 224.2,434.2 215.0,431.6 224.1,429.0 C 233.3,426.4 251.8,423.8 270.5,421.3 C 289.3,418.7 315.0,416.1 336.6,413.5 C 358.3,410.9 387.0,408.3 400.2,405.8 C 413.5,403.2 396.9,400.6 416.0,398.0 C 435.1,395.4 495.2,392.8 514.7,390.3 C 534.3,387.7 528.0,385.1 533.1,382.5 C 538.2,379.9 540.6,377.3 545.6,374.8 C 550.5,372.2 558.9,369.6 562.7,367.0 C 566.4,364.4 563.6,361.8 568.1,359.3 C 572.5,356.7 570.3,354.1 589.2,351.5 C 608.0,348.9 661.7,346.3 681.2,343.8 C 700.6,341.2 698.1,338.6 705.8,336.0 C 713.4,333.4 720.4,330.8 727.0,328.3 C 733.7,325.7 736.7,323.1 745.8,320.5 C 754.9,317.9 774.3,315.3 781.5,312.8 C 788.8,310.2 779.5,307.6 789.3,305.0 C 799.1,302.4 827.9,299.8 840.3,297.3 C 852.7,294.7 856.3,292.1 863.6,289.5 C 870.9,286.9 876.7,284.3 883.8,281.8 C 891.0,279.2 899.2,276.6 906.5,274.0 C 913.7,271.4 920.0,268.8 927.4,266.3 C 934.7,263.7 946.5,261.1 950.4,258.5 C 954.2,255.9 950.5,253.3 950.7,250.8 C 950.9,248.2 944.0,245.6 951.5,243.0 C 959.0,240.4 986.8,237.8 995.8,235.3 C 1004.7,232.7 999.6,230.1 1005.2,227.5 C 1010.7,224.9 1018.0,222.3 1029.0,219.8 C 1040.1,217.2 1062.7,214.6 1071.4,212.0 C 1080.1,209.4 1062.6,206.8 1081.3,204.3 C 1100.1,201.7 1166.7,199.1 1183.9,196.5 C 1201.1,193.9 1176.8,191.3 1184.5,188.8 C 1192.2,186.2 1222.4,182.3 1230.0,181.0" fill="none" stroke="url(#curve-gradient)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
 
   <!-- Data Point Knots -->
   <g>
     
     <circle cx="70.0" cy="460.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="176.2" cy="444.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="172.0" cy="444.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="230.4" cy="429.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="224.1" cy="429.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="347.5" cy="413.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="336.6" cy="413.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="430.2" cy="398.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="416.0" cy="398.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="552.0" cy="382.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="533.1" cy="382.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="582.8" cy="367.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="562.7" cy="367.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="610.4" cy="351.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="589.2" cy="351.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="731.8" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="705.8" cy="336.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="773.4" cy="320.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="745.8" cy="320.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="818.7" cy="305.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="789.3" cy="305.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="896.0" cy="289.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="863.6" cy="289.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="940.6" cy="274.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="906.5" cy="274.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="986.3" cy="258.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="950.4" cy="258.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="987.5" cy="243.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="951.5" cy="243.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1043.4" cy="227.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1005.2" cy="227.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1112.3" cy="212.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1071.4" cy="212.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1229.4" cy="196.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1183.9" cy="196.5" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
 
-    <circle cx="1230.0" cy="188.8" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+    <circle cx="1230.0" cy="181.0" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
   </g>
 
   <!-- Final Milestone Glowing Pulse (Last Point) -->
   
-  <g transform="translate(1230.0, 188.8)">
+  <g transform="translate(1230.0, 181.0)">
     <circle r="7" fill="#38bdf8" fill-opacity="0.3">
       <animate attributeName="r" values="6;11;6" dur="2.5s" repeatCount="indefinite" />
       <animate attributeName="fill-opacity" values="0.4;0.05;0.4" dur="2.5s" repeatCount="indefinite" />
