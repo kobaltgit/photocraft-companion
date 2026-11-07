@@ -4320,3 +4320,34 @@ We reaffirmed the core speedpaint paradigm: **while the artist draws across the 
 - Compiled the release binary `companion_app` (`photocraft-companion.exe`, 34.1 MB).
 - Registered and resolved defect `BUG-114` in `docs/BUGS_AND_ISSUES.md`.
 - Synchronously updated `docs/CHECKLIST.md` and the Russian chronicle `docs/CHRONICLE.md`.
+
+
+---
+
+## Chapter 124: Preparing and Publishing Official Stable Release PhotoCraft Companion v2.1.0 (Timelapse Studio & DWM Lag Elimination)
+
+*Time: November 07, 2026, 16:45 (~30 minutes)*
+
+### 1. Context: Public Beta Completion and Transition to Stable Release
+Following community verification of the `v2.1.0-beta.2` pre-release, testing of the **Timelapse Studio (SYS-013)** plugin, the integrated FFmpeg downloader, and the radical Windows DWM optimizations (eliminating brush input micro-freezes and GDI `WM_SETICON` overhead), zero critical defects were reported.
+
+The codebase is fully primed to finalize the release and transition branch `feat/timelapse-studio-sys-013` into official general availability as **PhotoCraft Companion v2.1.0**.
+
+### 2. Release Preparation and Regulatory Synchronization
+1. **Upstream Branch Synchronization (`main`):**
+   - Merged recent upstream changes from `main` (Lava.top support button and GitHub Sponsors configuration).
+2. **Semantic Versioning (Rule 7.B):**
+   - Synchronized the application version byte-for-byte across all 5 mandatory release files:
+     - `Cargo.toml` (`[workspace.package] version = "2.1.0"`);
+     - `scripts/package_release.ps1` (`$Version = "2.1.0"`);
+     - `scripts/package_release.sh` (`VERSION="2.1.0"`);
+     - `packaging/windows/installer.iss` (`#define MyAppVersion "2.1.0"`);
+     - `packaging/macos/Info.plist` (`<string>2.1.0</string>`).
+3. **Plugin Ecosystem Validation (Rule 7.A):**
+   - `plugin_validator` validated all 15 catalog plugins, generated binary `.pcpl` distribution packages, and synchronized catalog tables in `README.md` and `README.ru.md`.
+4. **Code Quality and Test Suite Verification (DoD & Resource Guard):**
+   - Code formatting `cargo fmt --all -- --check` passed with 0 differences.
+   - All 240+ workspace tests and 7 linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `multi_viewport_lint_test`, `plugin_i18n_lint_test`) passed under the resource guard `-j 1`.
+
+### 3. Summary
+PR #14 is updated to stable release `v2.1.0` and ready for merge into `main`, after which pushing tag `v2.1.0` will trigger automated installer builds and GitHub Release publication.

@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="2.1.0-beta.2"
+VERSION="2.1.0"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"

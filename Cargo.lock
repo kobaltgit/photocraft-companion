@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "ai_engine"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -674,7 +674,7 @@ dependencies = [
 
 [[package]]
 name = "companion_app"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "ai_engine",
  "anyhow",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "core_contracts"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3117,7 +3117,7 @@ dependencies = [
 
 [[package]]
 name = "overlay_ui"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "core_contracts",
@@ -3233,7 +3233,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft_bridge"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3303,7 +3303,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
 name = "plugin_validator"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "anyhow",
  "core_contracts",
@@ -3543,7 +3543,7 @@ dependencies = [
 
 [[package]]
 name = "raster_engine"
-version = "2.1.0-beta.2"
+version = "2.1.0"
 dependencies = [
  "image 0.25.10",
  "rayon",

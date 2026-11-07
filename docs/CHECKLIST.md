@@ -1411,3 +1411,10 @@
   - [x] **Асинхронный захват холста через сокет без микрофризов кисти (`crates/companion_app/src/main.rs`)**: В растровый процессор `raster.process` добавлен обработчик задачи `task: "capture_canvas_frame"`. По завершении мазка и инкременте ревизии `revision` вызывается нативный `ui.screenshot` с параметром `focus: false` без воровства фокуса окна редактора, Base64 декодируется и сохраняется в файл кадра в фоновом режиме.
   - [x] **Защита от пустого экспорта и фильтрация логов FFmpeg (`plugins/timelapse_studio/script.rhai`, `rhai_bridge.rs`)**: В `script.rhai` захват кадров в `on_revision` и ручном снимке переведен на `execute_raster_process("capture_canvas_frame", #{ "path": frame_path })`. Внедрена защита от запуска экспорта при 0 записанных кадров с понятным сообщением об ошибке. В `execute_tool` внедрена функция `clean_stderr`, отсекающая заголовок конфигурации GCC/FFmpeg из сообщений об ошибках.
   - [x] **100% соблюдение Definition of Done**: Пройдены 100% тестов воркспейса с флагом `-j 1` (252+ теста), подтверждено прохождение `architecture_integrity_test` (5 тестов) и `dev_regulations_lint_test` (8 тестов), валидатор подтвердил 15 плагинов с 0 ошибок, собран релизный бинарник `companion_app`.
+
+- [x] **Этап 115: Подготовка и выпуск официального стабильного релиза PhotoCraft Companion v2.1.0**:
+  - [x] Синхронизация версий приложения `2.1.0` байт-в-байт в 5 файлах по Правилу 7.Б: `Cargo.toml`, `scripts/package_release.ps1`, `scripts/package_release.sh`, `packaging/windows/installer.iss`, `packaging/macos/Info.plist`.
+  - [x] Слияние свежей ветки `main` (коммиты спонсорства и Lava.top) в ветку PR `feat/timelapse-studio-sys-013`.
+  - [x] Валидация каталога и сборка релизных `.pcpl` пакетов всех 15 плагинов: `plugin_validator` синхронизировал таблицы каталога в `README.md` и `README.ru.md`.
+  - [x] 100% успешный прогон форматирования `cargo fmt --all -- --check` и всех тестов воркспейса под Resource Guard (`cargo test --workspace -j 1`).
+  - [x] Синхронное обновление документации и двуязычной летописи разработки (`docs/CHRONICLE.md`, `docs/CHRONICLE.en.md`).
