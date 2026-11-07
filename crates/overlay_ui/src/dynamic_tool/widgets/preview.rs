@@ -289,7 +289,8 @@ pub fn render_image_preview(
                 font_id,
                 palette.text_primary,
             );
-            ui.ctx().request_repaint();
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(33));
         }
 
         // 4. Border frame

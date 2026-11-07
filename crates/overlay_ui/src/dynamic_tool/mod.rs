@@ -1,6 +1,7 @@
 pub mod named_colors;
 pub mod rhai_bridge;
 pub mod state;
+pub mod viewports;
 pub mod widgets;
 
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub struct DynamicToolEngine {
     pub has_selection: bool,
     pub config_path: Option<std::path::PathBuf>,
     pub open_manager_requested: bool,
+    pub pending_close_viewports: Vec<egui::ViewportId>,
 }
 
 impl DynamicToolEngine {
@@ -117,6 +119,7 @@ impl DynamicToolEngine {
             has_selection: false,
             config_path: None,
             open_manager_requested: false,
+            pending_close_viewports: Vec::new(),
         };
 
         engine.run_all_initial_scripts();
@@ -280,62 +283,6 @@ impl DynamicToolEngine {
             .unwrap_or(false)
     }
 
-    pub fn first_open_window_with_subscription(&self, topic: &str) -> Option<String> {
-        for (id, state) in &self.states {
-            if state.is_open {
-                if let Some(manifest) = self.manifests.get(id) {
-                    if let Some(ui_cfg) = &manifest.interactive_ui {
-                        if ui_cfg.ipc_subscriptions.iter().any(|s| s == topic) {
-                            return Some(id.clone());
-                        }
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    pub fn toggle_window(&mut self, plugin_id: &str) {
-        if let Some(state) = self.states.get_mut(plugin_id) {
-            state.is_open = !state.is_open;
-            state
-                .values
-                .insert("is_open".to_string(), DynamicValue::Bool(state.is_open));
-            if state.is_open {
-                state.icons_calibrated = false;
-                self.preview_thumbnails.remove(plugin_id);
-                self.preview_textures.remove(plugin_id);
-                state.role_mask = None;
-                state
-                    .values
-                    .insert("base_saved".to_string(), DynamicValue::Bool(false));
-            }
-            self.execute_script_state_change(plugin_id);
-        }
-    }
-
-    pub fn is_window_open(&self, plugin_id: &str) -> bool {
-        self.states
-            .get(plugin_id)
-            .map(|s| s.is_open)
-            .unwrap_or(false)
-    }
-
-    pub fn has_open_windows_with_subscription(&self, topic: &str) -> bool {
-        for (id, state) in &self.states {
-            if state.is_open {
-                if let Some(manifest) = self.manifests.get(id) {
-                    if let Some(ui_cfg) = &manifest.interactive_ui {
-                        if ui_cfg.ipc_subscriptions.iter().any(|s| s == topic) {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-        false
-    }
-
     pub fn dispatch_session_colors(&mut self, fg: &str, bg: &str) -> bool {
         let fg_lower = fg.to_lowercase();
         let bg_lower = bg.to_lowercase();
@@ -477,11 +424,52 @@ impl DynamicToolEngine {
         any_updated
     }
 
-    pub fn viewport_id_for_plugin(plugin_id: &str) -> egui::ViewportId {
-        egui::ViewportId::from_hash_of(format!("dynamic_plugin_window_{}", plugin_id))
+    pub fn dispatch_document_revision(&mut self, revision: u64) -> bool {
+        let mut any_updated = false;
+        for (id, state) in &mut self.states {
+            let is_subscribed = self
+                .manifests
+                .get(id)
+                .and_then(|m| m.interactive_ui.as_ref())
+                .map(|u| {
+                    u.ipc_subscriptions
+                        .iter()
+                        .any(|s| s == core_contracts::IPC_SUB_DOCUMENT_REVISION)
+                })
+                .unwrap_or(false);
+
+            if is_subscribed {
+                let prev_rev = state
+                    .values
+                    .get("revision")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0) as u64;
+                if revision > prev_rev {
+                    state.values.insert(
+                        "revision".to_string(),
+                        DynamicValue::Number(revision as f64),
+                    );
+                    any_updated = true;
+
+                    if let Some(ast) = self.rhai_asts.get(id) {
+                        let rhai_state = state.to_rhai_map();
+                        let res: std::result::Result<rhai::Map, _> = self.rhai_engine.call_fn(
+                            &mut rhai::Scope::new(),
+                            ast,
+                            "on_revision",
+                            (revision as rhai::INT, rhai_state),
+                        );
+                        if let Ok(updated_state) = res {
+                            state.update_from_rhai_map(updated_state);
+                        }
+                    }
+                }
+            }
+        }
+        any_updated
     }
 
-    fn execute_script_state_change(&mut self, plugin_id: &str) {
+    pub(crate) fn execute_script_state_change(&mut self, plugin_id: &str) {
         if let Some(ast) = self.rhai_asts.get(plugin_id) {
             if let Some(state) = self.states.get_mut(plugin_id) {
                 rhai_bridge::execute_script_state_change(&self.rhai_engine, ast, state);
@@ -505,6 +493,10 @@ impl DynamicToolEngine {
     }
 
     pub fn render(&mut self, ctx: &egui::Context, palette: &ThemePalette) {
+        for vp_id in self.pending_close_viewports.drain(..) {
+            ctx.send_viewport_cmd_to(vp_id, egui::ViewportCommand::Close);
+        }
+
         let plugin_ids: Vec<String> = self
             .states
             .iter()
@@ -543,6 +535,7 @@ impl DynamicToolEngine {
             let min_w = if is_split { 460.0 } else { 260.0 };
             let min_h = if is_split { 220.0 } else { 180.0 };
 
+            #[allow(unused_mut)]
             let mut vp = egui::ViewportBuilder::default()
                 .with_title(&win_title)
                 .with_inner_size([default_w, default_h])
@@ -550,9 +543,12 @@ impl DynamicToolEngine {
                 .with_resizable(true)
                 .with_always_on_top();
 
-            let win_icon_sz = crate::icons::get_system_window_icon_size();
-            if let Some(icon) = crate::icons::get_egui_icon_data(win_icon_sz) {
-                vp = vp.with_icon(icon);
+            #[cfg(not(windows))]
+            {
+                let win_icon_sz = crate::icons::get_system_window_icon_size();
+                if let Some(icon) = crate::icons::get_egui_icon_data(win_icon_sz) {
+                    vp = vp.with_icon(icon);
+                }
             }
 
             ctx.show_viewport_immediate(viewport_id, vp, |sub_ctx, _class| {
@@ -575,15 +571,12 @@ impl DynamicToolEngine {
                             .iter()
                             .find(|w| matches!(w, WidgetNode::ImagePreview { .. }));
 
-                        let models_missing =
-                            !manifest.models.is_empty() && !manifest.all_models_installed();
+                        let models_missing = !manifest.models.is_empty()
+                            && !crate::manager::is_plugin_models_installed_cached(&manifest);
 
                         if let Some(state) = self.states.get_mut(&plugin_id) {
-                            if !state.icons_calibrated
-                                && crate::win32_window::apply_crisp_window_icons_by_title(
-                                    &win_title,
-                                )
-                            {
+                            if !state.icons_calibrated {
+                                crate::win32_window::apply_crisp_window_icons_by_title(&win_title);
                                 state.icons_calibrated = true;
                             }
                             state.values.insert(
@@ -759,6 +752,7 @@ impl DynamicToolEngine {
                 if closed {
                     self.execute_script_state_change(&plugin_id);
                 }
+                ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Close);
             }
 
             if state_changed {

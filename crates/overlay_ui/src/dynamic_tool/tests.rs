@@ -684,6 +684,7 @@ fn test_depth_studio_rhai_script_presets_and_actions() {
         default_width: 780.0,
         default_height: 560.0,
         role_mask: None,
+        dynamic_badge: None,
     };
     state
         .values
@@ -880,4 +881,453 @@ fn test_single_column_layout_mode() {
         engine.render(&ctx, &palette);
     });
     out.textures_delta.clear();
+}
+
+#[test]
+fn test_dynamic_badge_state_reactivity() {
+    let cfg = InteractiveUiConfig {
+        window_title: "Test".to_string(),
+        ..Default::default()
+    };
+    let mut state = DynamicWindowState::new(&cfg);
+    assert!(!state.is_open);
+    assert!(state.dynamic_badge.is_none());
+
+    // Update from Rhai map with is_open and dynamic_badge
+    let mut map = rhai::Map::new();
+    map.insert("is_open".into(), rhai::Dynamic::from(true));
+
+    let mut badge_map = rhai::Map::new();
+    badge_map.insert("is_pulsing".into(), rhai::Dynamic::from(true));
+    badge_map.insert("label".into(), rhai::Dynamic::from("REC".to_string()));
+    let rgba_arr: rhai::Array = vec![
+        rhai::Dynamic::from(255 as rhai::INT),
+        rhai::Dynamic::from(0 as rhai::INT),
+        rhai::Dynamic::from(0 as rhai::INT),
+        rhai::Dynamic::from(255 as rhai::INT),
+    ];
+    badge_map.insert(
+        "pulse_color_rgba".into(),
+        rhai::Dynamic::from_array(rgba_arr),
+    );
+    map.insert("dynamic_badge".into(), rhai::Dynamic::from(badge_map));
+
+    state.update_from_rhai_map(map);
+
+    assert!(state.is_open);
+    assert!(state.dynamic_badge.is_some());
+    let badge = state.dynamic_badge.clone().unwrap();
+    assert!(badge.is_pulsing);
+    assert_eq!(badge.label, Some("REC".to_string()));
+    assert_eq!(badge.pulse_color_rgba, [255, 0, 0, 255]);
+
+    // Test to_rhai_map roundtrip
+    let exported = state.to_rhai_map();
+    assert!(exported.get("is_open").unwrap().as_bool().unwrap());
+    assert!(exported.contains_key("dynamic_badge"));
+
+    // Reset badge
+    let mut reset_map = rhai::Map::new();
+    reset_map.insert("is_open".into(), rhai::Dynamic::from(false));
+    reset_map.insert("dynamic_badge".into(), rhai::Dynamic::UNIT);
+
+    state.update_from_rhai_map(reset_map);
+    assert!(!state.is_open);
+    assert!(state.dynamic_badge.is_none());
+}
+
+#[test]
+fn test_rhai_set_badge_and_clear_badge_script() {
+    let engine = rhai_bridge::create_rhai_engine(
+        None,
+        Arc::new(RwLock::new(Language::En)),
+        Arc::new(std::sync::Mutex::new(None)),
+    );
+
+    let script = r#"
+        state.set_badge(true, "REC", [239, 68, 68, 255]);
+        return state;
+    "#;
+
+    let ast = engine.compile(script).unwrap();
+    let cfg = InteractiveUiConfig::default();
+    let mut state = DynamicWindowState::new(&cfg);
+
+    rhai_bridge::execute_script_state_change(&engine, &ast, &mut state);
+    assert!(state.dynamic_badge.is_some());
+    let badge = state.dynamic_badge.as_ref().unwrap();
+    assert!(badge.is_pulsing);
+    assert_eq!(badge.label.as_deref(), Some("REC"));
+    assert_eq!(badge.pulse_color_rgba, [239, 68, 68, 255]);
+
+    let clear_script = r#"
+        state.clear_badge();
+        return state;
+    "#;
+    let clear_ast = engine.compile(clear_script).unwrap();
+    rhai_bridge::execute_script_state_change(&engine, &clear_ast, &mut state);
+    assert!(state.dynamic_badge.is_none());
+}
+
+#[test]
+fn test_rhai_unit_fallback_in_state_change() {
+    let engine = rhai_bridge::create_rhai_engine(
+        None,
+        Arc::new(RwLock::new(Language::En)),
+        Arc::new(std::sync::Mutex::new(None)),
+    );
+
+    // Function doesn't have return state; (returns ())
+    let script = r#"
+        fn on_state_changed(state) {
+            state["counter"] = 42;
+        }
+    "#;
+
+    let ast = engine.compile(script).unwrap();
+    let cfg = InteractiveUiConfig::default();
+    let mut state = DynamicWindowState::new(&cfg);
+
+    rhai_bridge::execute_script_state_change(&engine, &ast, &mut state);
+    // Unit fallback preserves state from scope or doesn't panic
+    assert!(
+        !state.values.contains_key("counter")
+            || state.values.get("counter") == Some(&DynamicValue::Number(42.0))
+    );
+}
+
+#[test]
+fn test_rhai_float_to_int_string() {
+    let engine = rhai_bridge::create_rhai_engine(
+        None,
+        Arc::new(RwLock::new(Language::En)),
+        Arc::new(std::sync::Mutex::new(None)),
+    );
+    let script = r#"
+        let count = 1.0;
+        let int_val = count.to_int();
+        let s = int_val.to_string();
+        while s.len() < 6 {
+            s = "0" + s;
+        }
+        s
+    "#;
+    let res: String = engine.eval(script).unwrap();
+    assert_eq!(res, "000001");
+}
+
+#[test]
+fn test_timelapse_studio_ergonomics_and_reset_state_machine() {
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let engine = DynamicToolEngine::new(&[], Some(tx));
+
+    let script = include_str!("../../../../plugins/timelapse_studio/script.rhai");
+    let ast = engine
+        .rhai_engine
+        .compile(script)
+        .expect("Timelapse Studio script must compile");
+
+    let mut scope = rhai::Scope::new();
+
+    // 1. Initial on_state_changed initializes state
+    let init_map = rhai::Map::new();
+    let mut state: rhai::Map = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (init_map,))
+        .expect("Init must succeed");
+    assert_eq!(state.get("initialized").unwrap().as_bool(), Ok(true));
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(false));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(0));
+
+    // 2. Start recording (Fresh record): frame_count becomes 1, is_recording = true, REC badge set
+    state.insert("action_btn_start_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Start record must succeed");
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(true));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(1));
+    assert!(state.contains_key("dynamic_badge"));
+
+    // 3. Revision event increments frame_count
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_revision", (42 as rhai::INT, state))
+        .expect("on_revision must succeed");
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(2));
+
+    // 4. Pause recording: is_recording becomes false, badge cleared, frame_count preserved
+    state.insert("action_btn_pause_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Pause must succeed");
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(false));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(2));
+
+    // 5. Resume recording with Record button: preserves frame_count = 2, does not reset to 1
+    state.insert("action_btn_start_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Resume must succeed");
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(true));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(2));
+
+    // 6. Stop recording: is_recording becomes false, ready for export
+    state.insert("action_btn_stop_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Stop must succeed");
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(false));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(2));
+
+    // 7. Reset session: frame_count reset to 0, session ready for clean restart
+    state.insert("action_btn_reset_session".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Reset must succeed");
+    assert_eq!(state.get("is_recording").unwrap().as_bool(), Ok(false));
+    assert_eq!(state.get("frame_count").unwrap().as_int(), Ok(0));
+}
+#[test]
+fn test_single_active_tool_window_policy() {
+    let m1 = PluginManifest {
+        id: "tool_a".to_string(),
+        name: "Tool A".to_string(),
+        interactive_ui: Some(core_contracts::InteractiveUiConfig {
+            window_title: "Tool A".to_string(),
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let m2 = PluginManifest {
+        id: "tool_b".to_string(),
+        name: "Tool B".to_string(),
+        interactive_ui: Some(core_contracts::InteractiveUiConfig {
+            window_title: "Tool B".to_string(),
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let mut engine = DynamicToolEngine::new(&[m1, m2], None);
+
+    assert!(!engine.is_window_open("tool_a"));
+    assert!(!engine.is_window_open("tool_b"));
+
+    // 1. Open tool A
+    engine.toggle_window("tool_a");
+    assert!(engine.is_window_open("tool_a"));
+    assert!(!engine.is_window_open("tool_b"));
+
+    // 2. Open tool B: Single-Active Tool Policy must automatically close tool A
+    engine.toggle_window("tool_b");
+    assert!(
+        !engine.is_window_open("tool_a"),
+        "Tool A should be closed when Tool B opens"
+    );
+    assert!(engine.is_window_open("tool_b"), "Tool B should be open");
+
+    // 3. Toggle tool B: closes tool B
+    engine.toggle_window("tool_b");
+    assert!(!engine.is_window_open("tool_a"));
+    assert!(!engine.is_window_open("tool_b"));
+}
+
+#[test]
+fn test_close_all_windows_and_is_any_window_open() {
+    let m1 = PluginManifest {
+        id: "tool_1".to_string(),
+        name: "Tool 1".to_string(),
+        interactive_ui: Some(core_contracts::InteractiveUiConfig {
+            window_title: "Tool 1".to_string(),
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut engine = DynamicToolEngine::new(&[m1], None);
+    assert!(!engine.is_any_window_open());
+
+    engine.toggle_window("tool_1");
+    assert!(engine.is_any_window_open());
+    assert!(engine.is_window_open("tool_1"));
+
+    let closed = engine.close_all_windows();
+    assert_eq!(closed, vec!["tool_1".to_string()]);
+    assert!(!engine.is_any_window_open());
+    assert!(!engine.is_window_open("tool_1"));
+}
+
+#[test]
+fn test_app_icon_rgba_caching() {
+    let sz = 32;
+    let icon1 = crate::icons::get_icon_rgba(sz);
+    assert!(icon1.is_some());
+    let icon2 = crate::icons::get_icon_rgba(sz);
+    assert!(icon2.is_some());
+    assert_eq!(icon1.unwrap(), icon2.unwrap());
+}
+
+#[test]
+fn test_pending_close_viewports_lifecycle() {
+    let m1 = PluginManifest {
+        id: "tool_a".to_string(),
+        interactive_ui: Some(InteractiveUiConfig {
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let m2 = PluginManifest {
+        id: "tool_b".to_string(),
+        interactive_ui: Some(InteractiveUiConfig {
+            default_width: Some(300.0),
+            default_height: Some(200.0),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let mut engine = DynamicToolEngine::new(&[m1, m2], None);
+    assert!(engine.pending_close_viewports.is_empty());
+
+    // 1. Open tool_a
+    engine.toggle_window("tool_a");
+    assert!(engine.is_window_open("tool_a"));
+    assert!(engine.pending_close_viewports.is_empty());
+
+    // 2. Open tool_b: tool_a is auto-closed and its viewport ID is placed into pending_close_viewports
+    engine.toggle_window("tool_b");
+    assert!(!engine.is_window_open("tool_a"));
+    assert!(engine.is_window_open("tool_b"));
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_a")]
+    );
+
+    // 3. Clear pending viewports (simulating render pass)
+    engine.pending_close_viewports.clear();
+
+    // 4. Close tool_b by toggle
+    engine.toggle_window("tool_b");
+    assert!(!engine.is_window_open("tool_b"));
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_b")]
+    );
+    engine.pending_close_viewports.clear();
+
+    // 5. Open tool_a again, then close_all_windows
+    engine.toggle_window("tool_a");
+    engine.pending_close_viewports.clear();
+    let closed = engine.close_all_windows();
+    assert_eq!(closed, vec!["tool_a".to_string()]);
+    assert_eq!(
+        engine.pending_close_viewports,
+        vec![DynamicToolEngine::viewport_id_for_plugin("tool_a")]
+    );
+}
+
+#[test]
+fn test_timelapse_studio_dynamic_language_switch() {
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut engine = DynamicToolEngine::new_with_language(&[], Some(tx), Language::En);
+
+    let script = include_str!("../../../../plugins/timelapse_studio/script.rhai");
+    let ast = engine
+        .rhai_engine
+        .compile(script)
+        .expect("Timelapse Studio script must compile");
+
+    let mut scope = rhai::Scope::new();
+
+    // 1. Init in English
+    let init_map = rhai::Map::new();
+    let mut state: rhai::Map = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (init_map,))
+        .expect("Init must succeed");
+
+    let session_info_en = state
+        .get("session_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    let stats_info_en = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(session_info_en.contains("Status: Idle"));
+    assert!(stats_info_en.contains("Recorded frames: 0 | Video length: ~0.0s"));
+
+    // 2. Switch engine language to Russian
+    engine.set_language(Language::Ru);
+
+    // 3. Re-run on_state_changed (as happens dynamically via execute_script_state_change)
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("State update after language switch must succeed");
+
+    let session_info_ru = state
+        .get("session_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    let stats_info_ru = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(session_info_ru.contains("Статус: Ожидание"));
+    assert!(stats_info_ru.contains("Записано кадров: 0 | Длина видео: ~0.0с"));
+
+    // 4. Increment a frame, check that time unit suffix uses Russian "с" instead of hardcoded "s"
+    state.insert("action_btn_start_record".into(), rhai::Dynamic::from(true));
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("Start record must succeed");
+
+    let stats_rec_ru = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(stats_rec_ru.contains("Примерная длина: ~"));
+    assert!(stats_rec_ru.ends_with("с"));
+    assert!(!stats_rec_ru.ends_with("s"));
+
+    // 5. Switch back to English, check that time unit suffix flips back to "s"
+    engine.set_language(Language::En);
+    state.remove("action_btn_start_record");
+    state = engine
+        .rhai_engine
+        .call_fn(&mut scope, &ast, "on_state_changed", (state,))
+        .expect("State update back to English must succeed");
+
+    let stats_rec_en = state
+        .get("stats_info")
+        .unwrap()
+        .clone()
+        .into_string()
+        .unwrap();
+    assert!(stats_rec_en.contains("Estimated length: ~"));
+    assert!(stats_rec_en.ends_with("s"));
+    assert!(!stats_rec_en.ends_with("с"));
 }

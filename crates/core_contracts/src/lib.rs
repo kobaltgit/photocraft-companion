@@ -94,18 +94,21 @@ pub use host_i18n::{is_translatable_param, normalize_term, to_canonical, to_host
 pub mod plugin;
 pub use plugin::{
     ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
-    BridgeOperations, ExecutionState, InteractiveUiConfig, ModelRequirement, ModifierItemConfig,
-    NormalizationMode, Plugin, PluginCommandStep, PluginContext, PluginInputSource,
-    PluginIpcAction, PluginLocaleInfo, PluginManifest, PluginOutputMode, PluginResult, PluginType,
-    SharedExecutionStatus, SubAction, WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE,
-    IPC_SUB_SELECTION_STATE, IPC_SUB_SESSION_COLORS,
+    BridgeOperations, DynamicBadgeState, ExecutionState, InteractiveUiConfig, ModelRequirement,
+    ModifierItemConfig, NormalizationMode, Plugin, PluginCommandStep, PluginContext,
+    PluginInputSource, PluginIpcAction, PluginLocaleInfo, PluginManifest, PluginOutputMode,
+    PluginResult, PluginType, RuntimeToolRequirement, SharedExecutionStatus, SubAction, WidgetNode,
+    IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_DOCUMENT_REVISION, IPC_SUB_SELECTION_STATE,
+    IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;
 pub use config::{is_dir_writable, user_data_dir, CompanionConfig};
 
 pub mod package;
-pub use package::{clear_readonly_recursive, create_pcpl, install_pcpl, remove_dir_all_safe};
+pub use package::{
+    clear_readonly_recursive, create_pcpl, decode_base64, install_pcpl, remove_dir_all_safe,
+};
 
 pub mod registry;
 pub use registry::{AiPluginFactory, AlgorithmPluginFactory, NoCodePlugin, PluginRegistry};
@@ -123,4 +126,6 @@ pub struct DocumentInfo {
     pub selection_bounds: Option<[i32; 4]>,
     #[serde(default)]
     pub active_layer_bounds: Option<[i32; 4]>,
+    #[serde(default)]
+    pub revision: u64,
 }

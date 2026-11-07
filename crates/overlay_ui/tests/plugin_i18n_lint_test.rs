@@ -48,7 +48,7 @@ fn test_no_double_bilingual_parentheses_in_rhai_scripts() {
             }
 
             // Check for double bilingual pattern inside string literals:
-            // e.g. "Emerald Jade (Изумрудный зеленый)"
+            // e.g. "Emerald Jade (РР·СѓРјСЂСѓРґРЅС‹Р№ Р·РµР»РµРЅС‹Р№)"
             let has_latin = trimmed.chars().any(|c| c.is_ascii_alphabetic());
             let has_cyrillic = trimmed
                 .chars()
@@ -217,5 +217,30 @@ fn check_widget_localization(widget: &core_contracts::WidgetNode, file_path: &Pa
             }
         }
         _ => {}
+    }
+}
+
+#[test]
+fn test_all_plugin_rhai_scripts_compile() {
+    let root = find_workspace_root();
+    let plugins_dir = root.join("plugins");
+    if !plugins_dir.exists() {
+        return;
+    }
+
+    let mut rhai_files = Vec::new();
+    collect_files_with_ext(&plugins_dir, "rhai", &mut rhai_files);
+    assert!(!rhai_files.is_empty(), "No Rhai scripts found in plugins!");
+
+    let mut engine = rhai::Engine::new();
+    engine.set_max_expr_depths(64, 64);
+    for file_path in rhai_files {
+        let res = engine.compile_file(file_path.clone());
+        assert!(
+            res.is_ok(),
+            "Rhai script failed to compile in {}: {:?}",
+            file_path.display(),
+            res.err().unwrap()
+        );
     }
 }

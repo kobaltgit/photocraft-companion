@@ -1459,6 +1459,11 @@ impl PhotoCraftClient {
                 }
             });
 
+        let revision = inspect
+            .get("revision")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+
         Ok(DocumentInfo {
             name,
             width,
@@ -1468,6 +1473,7 @@ impl PhotoCraftClient {
             has_selection,
             selection_bounds,
             active_layer_bounds,
+            revision,
         })
     }
 
@@ -1813,6 +1819,8 @@ impl core_contracts::BridgeOperations for PhotoCraftClient {
         self.get_document_info().await
     }
 }
+
+pub use core_contracts::decode_base64;
 
 /// Parse foreground and background normalized float colors from `session.inspect` JSON response into hex strings (`#rrggbb`).
 /// Falls back to `("#000000", "#ffffff")` if keys are missing or malformed.
@@ -2647,5 +2655,45 @@ mod tests {
         assert_eq!(resolved_dir, Some(fake_bin.clone()));
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[cfg(test)]
+    fn encode_base64(bytes: &[u8]) -> String {
+        const TABLE: &[u8; 64] =
+            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut s = String::with_capacity(bytes.len().div_ceil(3) * 4);
+        for chunk in bytes.chunks(3) {
+            let b0 = chunk[0];
+            let b1 = chunk.get(1).copied().unwrap_or(0);
+            let b2 = chunk.get(2).copied().unwrap_or(0);
+
+            s.push(TABLE[(b0 >> 2) as usize] as char);
+            s.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+
+            if chunk.len() > 1 {
+                s.push(TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char);
+            } else {
+                s.push('=');
+            }
+
+            if chunk.len() > 2 {
+                s.push(TABLE[(b2 & 0x3f) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+        s
+    }
+
+    #[test]
+    fn test_base64_decode_roundtrip() {
+        let payload = b"Hello PhotoCraft Companion preview engine!";
+        let encoded = encode_base64(payload);
+        let decoded = decode_base64(&encoded).unwrap();
+        assert_eq!(decoded, payload);
+
+        let data_uri = format!("data:application/octet-stream;base64,{encoded}");
+        let decoded_uri = decode_base64(&data_uri).unwrap();
+        assert_eq!(decoded_uri, payload);
     }
 }

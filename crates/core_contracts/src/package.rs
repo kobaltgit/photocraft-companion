@@ -299,6 +299,67 @@ pub fn create_pcpl(plugin_dir: impl AsRef<Path>, output_path: impl AsRef<Path>) 
     Ok(())
 }
 
+/// Decodes a base64 string (supporting data URL prefix like `data:image/webp;base64,`, whitespace, and padding).
+pub fn decode_base64(input: &str) -> Result<Vec<u8>> {
+    let clean = if let Some(idx) = input.find(',') {
+        if input.starts_with("data:") {
+            &input[idx + 1..]
+        } else {
+            input
+        }
+    } else {
+        input
+    };
+
+    let mut out = Vec::with_capacity((clean.len() * 3) / 4);
+    let mut chunk = [0u8; 4];
+    let mut chunk_len = 0;
+
+    for b in clean.bytes() {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' | b'-' => 62,
+            b'/' | b'_' => 63,
+            b'=' | b'\r' | b'\n' | b' ' | b'\t' => continue,
+            _ => {
+                return Err(CompanionError::Bridge(format!(
+                    "Invalid base64 character: '{}'",
+                    b as char
+                )));
+            }
+        };
+        chunk[chunk_len] = val;
+        chunk_len += 1;
+        if chunk_len == 4 {
+            out.push((chunk[0] << 2) | (chunk[1] >> 4));
+            out.push(((chunk[1] & 0x0f) << 4) | (chunk[2] >> 2));
+            out.push(((chunk[2] & 0x03) << 6) | (chunk[3] & 0x3f));
+            chunk_len = 0;
+        }
+    }
+
+    match chunk_len {
+        0 => {}
+        2 => {
+            out.push((chunk[0] << 2) | (chunk[1] >> 4));
+        }
+        3 => {
+            out.push((chunk[0] << 2) | (chunk[1] >> 4));
+            out.push(((chunk[1] & 0x0f) << 4) | (chunk[2] >> 2));
+        }
+        1 => {
+            return Err(CompanionError::Bridge(
+                "Invalid base64 length: trailing single character".into(),
+            ));
+        }
+        _ => unreachable!(),
+    }
+
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
