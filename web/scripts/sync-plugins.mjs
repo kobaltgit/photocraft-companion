@@ -51,8 +51,12 @@ for (const entry of entries) {
 
     // Copy icon.svg to web/public/plugins/<dirName>.svg
     if (fs.existsSync(iconPath)) {
+      let svgContent = fs.readFileSync(iconPath, "utf-8");
+      // In web browsers, SVG loaded via <img> tags defaults currentColor to black (#000000).
+      // For dark-mode web display, replace currentColor with crisp white (#ffffff).
+      svgContent = svgContent.replaceAll("currentColor", "#ffffff");
       const destIcon = path.join(publicPluginsDir, `${dirName}.svg`);
-      fs.copyFileSync(iconPath, destIcon);
+      fs.writeFileSync(destIcon, svgContent, "utf-8");
     }
 
     // Map manifest to registry entry
