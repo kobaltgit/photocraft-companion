@@ -20,10 +20,11 @@
 [![Architecture: Zero-Core](https://img.shields.io/badge/Architecture-Zero--Core-brightgreen.svg)](GEMINI.md)
 [![Code Style: rustfmt](https://img.shields.io/badge/Code_Style-rustfmt-blue.svg)](https://github.com/rust-lang/rustfmt)
 [![Tests: 194 Passing](https://img.shields.io/badge/Tests-194_Passing-success.svg)](crates/)
+[![Sponsor: Lava.top](https://img.shields.io/badge/Sponsor-Lava.top-FF5C35?logo=githubsponsors&logoColor=white)](https://app.lava.top/kobaltgit)
 
 **Extensible plugin ecosystem, local neural tools, and interactive overlay palette for the PhotoCraft graphics editor.**
 
-[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [First-Launch Guide](#-first-launch--onboarding-guide) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [Discord](#-community--discord) • [License](#-license)
+[Why Companion?](#-why-companion-advantages-over-built-in-photocraft-plugins) • [Features](#-key-features) • [Download & Installers](#-download--installers) • [First-Launch Guide](#-first-launch--onboarding-guide) • [Marketplace](#-community-plugins--marketplace) • [Quick Start](#-quick-start-for-developers) • [Architecture](#-workspace-architecture) • [.pcpl Packages](#-pcpl-package-format) • [Documentation](#-documentation) • [Discord](#-community--discord) • [Support](#-support--sponsorship) • [License](#-license)
 
 
 </div>
@@ -365,6 +366,22 @@ Join the official **PhotoCraft Companion Discord Server**:
 <p align="center">
   <img src="assets/star-history.svg" alt="PhotoCraft Companion Star History" width="100%">
 </p>
+
+---
+
+## 💖 Support & Sponsorship
+
+If you find **PhotoCraft Companion** helpful and would like to support the ongoing development of the companion app, new plugins, and local neural tools:
+
+<div align="center">
+
+[![Support on Lava.top](https://img.shields.io/badge/Support_Project-Lava.top-FF5C35?style=for-the-badge&logo=heart&logoColor=white)](https://app.lava.top/kobaltgit)
+
+**👉 [https://app.lava.top/kobaltgit](https://app.lava.top/kobaltgit)**
+
+*(Accepts Russian cards, CIS, and international payment options)*
+
+</div>
 
 ---
 
