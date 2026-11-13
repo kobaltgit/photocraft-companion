@@ -1,5 +1,6 @@
 pub mod color_slot;
 pub mod hue_wheel;
+pub mod inputs;
 pub mod modifier_stack;
 pub mod preview;
 pub mod preview_params;
@@ -33,7 +34,7 @@ pub fn render_widget_node(
             }
         }
 
-        WidgetNode::Button { id, icon, .. } => {
+        WidgetNode::Button { id, icon, url, .. } => {
             let action_key = format!("action_{}", id);
             let is_busy = state
                 .values
@@ -131,6 +132,9 @@ pub fn render_widget_node(
             }
 
             if resp.clicked() && !is_busy {
+                if let Some(target_url) = url {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(target_url));
+                }
                 state.values.insert(action_key, DynamicValue::Bool(true));
                 changed = true;
             }
@@ -162,7 +166,7 @@ pub fn render_widget_node(
             };
 
             ui.add_enabled_ui(is_enabled, |ui| {
-                ui.horizontal(|ui| {
+                let row_resp = ui.horizontal(|ui| {
                     ui.label(node.label_for_lang(lang));
                     let step_val = step.unwrap_or(1.0);
                     let is_integer = step_val >= 1.0;
@@ -181,7 +185,7 @@ pub fn render_widget_node(
                     }
 
                     let resp = ui.add(slider);
-                    let mut slider_changed = resp.changed();
+                    let slider_changed = resp.changed();
 
                     let mut wheel_ticks: f32 = 0.0;
                     ui.input(|i| {
@@ -196,28 +200,63 @@ pub fn render_widget_node(
                         }
                     });
 
-                    if is_enabled && wheel_ticks != 0.0 && resp.hovered() {
-                        let wheel_step = if is_integer { 1.0 } else { 0.1 };
-                        let new_val =
-                            (current_val + (wheel_ticks as f64) * wheel_step).clamp(*min, *max);
-                        let new_val = if is_integer {
-                            new_val.round()
-                        } else {
-                            (new_val * 10.0).round() / 10.0
-                        };
-                        if (new_val - current_val).abs() > f64::EPSILON {
-                            current_val = new_val;
-                            slider_changed = true;
-                        }
-                    }
+                    (resp, slider_changed, wheel_ticks, is_integer)
+                });
 
-                    if slider_changed {
-                        state
-                            .values
-                            .insert(id.clone(), DynamicValue::Number(current_val));
+                let (resp, mut slider_changed, wheel_ticks, is_integer) = row_resp.inner;
+                let is_hovered = resp.hovered() || row_resp.response.hovered();
+
+                if is_enabled && wheel_ticks != 0.0 && is_hovered {
+                    let wheel_step = step.unwrap_or(if is_integer { 1.0 } else { 0.1 });
+                    let new_val =
+                        (current_val + (wheel_ticks as f64) * wheel_step).clamp(*min, *max);
+                    let new_val = if is_integer {
+                        new_val.round()
+                    } else {
+                        (new_val * 10.0).round() / 10.0
+                    };
+                    if (new_val - current_val).abs() > f64::EPSILON {
+                        current_val = new_val;
+                        slider_changed = true;
+                    }
+                }
+
+                if slider_changed {
+                    state
+                        .values
+                        .insert(id.clone(), DynamicValue::Number(current_val));
+                    changed = true;
+                }
+            });
+        }
+
+        WidgetNode::Segmented { id, .. } => {
+            let mut current_idx = match state.values.get(id) {
+                Some(DynamicValue::Index(i)) => *i,
+                _ => 0,
+            };
+
+            let options = node.options_for_lang(lang);
+            let lbl = node.label_for_lang(lang);
+
+            ui.horizontal(|ui| {
+                if !lbl.is_empty() {
+                    ui.label(lbl);
+                }
+                for (idx, opt) in options.iter().enumerate() {
+                    let is_selected = idx == current_idx;
+                    let btn = egui::Button::new(opt.as_str());
+                    let resp = if is_selected {
+                        ui.add(btn.stroke(Stroke::new(1.5, palette.accent_blue)))
+                    } else {
+                        ui.add(btn)
+                    };
+                    if resp.clicked() {
+                        current_idx = idx;
+                        state.values.insert(id.clone(), DynamicValue::Index(idx));
                         changed = true;
                     }
-                });
+                }
             });
         }
 
@@ -293,11 +332,21 @@ pub fn render_widget_node(
         WidgetNode::Label { text_binding } => {
             let text = match state.values.get(text_binding) {
                 Some(DynamicValue::String(s)) => s.clone(),
+                Some(DynamicValue::Number(n)) => {
+                    if n.fract() == 0.0 {
+                        format!("{:.0}", n)
+                    } else {
+                        format!("{:.2}", n)
+                    }
+                }
+                Some(DynamicValue::Bool(b)) => b.to_string(),
                 _ => String::new(),
             };
-            ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new(text).strong());
-            });
+            if !text.is_empty() {
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new(text).strong());
+                });
+            }
         }
 
         WidgetNode::VectorPad { .. } => {
@@ -382,6 +431,16 @@ pub fn render_widget_node(
                     }
                 });
             }
+        }
+
+        WidgetNode::TextInput { .. } => {
+            if inputs::render_text_input(ui, node, state, palette, lang) {
+                changed = true;
+            }
+        }
+
+        WidgetNode::ProgressBar { .. } => {
+            inputs::render_progress_bar(ui, node, state, palette, lang);
         }
 
         WidgetNode::ModifierStack { .. } => {

@@ -32,6 +32,7 @@ fn make_manifest(id: &str, subscriptions: Vec<String>) -> PluginManifest {
             dynamic_badge: None,
             widgets: Vec::new(),
             ipc_subscriptions: subscriptions,
+            api_key_service: None,
         }),
         plugin_dir: None,
         name_ru: None,
@@ -64,6 +65,34 @@ fn test_has_open_windows_with_subscription() {
     engine.toggle_window("p1");
     assert!(!engine.is_window_open("p1"));
     assert!(!engine.has_open_windows_with_subscription("session.colors"));
+}
+
+#[test]
+fn test_has_active_subscription() {
+    let m1 = make_manifest("p1", vec!["document.revision".to_string()]);
+    let mut engine = DynamicToolEngine::new(&[m1], None);
+
+    // Initially window closed and no badge
+    assert!(!engine.has_active_subscription("document.revision"));
+
+    // If window is open, it has active subscription
+    engine.toggle_window("p1");
+    assert!(engine.has_active_subscription("document.revision"));
+
+    // Close window
+    engine.toggle_window("p1");
+    assert!(!engine.has_active_subscription("document.revision"));
+
+    // If badge is present (e.g. background recording), active subscription is true even if window closed
+    engine.set_dynamic_badge(
+        "p1",
+        Some(core_contracts::DynamicBadgeState {
+            is_pulsing: true,
+            pulse_color_rgba: [255, 0, 0, 255],
+            label: Some("REC".to_string()),
+        }),
+    );
+    assert!(engine.has_active_subscription("document.revision"));
 }
 
 #[test]

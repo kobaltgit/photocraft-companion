@@ -23,6 +23,8 @@ vtracer = { workspace = true }
 async-trait = { workspace = true }
 rfd = { workspace = true }
 rhai = { workspace = true }
+ureq = { workspace = true }
+base64 = { workspace = true }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 arboard = { workspace = true }

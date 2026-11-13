@@ -9,6 +9,10 @@ pub const APP_ICON_SMALL_SVG: &str = include_str!("../../../assets/icon_small.sv
 pub const DISCORD_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="256" height="199" viewBox="0 0 256 199"><path fill="currentColor" d="M216.856 16.597A208.5 208.5 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046q-29.538-4.442-58.533 0c-1.832-4.4-4.55-9.933-6.846-14.046a207.8 207.8 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161 161 0 0 0 79.735 175.3a136.4 136.4 0 0 1-21.846-10.632a109 109 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a132 132 0 0 0 5.355 4.237a136 136 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848c21.142-6.58 42.646-16.637 64.815-33.213c5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2s23.236 11.804 23.015 26.2c.02 14.375-10.148 26.18-23.015 26.18m85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2c0 14.375-10.148 26.18-23.015 26.18"/></svg>"##;
 pub const DISCORD_COLOR_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="256" height="199" viewBox="0 0 256 199"><path fill="#5865f2" d="M216.856 16.597A208.5 208.5 0 0 0 164.042 0c-2.275 4.113-4.933 9.645-6.766 14.046q-29.538-4.442-58.533 0c-1.832-4.4-4.55-9.933-6.846-14.046a207.8 207.8 0 0 0-52.855 16.638C5.618 67.147-3.443 116.4 1.087 164.956c22.169 16.555 43.653 26.612 64.775 33.193A161 161 0 0 0 79.735 175.3a136.4 136.4 0 0 1-21.846-10.632a109 109 0 0 0 5.356-4.237c42.122 19.702 87.89 19.702 129.51 0a132 132 0 0 0 5.355 4.237a136 136 0 0 1-21.886 10.653c4.006 8.02 8.638 15.67 13.873 22.848c21.142-6.58 42.646-16.637 64.815-33.213c5.316-56.288-9.08-105.09-38.056-148.36ZM85.474 135.095c-12.645 0-23.015-11.805-23.015-26.18s10.149-26.2 23.015-26.2s23.236 11.804 23.015 26.2c.02 14.375-10.148 26.18-23.015 26.18m85.051 0c-12.645 0-23.014-11.805-23.014-26.18s10.148-26.2 23.014-26.2c12.867 0 23.236 11.804 23.015 26.2c0 14.375-10.148 26.18-23.015 26.18"/></svg>"##;
 
+pub const EYE_OPEN_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="4" fill="currentColor"/><path fill="currentColor" d="M30.94 15.66A16.69 16.69 0 0 0 16 5A16.69 16.69 0 0 0 1.06 15.66a1 1 0 0 0 0 .68A16.69 16.69 0 0 0 16 27a16.69 16.69 0 0 0 14.94-10.66a1 1 0 0 0 0-.68M16 22.5a6.5 6.5 0 1 1 6.5-6.5a6.51 6.51 0 0 1-6.5 6.5"/></svg>"##;
+
+pub const EYE_CLOSED_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><path fill="currentColor" d="M508 624a112 112 0 0 0 112-112c0-3.28-.15-6.53-.43-9.74L498.26 623.57c3.21.28 6.45.43 9.74.43m370.72-458.44L836 122.88a8 8 0 0 0-11.31 0L715.37 232.23Q624.91 186 512 186q-288.3 0-430.2 300.3a60.3 60.3 0 0 0 0 51.5q56.7 119.43 136.55 191.45L112.56 835a8 8 0 0 0 0 11.31L155.25 889a8 8 0 0 0 11.31 0l712.16-712.12a8 8 0 0 0 0-11.32M332 512a176 176 0 0 1 258.88-155.28l-48.62 48.62a112.08 112.08 0 0 0-140.92 140.92l-48.62 48.62A175.1 175.1 0 0 1 332 512"/><path fill="currentColor" d="M942.2 486.2Q889.4 375 816.51 304.85L672.37 449A176.08 176.08 0 0 1 445 676.37L322.74 798.63Q407.82 838 512 838q288.3 0 430.2-300.3a60.29 60.29 0 0 0 0-51.5"/></svg>"##;
+
 /// Theme adapter for SVG content: replaces currentColor and adapts monochrome shapes
 pub fn adapt_svg_for_theme(svg_data: &str, is_dark: bool) -> String {
     let main_color = if is_dark { "#E6E6E6" } else { "#1E1E1E" };
@@ -171,10 +175,19 @@ pub fn generate_hybrid_ico() -> Option<Vec<u8>> {
 }
 
 /// Dynamic cache of parsed and GPU-uploaded SVG textures for overlay buttons
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct SvgIconCache {
     pub textures: HashMap<String, egui::TextureHandle>,
     pub last_is_dark: Option<bool>,
+}
+
+impl std::fmt::Debug for SvgIconCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SvgIconCache")
+            .field("textures_count", &self.textures.len())
+            .field("last_is_dark", &self.last_is_dark)
+            .finish()
+    }
 }
 
 impl SvgIconCache {
@@ -255,6 +268,22 @@ impl SvgIconCache {
             DISCORD_COLOR_SVG
         } else {
             DISCORD_SVG
+        };
+        self.load_from_svg_str(ctx, action, svg, is_dark)
+    }
+
+    /// Load or retrieve cached texture for password visibility eye icon
+    pub fn get_or_load_eye_icon(
+        &mut self,
+        ctx: &egui::Context,
+        is_visible: bool,
+        is_dark: bool,
+    ) -> Option<egui::TextureHandle> {
+        let action = if is_visible { "eye_open" } else { "eye_closed" };
+        let svg = if is_visible {
+            EYE_OPEN_SVG
+        } else {
+            EYE_CLOSED_SVG
         };
         self.load_from_svg_str(ctx, action, svg, is_dark)
     }

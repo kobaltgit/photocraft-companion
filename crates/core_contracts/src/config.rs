@@ -33,6 +33,12 @@ pub struct CompanionConfig {
     pub photocraft_path: Option<PathBuf>,
     #[serde(default)]
     pub modifier_stack_orders: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub api_keys: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub plugin_window_positions: std::collections::HashMap<String, [f32; 2]>,
+    #[serde(default)]
+    pub plugin_window_sizes: std::collections::HashMap<String, [f32; 2]>,
 }
 
 fn default_host() -> String {
@@ -68,6 +74,9 @@ impl Default for CompanionConfig {
             active_sub_actions: std::collections::HashMap::new(),
             photocraft_path: None,
             modifier_stack_orders: std::collections::HashMap::new(),
+            api_keys: std::collections::HashMap::new(),
+            plugin_window_positions: std::collections::HashMap::new(),
+            plugin_window_sizes: std::collections::HashMap::new(),
         }
     }
 }
@@ -202,6 +211,24 @@ impl CompanionConfig {
         // Default to user_data_dir
         user_cfg
     }
+
+    pub fn get_plugin_geometry(&self, plugin_id: &str) -> (Option<[f32; 2]>, Option<[f32; 2]>) {
+        (
+            self.plugin_window_positions.get(plugin_id).copied(),
+            self.plugin_window_sizes.get(plugin_id).copied(),
+        )
+    }
+
+    pub fn set_plugin_geometry(&mut self, plugin_id: &str, pos: [f32; 2], size: [f32; 2]) {
+        self.plugin_window_positions
+            .insert(plugin_id.to_string(), pos);
+        self.plugin_window_sizes.insert(plugin_id.to_string(), size);
+    }
+
+    pub fn clear_plugin_geometries(&mut self) {
+        self.plugin_window_positions.clear();
+        self.plugin_window_sizes.clear();
+    }
 }
 
 /// Returns true if a directory can be written to by creating and deleting a temporary test file.
@@ -325,6 +352,9 @@ mod tests {
             is_vertical: true,
             enabled_plugins: vec!["test.plugin".to_string()],
             photocraft_path: Some(PathBuf::from("D:/apps/photocraft.exe")),
+            api_keys: [("service_test".to_string(), "sec_token_123".to_string())]
+                .into_iter()
+                .collect(),
             ..CompanionConfig::default()
         };
 
@@ -336,6 +366,10 @@ mod tests {
         assert_eq!(loaded.theme, "light");
         assert!(loaded.is_vertical);
         assert_eq!(loaded.enabled_plugins, vec!["test.plugin"]);
+        assert_eq!(
+            loaded.api_keys.get("service_test").map(|s| s.as_str()),
+            Some("sec_token_123")
+        );
         assert_eq!(
             loaded.photocraft_path,
             Some(PathBuf::from("D:/apps/photocraft.exe"))
@@ -358,6 +392,50 @@ mod tests {
         assert!(cfg.manager_window_size.is_none());
         assert!(cfg.enabled_plugins.is_empty());
         assert!(cfg.photocraft_path.is_none());
+        assert!(cfg.plugin_window_positions.is_empty());
+        assert!(cfg.plugin_window_sizes.is_empty());
+    }
+
+    #[test]
+    fn test_plugin_window_geometry_persistence_roundtrip() {
+        let mut cfg = CompanionConfig::default();
+        assert!(cfg.plugin_window_positions.is_empty());
+        assert!(cfg.plugin_window_sizes.is_empty());
+        assert_eq!(cfg.get_plugin_geometry("chromasense"), (None, None));
+        assert_eq!(cfg.get_plugin_geometry("timelapse_studio"), (None, None));
+
+        cfg.set_plugin_geometry("chromasense", [150.0, 200.0], [400.0, 600.0]);
+        cfg.set_plugin_geometry("timelapse_studio", [320.0, 180.0], [500.0, 700.0]);
+
+        assert_eq!(
+            cfg.get_plugin_geometry("chromasense"),
+            (Some([150.0, 200.0]), Some([400.0, 600.0]))
+        );
+        assert_eq!(
+            cfg.get_plugin_geometry("timelapse_studio"),
+            (Some([320.0, 180.0]), Some([500.0, 700.0]))
+        );
+
+        // JSON roundtrip test
+        let json_str = serde_json::to_string(&cfg).expect("Serialization to JSON should succeed");
+        let restored_cfg: CompanionConfig =
+            serde_json::from_str(&json_str).expect("Deserialization from JSON should succeed");
+
+        assert_eq!(
+            restored_cfg.get_plugin_geometry("chromasense"),
+            (Some([150.0, 200.0]), Some([400.0, 600.0]))
+        );
+        assert_eq!(
+            restored_cfg.get_plugin_geometry("timelapse_studio"),
+            (Some([320.0, 180.0]), Some([500.0, 700.0]))
+        );
+
+        // Clear geometry test
+        cfg.clear_plugin_geometries();
+        assert!(cfg.plugin_window_positions.is_empty());
+        assert!(cfg.plugin_window_sizes.is_empty());
+        assert_eq!(cfg.get_plugin_geometry("chromasense"), (None, None));
+        assert_eq!(cfg.get_plugin_geometry("timelapse_studio"), (None, None));
     }
 
     #[test]

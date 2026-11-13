@@ -300,6 +300,25 @@ Install any `.pcpl` file with a single click via `[ + Install Plugin (.pcpl) ]` 
 
 Download community plugins as ready-to-use `.pcpl` packages and drop them into your Companion or install them in 1-click via the **Plugin Manager**:
 
+> [!NOTE]
+> ### 🌟 Official Cloud AI Partner: Flexy Studio (by XpucT)
+> **[Flexy AI](https://flexy-ai.com/main)** is an unconstrained next-gen multimodal neural platform created by XpucT (author of *Win 10 Tweaker* and the renowned *Deliberate* models).
+>
+> **Directly inside PhotoCraft Companion ([Flexy Studio](plugins/flexy_studio/README.md)):**
+> * 🎨 **Neural Art Generation:** Txt2Img with native Cyrillic text rendering in `"quotes"`;
+> * 📐 **Active Layer ControlNet:** Structural guidance using *Line Art*, *Canny*, *Depth*, *Scribble*, *Pose*;
+> * 🪄 **Smart Eraser & Generative Fill:** Powered by **Context Crop (SPEC-004)** — **100% native canvas resolution** without server downscaling, plus seamless In-Place layer merging;
+> * ✨ **1-Click Studio Retouch:** Natural and glamour skin beautification preserving natural pore microtextures;
+> * 🖼️ **Canvas Outpainting & Background Changer:** Seamless canvas extension and realistic environment synthesis.
+>
+> **Additional Multimodal Tools on the Web Platform ([flexy-ai.com/main](https://flexy-ai.com/main)):**
+> * 👗 **Clothes Swap:** virtual outfit try-on on any photo;
+> * 👤 **Face Swap:** high-fidelity facial transplantation;
+> * 🎬 **Video Generation (Img2Video / Txt2Video):** cinematic video animation;
+> * 📐 **SVG Vectorizer** & 🧊 **3D Mesh Generation (Img23D)**.
+>
+> 🔑 *Get your API key at [flexy-ai.com/profile](https://flexy-ai.com/profile) (credits never expire).*
+
 <!-- PLUGINS_CATALOG_START -->
 
 | Icon | Plugin & Description | Type | Version | Author | Package (.pcpl) |
@@ -309,6 +328,7 @@ Download community plugins as ready-to-use `.pcpl` packages and drop them into y
 | <img src="plugins/depth_map/icon.svg" width="28" height="28"> | **AI Depth Map (Depth Anything V2)**<br>_State-of-the-art monocular 3D depth estimation for Lens Blur, bokeh and atmospheric lighting via Depth Anything V2._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/depth_map.pcpl) |
 | <img src="plugins/depth_studio/icon.svg" width="28" height="28"> | **Depth Studio**<br>_Interactive AI Depth Studio for realistic atmospheric fog, aerial perspective and optical lens bokeh defocus with click-to-focus._ | `🎨 UI Panel` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/depth_studio.pcpl) |
 | <img src="plugins/dodge_and_burn/icon.svg" width="28" height="28"> | **Pro Dodge & Burn (50% Gray)**<br>_Creates a non-destructive 50% Gray Soft Light layer with a B&W visual aid layer for professional Dodge & Burn contouring._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/dodge_and_burn.pcpl) |
+| <img src="plugins/flexy_studio/icon.svg" width="28" height="28"> | **Flexy Studio**<br>_Official cloud AI studio powered by Flexy AI: neural generation, ControlNet, inpainting, portrait retouch, face swap, and outpainting._ | `🎨 UI Panel` | `1.0.0` | kobaltGIT & XpucT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/flexy_studio.pcpl) |
 | <img src="plugins/frequency_separation/icon.svg" width="28" height="28"> | **Frequency Separation (Retouch)**<br>_Splits portrait into high-frequency texture and low-frequency color layers for professional beauty retouching._ | `⚡ Macro` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/frequency_separation.pcpl) |
 | <img src="plugins/harmonic_studio/icon.svg" width="28" height="28"> | **Harmonic Color Studio**<br>_Interactive color harmony studio, spectral wheel, live brush sync, Swatches export and canvas swatch cards._ | `🎨 UI Panel` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/harmonic_studio.pcpl) |
 | <img src="plugins/inpaint/icon.svg" width="28" height="28"> | **AI Generative Fill (LaMa)**<br>_Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU._ | `🤖 AI (ONNX)` | `1.0.0` | kobaltGIT | [📥 Download .pcpl](https://github.com/kobaltgit/photocraft-companion/releases/download/plugins/inpaint.pcpl) |

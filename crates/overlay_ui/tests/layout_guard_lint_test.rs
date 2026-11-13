@@ -185,7 +185,8 @@ fn test_mouse_wheel_step_discrete_quantization() {
         "dynamic_tool must handle mouse wheel scrolling via discrete Event::MouseWheel events!"
     );
     assert!(
-        all_content.contains("let wheel_step = if is_integer { 1.0 } else { 0.1 };"),
+        all_content.contains("let wheel_step = step.unwrap_or(if is_integer { 1.0 } else { 0.1 });")
+            || all_content.contains("let wheel_step = if is_integer { 1.0 } else { 0.1 };"),
         "dynamic_tool must use exact 1.0 step for integer sliders and 0.1 for fractional sliders on wheel scroll!"
     );
 }

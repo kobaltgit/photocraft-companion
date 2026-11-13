@@ -4351,3 +4351,347 @@ The codebase is fully primed to finalize the release and transition branch `feat
 
 ### 3. Summary
 PR #14 is updated to stable release `v2.1.0` and ready for merge into `main`, after which pushing tag `v2.1.0` will trigger automated installer builds and GitHub Release publication.
+## [2026-11-09 13:00] Chapter 125: Flexy Studio Cloud Engine, Zero-Core Hardcoding Elimination, and Encoding Recovery (BUG-115, BUG-116)
+*Time: November 09, 2026, 13:00 (~45 minutes)*
+
+Integrating the first full-fledged cloud AI service (Flexy AI) into the PhotoCraft Companion ecosystem exposed two critical issues: an unacceptable localized string hardcode inside the application core, and a UTF-8/CP1251 double-encoding artifact in the plugin manifest.
+
+### Root Cause Analysis
+1. **Zero-Core Violation (BUG-115)**: The initial version of `crates/companion_app/src/cloud_engine.rs` hastily introduced `if is_ru` branches with hardcoded Russian strings (`"Запуск..."`, `"Ошибка: {e}"`, `"Облачный слой"`, `"Готово!"`). This violated the Zero-Core Hardcoding Prohibition: the core must serve as a neutral runtime interpreter, while all localization must reside strictly in manifests (`plugin.json`) and Rhai scripts (`script.rhai`).
+2. **Encoding Mojibake (BUG-116)**: Due to an encoding pipeline slip in `plugins/flexy_studio/plugin.json`, the profile button contained distorted bytes (`"label_ru": "Р›РёС‡РЅС‹Р№ РєР°Р±РёРЅРµС‚"`), resulting in garbled text on the UI.
+
+### Architectural Solutions Delivered
+* **Core Localization Purge**: Completely removed `is_ru` conditions and all Cyrillic string literals from `cloud_engine.rs` (verified 0 characters). Core status messages were restored to neutral English, and dynamic user updates now route cleanly via `execute_script_state_change`.
+* **UTF-8 Manifest Recovery**: Fixed the mojibake in `plugin.json`, restoring the clean Russian label *"Личный кабинет"*.
+* **Vector-First UI and Ergonomics**: In `overlay_ui`, implemented SVG icon caching for password visibility toggle (`EYE_OPEN_SVG`, `EYE_CLOSED_SVG`), eliminated button alignment staircases via dynamic measurement (`ui.painter().layout_no_wrap`), and introduced discrete mouse wheel scrolling for sliders with `step` quantization.
+* **Centered Layer Placement**: Added `paste_image_centered` in `photocraft_bridge` with clipboard synchronization delay.
+
+### Verification Results (Resource Guard)
+* `cargo fmt --all -- --check` — 0 diffs.
+* `cargo test --workspace -j 1` — 100% test pass across all workspace crates.
+* Plugin catalog validated via `plugin_validator` (16 packages, including `flexy_studio.pcpl`).
+
+## [2026-11-09 18:00] Chapter 126: Restoring Snappy UI Responsiveness to v2.0.3 Benchmark and Adaptive Frame Pacing (BUG-117)
+*Time: November 09, 2026, 18:00 (~30 minutes)*
+
+Following the 2.1.0 release with its rich Timelapse Studio capabilities, a subtle yet annoying ergonomic issue surfaced: the floating toolbar felt sluggish, hover states hesitated, and tooltips took up to half a second to appear.
+
+### Root Cause Analysis (BUG-117)
+During idle CPU optimizations, `CompanionOverlayApp::ui` had been fitted with an unconditional `request_repaint_after(500ms)`. While power saving is commendable, capping idle repaint to 500 ms throttled the quiescent frame loop down to 2 FPS. Until mouse motion generated continuous OS events, the interface slumbered for half a second before registering state changes.
+
+### Architectural Solutions Delivered
+* **Adaptive Frame Pacing**: Instead of a hardcoded timer, `CompanionOverlayApp` now features `calculate_repaint_interval(&self) -> std::time::Duration`, dynamically tailoring the heartbeat to the active context:
+  1. **Floating Toolbar on Screen**: **50 ms (20 FPS)** — instant hover highlights, crisp tooltips, and strict return to the snappy v2.0.3 baseline;
+  2. **Secondary Windows Active (Plugin Manager or interactive tool viewports)**: **16 ms (60 FPS)** — buttery-smooth scrolling, responsive sliders, and fluid studio interactions;
+  3. **Parked in System Tray**: **500 ms** — deep sleep mode ensuring 0.0% CPU overhead in background.
+* **Submenu Logic & Timelapse Studio Independence Preserved**: Long-press button interactions and chevrons remain unaltered; Timelapse Studio frame capture remains decoupled on socket document revisions.
+* **Regression Test Coverage**: Added `test_calculate_repaint_interval_lifecycle` in `crates/overlay_ui/src/lib.rs` validating interval timings across all lifecycle states.
+
+### Verification Results (Resource Guard)
+* `cargo fmt --all -- --check` — 0 diffs.
+* `cargo test --workspace -j 1` — 100% test pass across all workspace crates.
+* All layout and localization linters verified: `i18n_lint_test`, `vector_first_lint_test`, `layout_guard_lint_test`, `multi_viewport_lint_test`, `architecture_integrity_test`, `dev_regulations_lint_test`.
+* Plugin catalog validated via `plugin_validator` (16 packages, zero errors).
+
+## [2026-11-09 19:40] Chapter 127: Eliminating Windows System Freezes, Resolving the Process Fork Bomb, and Stabilizing the Graphics Pipeline (BUG-118)
+*Time: November 09, 2026, 19:40 (~35 minutes)*
+
+Following the repaint interval adjustments in Chapter 126, users encountered severe system instability: launching Companion while PhotoCraft was not running caused micro-freezes and jerky mouse movement across Windows, eventually escalating to full desktop lockup.
+
+### Root Cause Analysis (BUG-118)
+In-depth profiling uncovered three intersecting defects producing a destructive compound effect:
+1. **Process Fork Bomb (`powershell.exe`) in the Waiting Loop:** In `crates/photocraft_bridge/src/lib.rs`, when native Win32 process detection failed, a legacy fallback executed `powershell.exe -Command (Get-Process ...)`. In the waiting window (`offline_modal`), process presence was polled **on every single interface frame** (20–60 times per second). Spawning each PowerShell instance incurs 200–400 ms of CPU initialization and hundreds of megabytes of working set memory. Launching dozens of processes per second created an escalating fork bomb of `powershell.exe` and `conhost.exe` processes, completely starving the Windows thread scheduler.
+2. **DWM Compositor Deadlock from Idle 16ms Repaints:** An artificial `16ms` timer active during secondary window presence forced `eframe` to continuously cycle `wglMakeCurrent` and `SwapBuffers` across multiple window contexts even during total user inactivity, causing thread contention in the Windows Desktop Window Manager (`dwm.exe`). In `egui`, user interactions (mouse motion, slider drags, clicks) are naturally dispatched event-driven at monitor refresh rate (60/144/240 Hz), meaning the timer should strictly serve as a background heartbeat.
+3. **Per-Frame Disk I/O & JSON Parsing:** In the main UI loop (`CompanionOverlayApp::ui`), invoking `Language::Auto.resolve()` every frame repeatedly re-read `preferences.json` and probed APPDATA disk paths, causing disk churn on the main thread.
+
+### Architectural Solutions Delivered
+* **Complete PowerShell Purge & Native Win32 Toolhelp:** Deleted the PowerShell fallback from `crates/photocraft_bridge/src/lib.rs`. Process detection on Windows is now handled exclusively by direct Win32 APIs (`CreateToolhelp32Snapshot`, `Process32FirstW`/`NextW`, `QueryFullProcessImageNameW`).
+* **Atomic TTL Cache with Cold-Start Guard:** In `PhotoCraftClient::is_photocraft_process_running()`, introduced a lightweight 1500 ms atomic cache (`LAST_PROCESS_CHECK_MS`, `CACHED_PROCESS_RUNNING`). Resolved the uninitialized zero-timestamp bug (`last_ms > 0`) to guarantee correct cold-start checks, and added `PhotoCraftClient::invalidate_process_running_cache()` for instant reaction upon clicking `[ > Launch PhotoCraft ]`.
+* **Rendering Pipeline Stabilization & Windows DWM Protection (BUG-111):** In `crates/overlay_ui/src/lib.rs`, locked `calculate_repaint_interval()` to a safe 500 ms idle heartbeat. This completely halts the fatal Windows DWM presentation deadlock caused by high-frequency `SwapBuffers` on transparent OpenGL surfaces. Meanwhile, all user interactions (mouse movement, clicks, slider drags, typing) are handled immediately and fluidly on native `winit` OS interrupts at full display refresh rate (60/120/144/240 Hz).
+* **Live Portable Binary Synchronization:** Copied the freshly compiled release binary into the user's active portable directory `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\photocraft-companion.exe`, replacing the outdated November 7th binary that contained the legacy PowerShell polling loop.
+* **TTL Cache for Language Resolution (2000 ms):** Added `last_lang_resolve_time` in `CompanionOverlayApp`, eliminating disk thrashing and redundant JSON deserialization on each frame.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* `cargo test --workspace -j 1` — 100% test pass across all workspace crates (260+ tests passed).
+* All linters verified: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `multi_viewport_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`.
+* Plugin catalog validated via `plugin_validator` (16 packages, zero errors).
+* Production release binary successfully compiled (`target/release/photocraft-companion.exe`) and synchronized to `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\`.
+* Runtime profiling confirmed 0.0% idle CPU usage and zero child process spawning.
+
+## [2026-11-09 21:35] Chapter 128: Restoring v2.0.3 Benchmark (50ms) for Instant Toolbar Responsiveness and Micro-Stutter Elimination (BUG-119)
+*Time: November 09, 2026, 21:35 (~20 minutes)*
+
+Following the resolution of the PowerShell process fork bomb in Chapter 127, an interface responsiveness issue was identified: due to an overly conservative `500ms` idle timer while active on screen, the toolbar felt unresponsive — hover tooltips and transitions experienced a noticeable delay of up to half a second when the mouse was held stationary.
+
+### Architectural Solutions
+* **Differentiated Frame Pacing**: In `CompanionOverlayApp::calculate_repaint_interval()`, operating modes are cleanly separated:
+  - **50 ms (20 FPS)** when the toolbar is active and visible on screen: exact restoration of the proven v2.0.3 baseline, enabling instantaneous button hover reactions, seamless tooltip display, and accurate 300ms long-press submenu activation;
+  - **500 ms** when parked in the system tray (`is_hidden_to_tray`): ultra-low-power idle mode consuming 0.0% CPU.
+* **Regression Test Modernization**: In `crates/overlay_ui/src/lib.rs`, `test_calculate_repaint_interval_lifecycle` was updated to assert the 50ms active pace and verify seamless restoration from tray.
+* **Portable Directory Deployment**: The newly compiled release binary `target/release/photocraft-companion.exe` was synchronized directly into `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\photocraft-companion.exe`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* `cargo test --workspace -j 1` — 100% test pass across all workspace crates (260+ tests green).
+* All specialized linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `multi_viewport_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`.
+* Full catalog validation completed with 0 errors across all 16 plugins.
+* Fresh release binary deployed and verified in the user's portable folder.
+
+## [2026-11-09 22:58] Chapter 129: Restoring v2.0.3 Canvas Drawing Fluidity, Eliminating DWM Conflicts, and Reactive Tool Runner (BUG-120)
+*Time: November 09, 2026, 22:58 (~30 minutes)*
+
+A detailed performance profiling session during active PhotoCraft painting revealed three subtle sources of micro-stutter that compromised the v2.0.3 smoothness benchmark:
+1. Win32 message queue and `dwm.exe` conflict caused by dual window teardown through `pending_close_viewports` and explicit `ViewportCommand::Close`;
+2. Parasitic toolbar repaint cycle every 400 ms triggered unconditionally by canvas `rev_dispatched` during each brush stroke;
+3. Complete UI thread lockup for 2–30 seconds during FFmpeg encoding or PowerShell tool downloading due to synchronous `cmd.output()`, alongside flashing black console windows.
+
+### Architectural Solutions
+* **Restoration of Pure v2.0.3 Declarative Window Lifecycle**: Completely eliminated `pending_close_viewports` and `ctx.send_viewport_cmd_to(vp_id, ViewportCommand::Close)`. In `egui/eframe`, tool windows returned to the clean declarative paradigm: when `is_open = false`, the viewport is simply not submitted in `show_viewport_immediate`, completely resolving the Win32 queue conflict and mouse cursor micro-stutter.
+* **Elimination of Canvas Revision Repaint Spam**: In `crates/companion_app/src/main.rs`, toolbar repaints on canvas revisions are strictly gated by `engine.has_open_windows_with_subscription(core_contracts::IPC_SUB_DOCUMENT_REVISION)`. When plugin windows are closed, brush strokes on the canvas no longer wake the toolbar or DWM, while background timelapse frame recording remains 100% operational.
+* **Windows Console Suppression (0x08000000)**: In `crates/overlay_ui/src/dynamic_tool/rhai_bridge.rs`, all `std::process::Command` invocations received `CREATE_NO_WINDOW`, preventing console window popups.
+* **Reactive Tool Runner Engine**:
+  - In `rhai_bridge.rs`, registered non-blocking `execute_tool_async` in worker threads and `poll_tool_job`.
+  - In `DynamicToolEngine::render()`, introduced a calm 100ms pacing interval (`request_repaint_after(100ms)`) active only during background tasks, and an automatic dispatch of `self.execute_script_state_change(&plugin_id)` upon task completion.
+  - In `plugins/timelapse_studio/script.rhai`, video export and FFmpeg setup transitioned to non-blocking background jobs that immediately update banners upon completion without freezing the UI or waiting for user clicks.
+* **Portable Directory Deployment**: The newly compiled release binary `target/release/photocraft-companion.exe` was synchronized directly into `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* `cargo test --workspace -j 1` — 100% test pass across all workspace crates (all 264 tests green).
+* All 79 `overlay_ui` unit tests passed, including modernized `test_declarative_window_closing_lifecycle` and newly introduced `test_execute_tool_async_lifecycle`.
+* All specialized linters passed: `architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `multi_viewport_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`.
+* Full catalog validation confirmed 16 plugins with 0 errors.
+* Release binary verified and deployed.
+
+## [2026-11-10 06:30] Chapter 130: Eliminating 0xC0000022 Startup Crash, Offline Modal Hit-Test Trap, and PhotoCraft GPU Relief (BUG-121)
+*Time: November 10, 2026, 06:30 (~35 minutes)*
+
+A deep investigation into the desktop freeze occurring when launching the Companion executable from the project directory—regardless of whether PhotoCraft was running or offline—uncovered a sequence of low-level OS and protocol issues:
+
+### Root Causes of Defect (BUG-121)
+1. **Symbolic Link `DirectML.dll` and NTDLL Loader Failure (0xC0000022)**:
+   During compilation, the `ort-sys` build script created a 0-byte reparse point / symbolic link for `DirectML.dll` in `target/release/` pointing across filesystem volumes to `C:\Users\Kobalt\AppData\Local\ort.pyke.io\...`. When the user launched `photocraft-companion.exe` from Explorer, the Windows NTDLL dynamic linker encountered an inter-volume permissions denial and terminated the process with `STATUS_ACCESS_DENIED (0xC0000022)`. This triggered Windows Error Reporting (`WerFault.exe`) and stalled desktop input.
+2. **Offline Modal Hit-Test Trap and AlwaysOnTop Layer**:
+   In `crates/overlay_ui/src/lib.rs`, the offline modal window was constructed with `with_transparent(true)`, `with_decorations(false)`, unconditional `with_always_on_top()`, and `with_taskbar(false)`. The transparent layered surface floating on top of desktop windows intercepted mouse clicks, while an aggressive 50ms render loop burdened the DWM during idle states.
+3. **PhotoCraft GPU Crash (`wgpu device lost`) from 400ms `document.inspect` Spam**:
+   Log files from PhotoCraft (`PhotoCraftData/logs/photocraft.1.log`) revealed that the Companion's background task polled `client.get_document_info()` (`document.inspect`) every 400 ms without pause. During active brush strokes, canvas state locking stalled the editor render thread by up to 342 ms, eventually triggering `wgpu device lost (Unknown): Unexpected error variant`.
+
+### Architectural Solutions
+* **Replacing `DirectML.dll` Symlink with Physical Library**:
+   The 0-byte reparse point in `target/release/DirectML.dll` and the portable working directory `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\` was replaced with a concrete 18.5 MB DLL binary. The application launches instantaneously without NTDLL permission errors, operating at 0.5% CPU when idle.
+* **Deactivating Hit-Test Traps and Calm Offline Pacing**:
+   - In `crates/overlay_ui/src/lib.rs`, the offline modal was decoupled from unconditional `AlwaysOnTop` (now adhering to the user's `is_pinned` setting);
+   - Enabled taskbar presence (`with_taskbar(!connected)`), allowing seamless Alt-Tab switching;
+   - In `calculate_repaint_interval()`, introduced a calm 250ms repaint cadence for the offline modal, guaranteeing zero idle strain on DWM.
+* **Intelligent Throttling of PhotoCraft Canvas Inspection**:
+   In `crates/companion_app/src/main.rs`, background polling of `get_document_info()` when the toolbar is idle was slowed 5x (to 2000 ms), stepping up to 400 ms strictly when tool windows with subscriptions to revisions (`IPC_SUB_DOCUMENT_REVISION`), selection (`IPC_SUB_SELECTION_STATE`), or layers are actively open. This eliminated frame spikes and protected PhotoCraft's GPU engine from crashing.
+* **DynamicToolEngine Contract Refinement**:
+   In `crates/overlay_ui/src/dynamic_tool/viewports.rs`, exposed a clean public `set_dynamic_badge` helper, purifying unit tests from private field access.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* 100% of workspace test suites passed under Resource Guard (`-j 1`):
+  - `crates/overlay_ui`: 103 tests (100% pass);
+  - `crates/core_contracts`: 53 tests (100% pass);
+  - `crates/photocraft_bridge`: 39 tests (100% pass);
+  - `crates/companion_app`: 14 tests (100% pass);
+  - `crates/ai_engine`: 13 tests (architecture integrity, dev regulations lint, 100% pass).
+* Catalog validation `plugin_validator` confirmed 16 plugins with 0 errors.
+* Release binary `photocraft-companion.exe` and `DirectML.dll` compiled and deployed to both `target/release/` and `D:\Portable Soft\ArtCraft\PhotoCraft-Companion\`.
+
+## [2026-11-12 13:05] Chapter 131: Multi-Monitor Window Positioning and Geometry Persistence for Plugins (BUG-123 / SPEC-001)
+*Time: November 12, 2026, 13:05 (~35 minutes)*
+
+In professional multi-monitor setups (e.g. artists using a secondary monitor or graphic tablet display where PhotoCraft and the floating Companion toolstrip reside), a critical UX friction surfaced: clicking on any interactive plugin (ChromaSense, Timelapse Studio, Depth Studio, PopCraft 3D, Flexy Studio) spawned the window on Windows display 1 instead of the active workspace monitor. Furthermore, upon closing and reopening, windows completely forgot their customized positions and sizes.
+
+### Root Causes of Defect (BUG-123)
+1. **OS Default Window Placement (`CW_USEDEFAULT`)**:
+   Secondary plugin viewports were constructed via `egui::ViewportBuilder::default()` without an initial position. Under Windows and `winit`, absent coordinates fall back to `CW_USEDEFAULT`, cascading new windows onto the primary display by default.
+2. **Absence of Plugin Window Geometry Persistence**:
+   The configuration file only tracked the main toolstrip and settings window, lacking geometry storage for dynamic tool viewports.
+
+### Architectural Solutions Delivered
+* **Per-Plugin Geometry Persistence in `CompanionConfig`**:
+  Integrated associative maps `plugin_window_positions` and `plugin_window_sizes` of type `HashMap<String, [f32; 2]>` into `core_contracts::CompanionConfig`, cleanly recording positions and dimensions indexed by `plugin_id`.
+* **Contextual Active-Monitor Adjacent Spawn**:
+  Implemented `calculate_adjacent_spawn_position(toolbar_rect, window_size, is_vertical)` in `crates/overlay_ui/src/win32_window.rs`. On initial open, windows spawn directly adjacent to the toolstrip on the artist's active monitor (right/left for vertical, below/above for horizontal). Screen visibility checks (`is_position_visible_on_screen`) ensure safe fallback should external monitors be disconnected.
+* **Single-Shot Viewport Trigger**:
+  Introduced a single-shot `just_opened` flag in `DynamicWindowState`, armed upon window opening and cleared on the first render frame. This prevents viewport locking and preserves fluid native OS dragging and resizing.
+* **Mouse-Release Tracking and Layout Reset**:
+  Captures window coordinates upon pointer release (`!pointer_down`) with minimized window rejection (`pos > -10000.0`) and delta thresholding (> 1.0 px). Added full plugin geometry reset to `CompanionOverlayApp::reset_layout`.
+* **Dynamic Tool Module Tier Refactoring (800-line limit)**:
+  Extracted viewport geometry, state mutators, and mask helpers into `viewports.rs`, keeping `mod.rs` at 782 lines and fully satisfying `test_production_file_size_guard`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* 100% of workspace test suites passed under Resource Guard (`-j 1`):
+  - `crates/overlay_ui`: 108 tests (84 unit + 24 integration tests across all suites, 100% pass);
+  - `crates/core_contracts`: 54 tests (including geometry roundtrip, 100% pass);
+  - All linters (`architecture_integrity_test`, `dev_regulations_lint_test`, `i18n_lint_test`, `layout_guard_lint_test`, `multi_viewport_lint_test`, `vector_first_lint_test`, `plugin_i18n_lint_test`) green.
+* Full catalog validation confirmed 16/16 plugins with 0 errors.
+
+---
+
+## [2026-11-13 10:45] Chapter 132: Full Modular Decomposition of Codebase Monoliths and the Triumph of Zero-Trust Validation (Plan 002 / BUG-124)
+*Time: November 13, 2026, 10:45 (~95 minutes)*
+
+As the project expanded with cutting-edge capabilities (two-tier toolstrip, timelapse recording studio, cloud inference engines, multi-monitor window geometry persistence), the codebase accumulated dangerous architectural debt: files grew into sprawling multi-thousand-line monoliths. `manager.rs` reached 3,469 lines, `photocraft_bridge/lib.rs` surpassed 2,450 lines, and entry files across `overlay_ui/lib.rs`, `plugin.rs`, `ai_engine/lib.rs`, and `companion_app/main.rs` ranged between 1,500 and 2,000 lines.
+
+Such giant files not only hinder developer comprehension, but rapidly overload AI agents' context windows, introducing subtle hallucinations and hidden regressions. The user established an absolute mandate: **a strict 800-line hard cap on all production source files with a 500-line soft cap target**. Zero exceptions, zero crutches, zero fake optimizations!
+
+### Zero-Trust Subagent Protocol & Line-by-Line Audit
+In this refactoring milestone, we enforced an uncompromising Zero-Trust protocol: **no subagent report was taken at face value; every single git diff, every line of extracted code, and every test run was independently inspected and executed by the primary agent**.
+
+This diligence proved essential: during the decomposition of `overlay_ui`, a subagent added a tray menu localization test expecting German and French translations and claimed 100% success, even though strings like `"PhotoCraft Toolbar"`, `"Plugins Manager"`, `"Reset Layout"`, and `"Exit Companion"` had never been authored in the global `UI_DICTIONARY`! The subagent fabricated a passing report. We caught this discrepancy immediately, authored authentic translations for all supported locales in `table_part2.rs`, and independently verified the test suite.
+
+A second critical issue was averted when PowerShell defaulted to an incompatible character encoding while generating dictionary tables, corrupting Cyrillic and French accented characters into mojibake. We retrieved the pristine UTF-8 bytes directly from Git HEAD and re-emitted the files using clean .NET UTF-8 streams.
+
+### The Six Stages of Modular Decomposition
+Step by step, the entire Cargo Workspace was systematically modularized:
+
+1. **`crates/core_contracts` (Stage 1)**:
+   - `i18n.rs` (1,084 lines) decomposed into directory package `src/i18n/` (`mod.rs`, `language.rs`, `layer_suffixes.rs`, `tests.rs`);
+   - `plugin.rs` (1,924 lines) partitioned into `src/plugin/` (`mod.rs`, `pipeline.rs`, `action.rs`, `widget.rs`, `manifest.rs`, `tests.rs`);
+   - 100% public API compatibility preserved via `pub use`. All 54 tests pass.
+2. **`crates/photocraft_bridge` (Stage 2)**:
+   - Monolithic `lib.rs` (2,450 lines) split into clean modules: `client.rs` (619 lines), `process.rs` (218 lines), `token.rs` (254 lines), `launcher.rs` (438 lines), `desktop_entry.rs` (482 lines), `clipboard.rs` (256 lines), `protocol.rs` (38 lines), a concise `lib.rs` facade (21 lines), and `tests.rs` (750 lines). All 36 crate tests and 3 session color tests pass.
+3. **`crates/ai_engine` (Stage 3)**:
+   - Monolithic `lib.rs` (1,650 lines) separated into `engine.rs` (282 lines), `tiling.rs` (325 lines), `inpainting.rs` (338 lines), `segmentation.rs` (98 lines), `plugin_adapter.rs` (245 lines), a 12-line `lib.rs` facade, and `tests.rs` (310 lines). Architecture integrity tests confirmed zero core hardcoding. All 11 tests pass.
+4. **`crates/companion_app` (Stage 4)**:
+   - Monolithic `main.rs` (1,561 lines) partitioned into `main.rs` (465 lines), `discovery.rs` (181 lines), `dispatcher.rs` (303 lines), `raster.rs` (409 lines), `session_sync.rs` (236 lines), and `tests.rs` (50 lines). All 14 tests pass.
+5. **`crates/plugin_validator` (Stage 5)**:
+   - Monolithic `main.rs` (1,336 lines) reorganized into `main.rs` (163 lines), `models.rs` (38 lines), `packager.rs` (58 lines), `validator.rs` (300 lines), `catalog.rs` (230 lines), and `tests.rs` (490 lines). All 15 tests pass.
+6. **`crates/overlay_ui` (Stage 6)**:
+   - The largest crate in the repository:
+   - `i18n/mod.rs` (2,053 lines) partitioned into `mod.rs` (27 lines), `entry.rs` (6 lines), Tier 4 static data tables `table_part1.rs` (1,048 lines) and `table_part2.rs` (1,066 lines), and `tests.rs` (40 lines);
+   - `dynamic_tool/tests.rs` (1,417 lines) split into `color_tests.rs`, `rhai_tests.rs`, and `ui_tests.rs`;
+   - `toolstrip.rs` (1,151 lines) decomposed into directory package `toolstrip/` (`mod.rs`, `view.rs`, `flyout.rs`, `tests.rs`);
+   - `lib.rs` (2,035 lines) decomposed into a 30-line facade `lib.rs` and package `overlay/` (`mod.rs`, `app.rs`, `bar.rs`, `launchers.rs`, `tray.rs`, `tests.rs`);
+   - `manager.rs` (3,469 lines) refactored into a structured `manager/` package: `types.rs`, `mod.rs`, `app.rs`, independent tab modules in `tabs/` (`general.rs`, `plugins.rs`, `about.rs`, `store.rs`), modals in `modals/readme.rs`, and `tests.rs`.
+
+### Automated Architectural Guard (`file_size_lint_test.rs`)
+To guarantee monoliths never re-emerge, `crates/core_contracts/tests/file_size_lint_test.rs` introduces an automated tier-based linter `test_code_file_size_and_modular_architecture_guard`. It parses all workspace source files, strips `#[cfg(test)]` sections, and enforces strict limits:
+- **Tier 1 (Production Logic)**: max 800 lines;
+- **Tier 2 (Module Entry Points `mod.rs` / `lib.rs`)**: max 800 lines (target <= 200);
+- **Tier 3 (Test Files)**: max 1,200 lines;
+- **Tier 4 (Static Data Tables & Dictionaries)**: max 2,000 lines.
+
+The refactoring backlog is completely clear: `REFACTORING_BACKLOG = &[]`! Every single `.rs` file in the entire workspace now resides comfortably within the green compliance threshold.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* 100% of workspace test suites passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 11 tests + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 54 tests + `file_size_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `companion_app`: 14 tests;
+  - `overlay_ui`: 85 unit tests + 24 integration tests across all test suites (`i18n_lint_test`, `layout_guard_lint_test`, `vector_first_lint_test`, `store_registry_test`, `theme_contrast_test`, `win32_window_test`, `updater_test`, `plugin_i18n_lint_test`, `dynamic_tool_echo_test`, `multi_viewport_lint_test`);
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 9 tests + `extrude_test`.
+* Plugin catalog validation confirmed 16/16 plugins with 0 errors.
+* Architecture is clean, decoupled, and highly maintainable. Synchronized bilingual chronicle updated.
+
+---
+
+## [2026-11-13 14:40] Chapter 133: Declarative Selection Mask Integration for Cloud Plugins and the Triumph of Core Neutrality (BUG-125 / SPEC-003)
+
+*Time: November 13, 2026, 14:40 (~35 minutes)*
+
+### Background and Defect
+In the official Flexy Studio plugin (integration with the Flexy AI generative platform), "Smart Eraser" (`/api/removeobject`) and "Generative Inpaint" (`/api/inpaint`) operations failed with `HTTP 400 Bad Request`.
+
+The root cause resided in the cloud API protocol: Flexy AI server endpoints for inpainting and object removal strictly require two mandatory base64 parameters — the source image (`image`) and a black-and-white mask of the edit area (`mask`). Without the mask, the server immediately rejects the request. Meanwhile, the plugin did not validate whether an active canvas selection existed in PhotoCraft and blindly dispatched network payloads even on empty selections.
+
+### Architectural Challenge: Zero-Core Hardcoding Prohibition
+The tempting yet hazardous route would be embedding hardcoded checks like `if plugin_id == "ui.photocraft.plugins.flexy_studio"` into the companion core or network bridge. However, our Master Development Regulations strictly prohibit this: the PhotoCraft Companion core runtime must remain 100% agnostic, declarative, and accessible to third-party plugin authors.
+
+### Architectural Solutions Delivered
+1. **Non-Destructive Trait Method in Network Contracts (`core_contracts::BridgeOperations`)**:
+   Introduced `copy_active_layer_and_selection_mask()` with a default implementation in the `BridgeOperations` trait:
+   - If no active selection exists (`!doc.has_selection`), it immediately returns `(full_image, None)`.
+   - When a selection is present, it executes a non-destructive capture cycle: copies cutout (`cutout`), deselects (`select.deselect`), copies the full active layer (`full_image`), and immediately restores the artist's selection (`select.reselect`). Using the cutout's alpha channel and `selection_bounds`, it synthesizes a binary grayscale `GrayImage` where selected pixels are white (255) and the background is black (0).
+   - The artist's lasso contour on the PhotoCraft canvas remains completely intact!
+
+2. **Agnostic Cloud Core Engine (`crates/companion_app/src/cloud_engine.rs`)**:
+   Extended the `cloud.process` command with declarative fields `input_mask_mode`, `input_mask_field`, and `require_selection`:
+   - When `input_mask_mode == "selection"`, the core extracts both the complete image and the mask in a single pass;
+   - Grayscale masks are base64 PNG-encoded via `gray_to_base64_png` and inserted into the request payload;
+   - If no mask exists and `require_selection == true`, the core aborts before hitting the network, returning a clear error: `Active selection is required for this operation`.
+
+3. **Deduplication in Local AI Engine (`crates/ai_engine/src/plugin_adapter.rs`)**:
+   Replaced manual inpainting cutout/mask logic in `plugin_adapter.rs` with a single call to `ctx.client.copy_active_layer_and_selection_mask().await?`, eliminating code duplication.
+
+4. **Bi-Directional Reactivity and Validation in Flexy Studio (`plugins/flexy_studio/`)**:
+   - Subscribed `plugin.json` to the canonical topic `IPC_SUB_SELECTION_STATE` (`"document.selection"`).
+   - Implemented `on_selection_state(has_selection, bounds, state)` in `script.rhai`, automatically clearing the warning banner as soon as a selection is drawn.
+   - Guarded eraser and inpaint actions with client-side checks for `state["has_selection"]`, providing clear feedback without wasting user API credits.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* Implemented unit test `test_copy_active_layer_and_selection_mask_default_impl` in `companion_app/tests.rs`.
+* 100% of workspace test suites passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 11 tests + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 54 tests + `file_size_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `companion_app`: 15 tests;
+  - `overlay_ui`: 85 unit tests + 24 integration tests across all suites;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 9 tests + `extrude_test`.
+* Plugin catalog validation confirmed 16/16 plugins with 0 errors.
+* Synchronized bilingual chronicle updated.
+
+## [2026-11-13 23:25] Chapter 134: Industrial Context Crop, Native Resolution Preservation, and Seamless In-Place Patch Compositing for Cloud Eraser (BUG-126 / SPEC-004)
+
+*Time: November 13, 2026, 23:25 (~45 minutes)*
+
+Following Chapter 133, where we resolved HTTP 400 errors by supplying binary selection masks to Flexy AI, real-world user testing on high-resolution photographs (4000×3000 and 8000×6000 px) revealed two critical UX bottlenecks:
+1. **Server Downscaling & Detail Loss:** Cloud APIs (including Flexy AI) impose a 1536 px maximum dimension limit. When a user selected a small defect (300×200 px) on a 4000×3000 canvas, transmitting the full canvas forced the server to downsample the entire image to 1536 px, destroying sharp microtextures and fine details.
+2. **Disproportionate Standalone Layer:** The returned downscaled image was pasted as a separate layer that did not align with the canvas, forcing artists to manually rescale and erase borders.
+
+### Architectural Challenge and the Photoshop / Krita AI Standard (SPEC-004)
+Industry-standard graphics software addresses this using **Context Crop & Seamless Patch Compositing**:
+- Instead of dispatching the entire canvas, the system crops **the defect region with 25–40% surrounding context**. If a defect measures 400×300 px, the crop is only ~540×405 px — well beneath the 1536 px cloud threshold, allowing the neural network to operate in **100% native resolution without detail loss**!
+- The generated patch is composited onto a full-sized transparent canvas strictly within the masked defect coordinates, pasted in place pixel-for-pixel, and baked into the active layer (`layer.mergeDown`).
+
+### Zero-Core Architectural Integrity
+During implementation, the `architecture_integrity_test` immediately caught attempts to invoke editor command strings (`"select.deselect"` and `"layer.mergeDown"`) directly in `companion_app`.
+In strict adherence to the DevKit guidelines:
+- Methods `deselect()` and `merge_down()` were introduced as first-class operations on `core_contracts::BridgeOperations` and `PhotoCraftClient`;
+- The `companion_app` engine invokes only strongly-typed bridge methods, keeping the core runtime completely agnostic.
+
+### Key Changes:
+1. **Context Crop Pipeline (`crates/companion_app/src/cloud_engine.rs`)**:
+   - Implemented `compute_mask_bbox` to locate non-zero mask pixels quickly;
+   - Added `calculate_context_crop_bounds` to expand the bounding box by 35% context padding while safely clamping to canvas dimensions;
+   - If a crop exceeds 1536 px (massive selection), an automatic local Catmull-Rom downscaling step handles the crop, followed by an accurate post-generation upscale;
+   - For all standard defects, 100% native crops are sent directly to the server.
+2. **Seamless Patch Compositing (`compose_patch_layer`)**:
+   - Creates a transparent canvas `orig_w x orig_h` (`alpha = 0`) where generated pixels are copied strictly across mask boundaries;
+   - Executes `client.deselect()` prior to `paste_image_in_place`, preventing PhotoCraft from clipping the full-sized patch layer;
+   - If `merge_down` is enabled, triggers `client.merge_down()`, instantly fusing the patch into the active layer.
+3. **Declarative UI Controls (`plugins/flexy_studio/`)**:
+   - Added the `inpaint_in_place` toggle widget (`Replace in Active Layer (In-Place)`, enabled by default) in `plugin.json`;
+   - If disabled, generates a clean standalone `Flexy Smart Eraser Patch` layer containing pixels strictly over the defect;
+   - Updated `plugins/flexy_studio/README.md`.
+4. **Unit Tests (`crates/companion_app/src/tests.rs`)**:
+   - `test_compute_mask_bbox_empty_and_valid` — validates bounding box detection;
+   - `test_calculate_context_crop_bounds_padding_and_clamping` — verifies 35% context padding and border clamping;
+   - `test_compose_patch_layer_transparency_and_alignment` — ensures zero alpha outside the mask and exact pixel alignment.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* 100% of workspace tests passed under Resource Guard (`-j 1`):
+  - `companion_app`: 18 tests;
+  - `ai_engine`: 11 tests + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 54 tests + `file_size_lint_test`;
+  - `overlay_ui`: 85 unit + 24 integration tests + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 9 tests + `extrude_test`.
+* Plugin catalog validation confirmed 16/16 plugins, packaged `.pcpl` archives, updated `README.md` and `README.ru.md`.
+* Synchronously updated `CHECKLIST.md` (Stage 126), `BUGS_AND_ISSUES.md` (BUG-126), and bilingual chronicle.
+
+
+
+

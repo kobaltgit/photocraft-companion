@@ -3,14 +3,168 @@ use crate::dynamic_tool::widgets::hue_wheel::{
     calculate_wcag_contrast, find_nearest_named_color, parse_hex_color, simulate_cvd_hex,
 };
 use core_contracts::{Language, PluginIpcAction};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::UnboundedSender;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolJobStatus {
+    Running,
+    Completed,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolJobEntry {
+    pub plugin_id: String,
+    pub status: ToolJobStatus,
+    pub success: bool,
+    pub exit_code: i64,
+    pub stdout: String,
+    pub stderr: String,
+    pub error: String,
+    pub notified: bool,
+}
+
+pub fn resolve_tool_binary(tool_name: &str) -> std::path::PathBuf {
+    let check_candidate = |p: std::path::PathBuf| -> Option<std::path::PathBuf> {
+        if p.is_file() {
+            return Some(p);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            if !tool_name.ends_with(".exe") && p.with_extension("exe").is_file() {
+                return Some(p.with_extension("exe"));
+            }
+        }
+        None
+    };
+
+    let local_bin = std::path::PathBuf::from("PhotoCraftData")
+        .join("bin")
+        .join(tool_name);
+    if let Some(p) = check_candidate(local_bin) {
+        return p;
+    }
+
+    let user_bin = core_contracts::user_data_dir()
+        .join("PhotoCraftData")
+        .join("bin")
+        .join(tool_name);
+    if let Some(p) = check_candidate(user_bin) {
+        return p;
+    }
+
+    if let Some(paths) = std::env::var_os("PATH") {
+        for dir in std::env::split_paths(&paths) {
+            if let Some(p) = check_candidate(dir.join(tool_name)) {
+                return p;
+            }
+        }
+    }
+
+    std::path::PathBuf::from(tool_name)
+}
+
+pub fn clean_ffmpeg_stderr(raw_stderr: &str) -> String {
+    let filtered = raw_stderr
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            !t.starts_with("ffmpeg version")
+                && !t.starts_with("built with")
+                && !t.starts_with("configuration:")
+                && !t.starts_with("libav")
+                && !t.starts_with("libsw")
+                && !t.starts_with("libpostproc")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+    if filtered.is_empty() {
+        raw_stderr.to_string()
+    } else {
+        filtered
+    }
+}
+
+fn spawn_async_tool(
+    plugin_id: &str,
+    tool_name: &str,
+    args: rhai::Array,
+    job_id: &str,
+    jobs: Arc<std::sync::Mutex<HashMap<String, ToolJobEntry>>>,
+) -> bool {
+    let exec_target = resolve_tool_binary(tool_name);
+    let mut cmd = std::process::Command::new(exec_target);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000);
+    }
+    for arg in args {
+        if let Ok(s) = arg.into_string() {
+            cmd.arg(s);
+        }
+    }
+
+    if let Ok(mut j) = jobs.lock() {
+        j.insert(
+            job_id.to_string(),
+            ToolJobEntry {
+                plugin_id: plugin_id.to_string(),
+                status: ToolJobStatus::Running,
+                success: false,
+                exit_code: -1,
+                stdout: String::new(),
+                stderr: String::new(),
+                error: String::new(),
+                notified: false,
+            },
+        );
+    } else {
+        return false;
+    }
+
+    let job_id_str = job_id.to_string();
+    let tool_name_str = tool_name.to_string();
+    std::thread::spawn(move || {
+        let output_res = cmd.output();
+        if let Ok(mut j) = jobs.lock() {
+            if let Some(entry) = j.get_mut(&job_id_str) {
+                entry.status = ToolJobStatus::Completed;
+                match output_res {
+                    Ok(output) => {
+                        entry.success = output.status.success();
+                        entry.exit_code = output.status.code().unwrap_or(-1) as i64;
+                        entry.stdout = String::from_utf8_lossy(&output.stdout).to_string();
+                        let raw_stderr = String::from_utf8_lossy(&output.stderr).to_string();
+                        let clean_stderr = if tool_name_str == "ffmpeg" {
+                            clean_ffmpeg_stderr(&raw_stderr)
+                        } else {
+                            raw_stderr
+                        };
+                        entry.stderr = clean_stderr;
+                    }
+                    Err(e) => {
+                        entry.success = false;
+                        entry.exit_code = -1;
+                        entry.error = e.to_string();
+                    }
+                }
+            }
+        }
+    });
+
+    true
+}
 
 /// Creates and configures the standard Rhai scripting engine with all PhotoCraft plugins API bindings
 pub fn create_rhai_engine(
     action_tx: Option<UnboundedSender<PluginIpcAction>>,
     lang_arc: Arc<RwLock<Language>>,
     echo_guard: Arc<std::sync::Mutex<Option<(String, String)>>>,
+    async_tool_jobs: Arc<std::sync::Mutex<HashMap<String, ToolJobEntry>>>,
 ) -> rhai::Engine {
     let mut engine = rhai::Engine::new();
     engine.set_max_expr_depths(64, 64);
@@ -124,7 +278,12 @@ pub fn create_rhai_engine(
         "t",
         move |en: rhai::ImmutableString, ru: rhai::ImmutableString| -> String {
             let lang = *lang_t.read().unwrap();
-            if matches!(lang, Language::Ru) {
+            let is_ru = match lang {
+                Language::Ru => true,
+                Language::Auto => matches!(Language::Auto.resolve(None), Language::Ru),
+                _ => false,
+            };
+            if is_ru {
                 ru.to_string()
             } else {
                 en.to_string()
@@ -135,7 +294,12 @@ pub fn create_rhai_engine(
     let lang_curr = lang_arc.clone();
     engine.register_fn("current_language", move || -> String {
         let lang = *lang_curr.read().unwrap();
-        if matches!(lang, Language::Ru) {
+        let is_ru = match lang {
+            Language::Ru => true,
+            Language::Auto => matches!(Language::Auto.resolve(None), Language::Ru),
+            _ => false,
+        };
+        if is_ru {
             "ru".to_string()
         } else {
             "en".to_string()
@@ -303,50 +467,18 @@ pub fn create_rhai_engine(
         },
     );
 
-    // Execute CLI tool
+    // Execute CLI tool (synchronous with Windows console suppression)
     engine.register_fn(
         "execute_tool",
         |tool_name: rhai::ImmutableString, args: rhai::Array| -> rhai::Map {
             let mut map = rhai::Map::new();
-            let mut bin_path = None;
-            let check_candidate = |p: std::path::PathBuf| -> Option<std::path::PathBuf> {
-                if p.is_file() {
-                    return Some(p);
-                }
-                #[cfg(target_os = "windows")]
-                {
-                    if !tool_name.ends_with(".exe") && p.with_extension("exe").is_file() {
-                        return Some(p.with_extension("exe"));
-                    }
-                }
-                None
-            };
-
-            let local_bin = std::path::PathBuf::from("PhotoCraftData")
-                .join("bin")
-                .join(tool_name.as_str());
-            if let Some(p) = check_candidate(local_bin) {
-                bin_path = Some(p);
-            } else {
-                let user_bin = core_contracts::user_data_dir()
-                    .join("PhotoCraftData")
-                    .join("bin")
-                    .join(tool_name.as_str());
-                if let Some(p) = check_candidate(user_bin) {
-                    bin_path = Some(p);
-                } else if let Some(paths) = std::env::var_os("PATH") {
-                    for dir in std::env::split_paths(&paths) {
-                        if let Some(p) = check_candidate(dir.join(tool_name.as_str())) {
-                            bin_path = Some(p);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            let exec_target =
-                bin_path.unwrap_or_else(|| std::path::PathBuf::from(tool_name.as_str()));
+            let exec_target = resolve_tool_binary(tool_name.as_str());
             let mut cmd = std::process::Command::new(exec_target);
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+            }
             for arg in args {
                 if let Ok(s) = arg.into_string() {
                     cmd.arg(s);
@@ -368,26 +500,7 @@ pub fn create_rhai_engine(
                     );
                     let raw_stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     let clean_stderr = if tool_name.as_str() == "ffmpeg" {
-                        let filtered = raw_stderr
-                            .lines()
-                            .filter(|l| {
-                                let t = l.trim();
-                                !t.starts_with("ffmpeg version")
-                                    && !t.starts_with("built with")
-                                    && !t.starts_with("configuration:")
-                                    && !t.starts_with("libav")
-                                    && !t.starts_with("libsw")
-                                    && !t.starts_with("libpostproc")
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                            .trim()
-                            .to_string();
-                        if filtered.is_empty() {
-                            raw_stderr
-                        } else {
-                            filtered
-                        }
+                        clean_ffmpeg_stderr(&raw_stderr)
                     } else {
                         raw_stderr
                     };
@@ -400,6 +513,91 @@ pub fn create_rhai_engine(
                 }
             }
             map
+        },
+    );
+
+    // Non-blocking asynchronous CLI tool execution
+    let jobs_ref = async_tool_jobs.clone();
+    engine.register_fn(
+        "execute_tool_async",
+        move |tool_name: rhai::ImmutableString,
+              args: rhai::Array,
+              job_id: rhai::ImmutableString|
+              -> bool {
+            spawn_async_tool(
+                "",
+                tool_name.as_str(),
+                args,
+                job_id.as_str(),
+                jobs_ref.clone(),
+            )
+        },
+    );
+
+    let jobs_ref_pl = async_tool_jobs.clone();
+    engine.register_fn(
+        "execute_tool_async",
+        move |plugin_id: rhai::ImmutableString,
+              tool_name: rhai::ImmutableString,
+              args: rhai::Array,
+              job_id: rhai::ImmutableString|
+              -> bool {
+            spawn_async_tool(
+                plugin_id.as_str(),
+                tool_name.as_str(),
+                args,
+                job_id.as_str(),
+                jobs_ref_pl.clone(),
+            )
+        },
+    );
+
+    let jobs_poll = async_tool_jobs.clone();
+    engine.register_fn(
+        "poll_tool_job",
+        move |job_id: rhai::ImmutableString| -> rhai::Map {
+            let mut map = rhai::Map::new();
+            if let Ok(jobs) = jobs_poll.lock() {
+                if let Some(entry) = jobs.get(job_id.as_str()) {
+                    match entry.status {
+                        ToolJobStatus::Running => {
+                            map.insert("status".into(), rhai::Dynamic::from("running".to_string()));
+                            map.insert("running".into(), rhai::Dynamic::from(true));
+                            map.insert("completed".into(), rhai::Dynamic::from(false));
+                        }
+                        ToolJobStatus::Completed => {
+                            map.insert(
+                                "status".into(),
+                                rhai::Dynamic::from("completed".to_string()),
+                            );
+                            map.insert("running".into(), rhai::Dynamic::from(false));
+                            map.insert("completed".into(), rhai::Dynamic::from(true));
+                            map.insert("success".into(), rhai::Dynamic::from(entry.success));
+                            map.insert("exit_code".into(), rhai::Dynamic::from(entry.exit_code));
+                            map.insert("stdout".into(), rhai::Dynamic::from(entry.stdout.clone()));
+                            map.insert("stderr".into(), rhai::Dynamic::from(entry.stderr.clone()));
+                            map.insert("error".into(), rhai::Dynamic::from(entry.error.clone()));
+                        }
+                    }
+                    return map;
+                }
+            }
+            map.insert("status".into(), rhai::Dynamic::from("idle".to_string()));
+            map.insert("running".into(), rhai::Dynamic::from(false));
+            map.insert("completed".into(), rhai::Dynamic::from(false));
+            map
+        },
+    );
+
+    let jobs_clear = async_tool_jobs;
+    engine.register_fn(
+        "clear_tool_job",
+        move |job_id: rhai::ImmutableString| -> bool {
+            if let Ok(mut jobs) = jobs_clear.lock() {
+                jobs.remove(job_id.as_str()).is_some()
+            } else {
+                false
+            }
         },
     );
 

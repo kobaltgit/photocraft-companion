@@ -39,7 +39,7 @@ pub struct DynamicToolEngine {
     pub has_selection: bool,
     pub config_path: Option<std::path::PathBuf>,
     pub open_manager_requested: bool,
-    pub pending_close_viewports: Vec<egui::ViewportId>,
+    pub async_tool_jobs: Arc<std::sync::Mutex<HashMap<String, rhai_bridge::ToolJobEntry>>>,
 }
 
 impl DynamicToolEngine {
@@ -62,11 +62,13 @@ impl DynamicToolEngine {
         let lang_arc = Arc::new(RwLock::new(language));
         let echo_guard: Arc<std::sync::Mutex<Option<(String, String)>>> =
             Arc::new(std::sync::Mutex::new(None));
+        let async_tool_jobs = Arc::new(std::sync::Mutex::new(HashMap::new()));
 
         let rhai_engine = rhai_bridge::create_rhai_engine(
             action_tx.clone(),
             lang_arc.clone(),
             echo_guard.clone(),
+            async_tool_jobs.clone(),
         );
 
         for m in manifests {
@@ -119,7 +121,7 @@ impl DynamicToolEngine {
             has_selection: false,
             config_path: None,
             open_manager_requested: false,
-            pending_close_viewports: Vec::new(),
+            async_tool_jobs,
         };
 
         engine.run_all_initial_scripts();
@@ -129,74 +131,17 @@ impl DynamicToolEngine {
     pub fn set_config_path(&mut self, path: std::path::PathBuf) {
         let cfg = core_contracts::CompanionConfig::load_or_default(&path);
         self.apply_saved_modifier_stack_orders(&cfg);
+        for (id, state) in &mut self.states {
+            let (pos, size) = cfg.get_plugin_geometry(id);
+            state.last_pos = pos;
+            state.last_size = size;
+        }
         self.config_path = Some(path);
     }
 
     pub fn with_config_path(mut self, path: std::path::PathBuf) -> Self {
         self.set_config_path(path);
         self
-    }
-
-    pub fn apply_saved_modifier_stack_orders(&mut self, config: &core_contracts::CompanionConfig) {
-        for (plugin_id, manifest) in &self.manifests {
-            if let Some(ref ui_cfg) = manifest.interactive_ui {
-                if let Some(state) = self.states.get_mut(plugin_id) {
-                    for widget in &ui_cfg.widgets {
-                        Self::apply_saved_order_to_widget(plugin_id, widget, state, config);
-                    }
-                }
-            }
-        }
-    }
-
-    fn apply_saved_order_to_widget(
-        plugin_id: &str,
-        widget: &WidgetNode,
-        state: &mut DynamicWindowState,
-        config: &core_contracts::CompanionConfig,
-    ) {
-        match widget {
-            WidgetNode::ModifierStack { id, items, .. } => {
-                let qualified_key = format!("{}:{}", plugin_id, id);
-                if let Some(saved) = config
-                    .modifier_stack_orders
-                    .get(&qualified_key)
-                    .or_else(|| config.modifier_stack_orders.get(id))
-                {
-                    let mut order: Vec<String> = Vec::new();
-                    for item_id in saved {
-                        if items.iter().any(|it| &it.id == item_id) && !order.contains(item_id) {
-                            order.push(item_id.clone());
-                        }
-                    }
-                    for it in items {
-                        if !order.contains(&it.id) {
-                            order.push(it.id.clone());
-                        }
-                    }
-                    state.values.insert(
-                        format!("{}_order", id),
-                        DynamicValue::StringList(order.clone()),
-                    );
-                    state
-                        .values
-                        .insert(id.clone(), DynamicValue::StringList(order));
-                }
-            }
-            WidgetNode::Row { items } => {
-                for item in items {
-                    Self::apply_saved_order_to_widget(plugin_id, item, state, config);
-                }
-            }
-            WidgetNode::Tabs { tabs, .. } => {
-                for tab in tabs {
-                    for item in &tab.widgets {
-                        Self::apply_saved_order_to_widget(plugin_id, item, state, config);
-                    }
-                }
-            }
-            _ => {}
-        }
     }
 
     pub fn current_language(&self) -> Language {
@@ -246,41 +191,6 @@ impl DynamicToolEngine {
             state.role_mask = Some(mask);
         }
         self.preview_textures.remove(plugin_id);
-    }
-
-    pub fn clear_role_mask(&mut self, plugin_id: &str) {
-        if let Some(state) = self.states.get_mut(plugin_id) {
-            state.role_mask = None;
-        }
-        self.preview_textures.remove(plugin_id);
-    }
-
-    pub fn clear_preview_and_role_mask(&mut self, plugin_id: &str) {
-        self.preview_thumbnails.remove(plugin_id);
-        self.preview_textures.remove(plugin_id);
-        self.clear_role_mask(plugin_id);
-    }
-
-    pub fn get_role_mask(&self, plugin_id: &str) -> Option<&image::GrayImage> {
-        self.states
-            .get(plugin_id)
-            .and_then(|s| s.role_mask.as_ref())
-    }
-
-    pub fn set_busy(&mut self, plugin_id: &str, busy: bool) {
-        if let Some(state) = self.states.get_mut(plugin_id) {
-            state
-                .values
-                .insert("is_busy".to_string(), DynamicValue::Bool(busy));
-        }
-    }
-
-    pub fn is_busy(&self, plugin_id: &str) -> bool {
-        self.states
-            .get(plugin_id)
-            .and_then(|s| s.values.get("is_busy"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false)
     }
 
     pub fn dispatch_session_colors(&mut self, fg: &str, bg: &str) -> bool {
@@ -469,7 +379,7 @@ impl DynamicToolEngine {
         any_updated
     }
 
-    pub(crate) fn execute_script_state_change(&mut self, plugin_id: &str) {
+    pub fn execute_script_state_change(&mut self, plugin_id: &str) {
         if let Some(ast) = self.rhai_asts.get(plugin_id) {
             if let Some(state) = self.states.get_mut(plugin_id) {
                 rhai_bridge::execute_script_state_change(&self.rhai_engine, ast, state);
@@ -493,8 +403,33 @@ impl DynamicToolEngine {
     }
 
     pub fn render(&mut self, ctx: &egui::Context, palette: &ThemePalette) {
-        for vp_id in self.pending_close_viewports.drain(..) {
-            ctx.send_viewport_cmd_to(vp_id, egui::ViewportCommand::Close);
+        // Reactive Wakeup for background tool jobs
+        let mut completed_notifications = Vec::new();
+        let mut has_running_jobs = false;
+        if let Ok(mut jobs) = self.async_tool_jobs.lock() {
+            for (_job_id, entry) in jobs.iter_mut() {
+                if entry.status == rhai_bridge::ToolJobStatus::Running {
+                    has_running_jobs = true;
+                } else if entry.status == rhai_bridge::ToolJobStatus::Completed && !entry.notified {
+                    entry.notified = true;
+                    if !entry.plugin_id.is_empty() {
+                        completed_notifications.push(entry.plugin_id.clone());
+                    } else {
+                        for (id, state) in &self.states {
+                            if state.is_open {
+                                completed_notifications.push(id.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for plugin_id in completed_notifications {
+            self.execute_script_state_change(&plugin_id);
+            ctx.request_repaint();
+        }
+        if has_running_jobs {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
 
         let plugin_ids: Vec<String> = self
@@ -517,7 +452,7 @@ impl DynamicToolEngine {
             let mut is_open = true;
             let mut state_changed = false;
 
-            let (win_title, default_w, default_h) = {
+            let (win_title, default_w, default_h, just_opened, saved_pos, saved_size) = {
                 let state = match self.states.get(&plugin_id) {
                     Some(s) => s,
                     None => continue,
@@ -526,6 +461,9 @@ impl DynamicToolEngine {
                     state.title.clone(),
                     state.default_width,
                     state.default_height,
+                    state.just_opened,
+                    state.last_pos,
+                    state.last_size,
                 )
             };
 
@@ -535,15 +473,46 @@ impl DynamicToolEngine {
             let min_w = if is_split { 460.0 } else { 260.0 };
             let min_h = if is_split { 220.0 } else { 180.0 };
 
+            let [target_w, target_h] = saved_size.unwrap_or([default_w, default_h]);
+            let target_w = target_w.max(min_w);
+            let target_h = target_h.max(min_h);
+
             #[allow(unused_mut)]
             let mut vp = egui::ViewportBuilder::default()
                 .with_title(&win_title)
-                .with_inner_size([default_w, default_h])
+                .with_inner_size([target_w, target_h])
                 .with_min_inner_size([min_w, min_h])
                 .with_resizable(true)
                 .with_always_on_top();
 
-            #[cfg(not(windows))]
+            if just_opened {
+                let toolbar_rect = ctx
+                    .input(|i| i.viewport().outer_rect)
+                    .map(|r| [r.min.x, r.min.y, r.max.x, r.max.y])
+                    .unwrap_or([100.0, 100.0, 300.0, 170.0]);
+                let is_vertical =
+                    (toolbar_rect[3] - toolbar_rect[1]) > (toolbar_rect[2] - toolbar_rect[0]);
+                let spawn_pos = if let Some(pos) = saved_pos {
+                    if crate::win32_window::is_position_visible_on_screen(pos, [target_w, target_h])
+                    {
+                        pos
+                    } else {
+                        crate::win32_window::calculate_adjacent_spawn_position(
+                            toolbar_rect,
+                            [target_w, target_h],
+                            is_vertical,
+                        )
+                    }
+                } else {
+                    crate::win32_window::calculate_adjacent_spawn_position(
+                        toolbar_rect,
+                        [target_w, target_h],
+                        is_vertical,
+                    )
+                };
+                vp = vp.with_position(egui::pos2(spawn_pos[0], spawn_pos[1]));
+            }
+
             {
                 let win_icon_sz = crate::icons::get_system_window_icon_size();
                 if let Some(icon) = crate::icons::get_egui_icon_data(win_icon_sz) {
@@ -552,6 +521,55 @@ impl DynamicToolEngine {
             }
 
             ctx.show_viewport_immediate(viewport_id, vp, |sub_ctx, _class| {
+                if let Some(state) = self.states.get_mut(&plugin_id) {
+                    state.just_opened = false;
+                }
+
+                if !sub_ctx.input(|i| i.pointer.any_down()) {
+                    let outer_rect = sub_ctx.input(|i| i.viewport().outer_rect);
+                    let inner_rect = sub_ctx.input(|i| i.viewport().inner_rect);
+                    if let Some(outer) = outer_rect {
+                        let inner = inner_rect.unwrap_or(outer);
+                        let pos = [outer.min.x, outer.min.y];
+                        let size = [inner.width(), inner.height()];
+                        if pos[0].is_finite()
+                            && pos[1].is_finite()
+                            && size[0].is_finite()
+                            && size[1].is_finite()
+                            && pos[0] > -10000.0
+                            && pos[1] > -10000.0
+                            && size[0] > 10.0
+                            && size[1] > 10.0
+                        {
+                            let mut should_save = false;
+                            if let Some(state) = self.states.get_mut(&plugin_id) {
+                                let pos_changed = match state.last_pos {
+                                    Some(last) => {
+                                        (last[0] - pos[0]).abs() > 1.0
+                                            || (last[1] - pos[1]).abs() > 1.0
+                                    }
+                                    None => true,
+                                };
+                                let size_changed = match state.last_size {
+                                    Some(last) => {
+                                        (last[0] - size[0]).abs() > 1.0
+                                            || (last[1] - size[1]).abs() > 1.0
+                                    }
+                                    None => true,
+                                };
+                                if pos_changed || size_changed {
+                                    state.last_pos = Some(pos);
+                                    state.last_size = Some(size);
+                                    should_save = true;
+                                }
+                            }
+                            if should_save {
+                                self.save_plugin_geometry(&plugin_id, pos, size);
+                            }
+                        }
+                    }
+                }
+
                 if sub_ctx.input(|i| i.viewport().close_requested()) {
                     is_open = false;
                 }
@@ -752,7 +770,6 @@ impl DynamicToolEngine {
                 if closed {
                     self.execute_script_state_change(&plugin_id);
                 }
-                ctx.send_viewport_cmd_to(viewport_id, egui::ViewportCommand::Close);
             }
 
             if state_changed {

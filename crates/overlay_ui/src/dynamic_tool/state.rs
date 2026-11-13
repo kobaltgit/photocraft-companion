@@ -75,6 +75,10 @@ pub struct DynamicWindowState {
     pub default_height: f32,
     pub role_mask: Option<image::GrayImage>,
     pub dynamic_badge: Option<core_contracts::DynamicBadgeState>,
+    pub icon_cache: crate::icons::SvgIconCache,
+    pub last_pos: Option<[f32; 2]>,
+    pub last_size: Option<[f32; 2]>,
+    pub just_opened: bool,
 }
 
 impl DynamicWindowState {
@@ -104,6 +108,10 @@ impl DynamicWindowState {
             default_height: config.default_height.unwrap_or(480.0),
             role_mask: None,
             dynamic_badge: config.dynamic_badge.clone(),
+            icon_cache: crate::icons::SvgIconCache::new(),
+            last_pos: None,
+            last_size: None,
+            just_opened: false,
         }
     }
 
@@ -143,6 +151,11 @@ impl DynamicWindowState {
                 }
             }
             WidgetNode::Dropdown {
+                id, default_index, ..
+            } => {
+                values.insert(id.clone(), DynamicValue::Index(*default_index));
+            }
+            WidgetNode::Segmented {
                 id, default_index, ..
             } => {
                 values.insert(id.clone(), DynamicValue::Index(*default_index));
@@ -245,6 +258,26 @@ impl DynamicWindowState {
                         DynamicValue::Number(it.default),
                     );
                 }
+            }
+            WidgetNode::TextInput {
+                id,
+                default,
+                is_password,
+                action_button_id,
+                ..
+            } => {
+                let s = default.clone().unwrap_or_default();
+                values.insert(id.clone(), DynamicValue::String(s));
+                if *is_password {
+                    values.insert(format!("{}_visible", id), DynamicValue::Bool(false));
+                }
+                if let Some(btn_id) = action_button_id {
+                    values.insert(format!("action_{}", btn_id), DynamicValue::Bool(false));
+                }
+            }
+            WidgetNode::ProgressBar { id, .. } => {
+                values.insert(id.clone(), DynamicValue::Number(0.0));
+                values.insert(format!("{}_text", id), DynamicValue::String(String::new()));
             }
             WidgetNode::Separator => {}
         }

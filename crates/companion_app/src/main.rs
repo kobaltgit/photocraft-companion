@@ -1,212 +1,36 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod win32_theme;
-use win32_theme::apply_win32_menu_theme;
-
-mod algorithm_engine;
-use algorithm_engine::GenericAlgorithmPlugin;
-
-mod workflow_engine;
-
 use ai_engine::{AiEngine, GenericAiPlugin};
+use algorithm_engine::GenericAlgorithmPlugin;
 use core_contracts::{
-    ExecutionState, PluginContext, PluginManifest, PluginRegistry, PluginType,
-    SharedExecutionStatus,
+    ExecutionState, PluginContext, PluginRegistry, PluginType, SharedExecutionStatus,
 };
+use discovery::{find_photocraft_data_dir, find_plugins_dir};
+use dispatcher::{spawn_action_dispatcher, spawn_ipc_action_dispatcher};
 use overlay_ui::{
     get_system_small_icon_size, get_tray_icon, DynamicToolEngine, OverlayBar, ThemeMode,
 };
 use photocraft_bridge::PhotoCraftClient;
-use std::collections::HashMap;
-use std::path::PathBuf;
+use session_sync::spawn_session_sync_worker;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
 use tracing::info;
-use tray_icon::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
-    TrayIconBuilder,
-};
+use tray_icon::TrayIconBuilder;
+use win32_theme::apply_win32_menu_theme;
 
-fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let file_type = entry.file_type()?;
-        let dest_path = dst.join(entry.file_name());
-        if file_type.is_dir() {
-            copy_dir_all(&entry.path(), &dest_path)?;
-        } else {
-            std::fs::copy(entry.path(), dest_path)?;
-        }
-    }
-    Ok(())
-}
+mod algorithm_engine;
+mod cloud_engine;
+mod discovery;
+mod dispatcher;
+mod raster;
+mod session_sync;
+mod win32_theme;
+mod workflow_engine;
 
-fn find_plugins_dir() -> PathBuf {
-    let user_plugins = core_contracts::user_data_dir().join("plugins");
-
-    // 1. Discover bundled/adjacent plugins directory
-    let mut bundled_plugins = None;
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            let adjacent = exe_dir.join("plugins");
-            if adjacent.is_dir() {
-                bundled_plugins = Some(adjacent);
-            } else if let Some(target_dir) = exe_dir.parent() {
-                if let Some(root) = target_dir.parent() {
-                    let candidate = root.join("plugins");
-                    if candidate.is_dir() {
-                        bundled_plugins = Some(candidate);
-                    }
-                }
-            }
-        }
-    }
-    if bundled_plugins.is_none() {
-        if let Ok(cwd) = std::env::current_dir() {
-            let mut cur = cwd.as_path();
-            for _ in 0..5 {
-                let candidate = cur.join("plugins");
-                if candidate.is_dir() {
-                    bundled_plugins = Some(candidate);
-                    break;
-                }
-                if let Some(parent) = cur.parent() {
-                    cur = parent;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    if let Some(bundled) = bundled_plugins {
-        // If bundled directory is writable, use it directly (portable mode)
-        if core_contracts::is_dir_writable(&bundled) {
-            return bundled;
-        }
-
-        // If bundled directory is read-only (e.g. macOS DMG or Windows Program Files),
-        // ensure writable user_plugins directory and copy bundled plugins if empty
-        let _ = std::fs::create_dir_all(&user_plugins);
-        sync_missing_bundled_plugins(&bundled, &user_plugins);
-        return user_plugins;
-    }
-
-    let _ = std::fs::create_dir_all(&user_plugins);
-    user_plugins
-}
-
-fn sync_missing_bundled_plugins(bundled_dir: &std::path::Path, user_dir: &std::path::Path) {
-    let bundled_entries = match std::fs::read_dir(bundled_dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    let mut existing_ids = std::collections::HashSet::new();
-    let mut existing_folders = std::collections::HashSet::new();
-    if let Ok(user_entries) = std::fs::read_dir(user_dir) {
-        for entry in user_entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                existing_folders.insert(entry.file_name().to_string_lossy().to_string());
-                let manifest_path = path.join("plugin.json");
-                if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-                    if let Ok(manifest) =
-                        serde_json::from_str::<core_contracts::PluginManifest>(&content)
-                    {
-                        existing_ids.insert(manifest.id);
-                    }
-                }
-            }
-        }
-    }
-
-    for entry in bundled_entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let folder_name = entry.file_name().to_string_lossy().to_string();
-        if existing_folders.contains(&folder_name) {
-            continue;
-        }
-
-        let manifest_path = path.join("plugin.json");
-        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-            if let Ok(manifest) = serde_json::from_str::<core_contracts::PluginManifest>(&content) {
-                if existing_ids.contains(&manifest.id) {
-                    continue;
-                }
-            }
-        }
-
-        let target = user_dir.join(&folder_name);
-        tracing::info!(
-            "Seeding missing bundled plugin '{}' to user directory: {}",
-            folder_name,
-            target.display()
-        );
-        let _ = copy_dir_all(&path, &target);
-    }
-}
-
-fn find_photocraft_data_dir() -> PathBuf {
-    // 1. Check directory of currently running PhotoCraft process
-    if let Some(proc_dir) = PhotoCraftClient::find_running_photocraft_dir() {
-        let candidate = proc_dir.join("PhotoCraftData");
-        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
-            return candidate;
-        }
-    }
-
-    // 2. Check local relative directory or parents (portable mode)
-    let mut candidates = Vec::new();
-    candidates.push(PathBuf::from("PhotoCraftData"));
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(exe_dir) = exe.parent() {
-            candidates.push(exe_dir.join("PhotoCraftData"));
-            if let Some(parent) = exe_dir.parent() {
-                candidates.push(parent.join("PhotoCraftData"));
-                if let Some(grandparent) = parent.parent() {
-                    candidates.push(grandparent.join("PhotoCraftData"));
-                }
-            }
-        }
-    }
-    if let Ok(cwd) = std::env::current_dir() {
-        let mut cur = cwd.as_path();
-        for _ in 0..5 {
-            candidates.push(cur.join("PhotoCraftData"));
-            if let Some(parent) = cur.parent() {
-                cur = parent;
-            } else {
-                break;
-            }
-        }
-    }
-
-    for candidate in candidates {
-        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
-            return candidate;
-        }
-    }
-
-    // 3. Check AppData or user home standard directory
-    if let Ok(appdata) = std::env::var("APPDATA") {
-        let candidate = PathBuf::from(appdata).join("PhotoCraft");
-        if candidate.is_dir() && core_contracts::is_dir_writable(&candidate) {
-            return candidate;
-        }
-    }
-
-    // 4. Guaranteed writable user data directory (macOS ~/Library/Application Support, Linux ~/.config, Windows %LOCALAPPDATA%)
-    let user_data = core_contracts::user_data_dir().join("PhotoCraftData");
-    let _ = std::fs::create_dir_all(&user_data);
-    user_data
-}
+#[cfg(test)]
+mod tests;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -370,16 +194,15 @@ fn main() -> anyhow::Result<()> {
 
     // Initialize System Tray Icon on the main OS thread using user's SVG icon
     let tray_icon = if gtk_initialized {
-        let tray_menu = Menu::new();
-        let open_toolbar_item = MenuItem::with_id("tray_toolbar", "PhotoCraft Toolbar", true, None);
-        let open_manager_item = MenuItem::with_id("tray_manager", "Plugins Manager", true, None);
-        let separator = PredefinedMenuItem::separator();
-        let exit_item = MenuItem::with_id("tray_exit", "Exit Companion", true, None);
-
-        let _ = tray_menu.append(&open_toolbar_item);
-        let _ = tray_menu.append(&open_manager_item);
-        let _ = tray_menu.append(&separator);
-        let _ = tray_menu.append(&exit_item);
+        let app_cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+        let cfg_lang = core_contracts::Language::from_str_code(&app_cfg.language);
+        let resolved_auto = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+        let startup_lang = if cfg_lang == core_contracts::Language::Auto {
+            resolved_auto.safe_ui_language()
+        } else {
+            cfg_lang.safe_ui_language()
+        };
+        let tray_menu = overlay_ui::create_tray_menu(startup_lang);
 
         let mut tray_builder = TrayIconBuilder::new()
             .with_menu(Box::new(tray_menu))
@@ -454,7 +277,7 @@ fn main() -> anyhow::Result<()> {
 
     // Action execution worker for toolstrip clicks
     let manifests = registry.list_manifests().to_vec();
-    let (action_tx, mut action_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let (action_tx, action_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     let client_exec = client.clone();
     let registry_exec = Arc::new(Mutex::new(registry));
     let data_dir_exec = data_dir.clone();
@@ -464,214 +287,29 @@ fn main() -> anyhow::Result<()> {
     let exec_status: SharedExecutionStatus = Arc::new(std::sync::Mutex::new(ExecutionState::Idle));
     let exec_status_worker = exec_status.clone();
 
-    rt.spawn(async move {
-        while let Some(raw_action) = action_rx.recv().await {
-            let req = core_contracts::ActionRequest::from(raw_action);
-            info!(
-                "Dispatching action request '{}' (action: {}, sub: {:?})...",
-                req, req.action_id, req.sub_action_id
-            );
-
-            let action_name = {
-                let reg = registry_exec.lock().await;
-                reg.get(&req.action_id)
-                    .map(|p| p.manifest().name.clone())
-                    .unwrap_or_else(|| req.action_id.clone())
-            };
-
-            let t_start = Instant::now();
-            *exec_status_worker.lock().unwrap() = ExecutionState::Running {
-                action_id: req.to_string(),
-                action_name: action_name.clone(),
-                started_at: t_start,
-            };
-
-            if let Some(cmd) = req.action_id.strip_prefix("engine:") {
-                info!("Executing PhotoCraft engine command '{}'...", cmd);
-                match client_exec
-                    .execute_command(cmd, serde_json::json!({}))
-                    .await
-                {
-                    Ok(res) => {
-                        let elapsed = t_start.elapsed().as_secs_f32();
-                        info!("Engine command '{}' executed successfully: {:?}", cmd, res);
-                        *exec_status_worker.lock().unwrap() = ExecutionState::Success {
-                            action_name,
-                            message: format!("Command '{cmd}' completed"),
-                            duration_secs: elapsed,
-                            finished_at: Instant::now(),
-                        };
-                    }
-                    Err(e) => {
-                        tracing::error!("Engine command '{}' failed: {}", cmd, e);
-                        *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                            action_name,
-                            error: e.to_string(),
-                            finished_at: Instant::now(),
-                        };
-                    }
-                }
-            } else if let Ok(doc) = client_exec.get_document_info().await {
-                let reg = registry_exec.lock().await;
-                if let Some(plugin) = reg.get(&req.action_id) {
-                    let manifest = plugin.manifest().clone();
-                    let plugin_dir = manifest
-                        .plugin_dir
-                        .clone()
-                        .unwrap_or_else(|| plugins_dir_exec.join(&manifest.id));
-
-                    let current_host_lang = core_contracts::Language::Auto
-                        .resolve(Some(&prefs_path_exec))
-                        .code()
-                        .to_string();
-
-                    let mut exec_ctx = workflow_engine::ExecutionContext {
-                        source_layer_id: doc.active_layer,
-                        result_layer_id: None,
-                        active_layer_id: doc.active_layer,
-                        document_id: None,
-                        document_width: doc.width,
-                        document_height: doc.height,
-                        has_selection: doc.has_selection,
-                        fg_color: None,
-                        bg_color: None,
-                        custom_vars: std::collections::HashMap::new(),
-                        host_language: Some(current_host_lang),
-                    };
-
-                    // 1. Pre-commands (only for non-NoCode plugins, as NoCode commands ARE the plugin body)
-                    if manifest.plugin_type != PluginType::NoCode && !manifest.commands.is_empty() {
-                        if let Err(e) = workflow_engine::execute_steps(
-                            &manifest.commands,
-                            &mut exec_ctx,
-                            client_exec.as_ref(),
-                        )
-                        .await
-                        {
-                            *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                                action_name,
-                                error: format!("Pre-commands failed: {e}"),
-                                finished_at: Instant::now(),
-                            };
-                            continue;
-                        }
-                    }
-
-                    // 2. Main plugin execution
-                    let plugin_ctx = PluginContext {
-                        document: doc,
-                        models_dir: data_dir_exec.join("models"),
-                        plugin_dir,
-                        client: client_exec.clone(),
-                        sub_action_id: req.sub_action_id.clone(),
-                    };
-
-                    match plugin.execute(&plugin_ctx).await {
-                        Ok(res) => {
-                            if let Some(ref data) = res.data {
-                                if let Some(src) =
-                                    data.get("source_layer_id").and_then(|v| v.as_u64())
-                                {
-                                    exec_ctx.source_layer_id = Some(src);
-                                }
-                                if let Some(out_id) =
-                                    data.get("result_layer_id").and_then(|v| v.as_u64())
-                                {
-                                    exec_ctx.result_layer_id = Some(out_id);
-                                }
-                            }
-
-                            // 3. Post-commands (sub_action variant or manifest fallback)
-                            let chosen_sub = req.sub_action_id.as_ref().and_then(|sub_id| {
-                                manifest.sub_actions.iter().find(|s| &s.id == sub_id)
-                            });
-                            let post_steps = if let Some(sub) = chosen_sub {
-                                &sub.post_commands
-                            } else {
-                                &manifest.post_commands
-                            };
-
-                            if !post_steps.is_empty() {
-                                if let Err(e) = workflow_engine::execute_steps(
-                                    post_steps,
-                                    &mut exec_ctx,
-                                    client_exec.as_ref(),
-                                )
-                                .await
-                                {
-                                    *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                                        action_name,
-                                        error: format!("Post-commands failed: {e}"),
-                                        finished_at: Instant::now(),
-                                    };
-                                    continue;
-                                }
-                            }
-
-                            // 4. Persist active sub-action to config
-                            if let Some(ref sub_id) = req.sub_action_id {
-                                let mut cfg = core_contracts::CompanionConfig::load_or_default(
-                                    &config_path_exec,
-                                );
-                                cfg.active_sub_actions
-                                    .insert(manifest.id.clone(), sub_id.clone());
-                                let _ = cfg.save(&config_path_exec);
-                            }
-
-                            let elapsed = t_start.elapsed().as_secs_f32();
-                            info!("Action '{}' finished successfully: {}", req, res.message);
-                            *exec_status_worker.lock().unwrap() = ExecutionState::Success {
-                                action_name,
-                                message: res.message,
-                                duration_secs: elapsed,
-                                finished_at: Instant::now(),
-                            };
-                        }
-                        Err(e) => {
-                            tracing::error!("Action '{}' failed: {}", req, e);
-                            *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                                action_name,
-                                error: e.to_string(),
-                                finished_at: Instant::now(),
-                            };
-                        }
-                    }
-                } else {
-                    tracing::warn!("Action '{}' not found in registry", req.action_id);
-                    *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                        action_name,
-                        error: format!("Action '{}' not found in registry", req.action_id),
-                        finished_at: Instant::now(),
-                    };
-                }
-            } else {
-                let conn_st = client_exec.verify_connection().await;
-                let err_msg = match conn_st {
-                    core_contracts::ConnectionState::AuthRequired => {
-                        "PhotoCraft authentication required. Please set valid token in Settings."
-                            .to_string()
-                    }
-                    core_contracts::ConnectionState::Offline => {
-                        "PhotoCraft is offline or unreachable on port 18492.".to_string()
-                    }
-                    core_contracts::ConnectionState::Connected => {
-                        "No active document open in PhotoCraft.".to_string()
-                    }
-                };
-                tracing::warn!("Failed to execute action '{}': {}", req, err_msg);
-                *exec_status_worker.lock().unwrap() = ExecutionState::Error {
-                    action_name,
-                    error: err_msg,
-                    finished_at: Instant::now(),
-                };
-            }
-        }
-    });
+    spawn_action_dispatcher(
+        &rt,
+        action_rx,
+        client_exec,
+        registry_exec,
+        data_dir_exec,
+        plugins_dir_exec,
+        config_path_exec,
+        prefs_path_exec,
+        exec_status_worker,
+    );
 
     // Initialize DynamicToolEngine and UI repaint context holder at composition root
-    let (ipc_action_tx, mut ipc_action_rx) =
+    let (ipc_action_tx, ipc_action_rx) =
         tokio::sync::mpsc::unbounded_channel::<core_contracts::PluginIpcAction>();
-    let current_lang = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+    let app_cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+    let cfg_lang = core_contracts::Language::from_str_code(&app_cfg.language);
+    let resolved_auto = core_contracts::Language::Auto.resolve(Some(&prefs_path));
+    let current_lang = if cfg_lang == core_contracts::Language::Auto {
+        resolved_auto
+    } else {
+        cfg_lang
+    };
     let mut dyn_engine =
         DynamicToolEngine::new_with_language(&manifests, Some(ipc_action_tx.clone()), current_lang);
     dyn_engine.set_config_path(config_path.clone());
@@ -682,54 +320,16 @@ fn main() -> anyhow::Result<()> {
     let client_ipc = client.clone();
     let dynamic_engine_ipc = dynamic_engine.clone();
     let egui_ctx_holder_ipc = egui_ctx_holder.clone();
-    rt_handle.spawn(async move {
-        while let Some(action) = ipc_action_rx.recv().await {
-            info!(
-                "Executing IPC action '{}' with params: {}",
-                action.command, action.params
-            );
-            if action.command == "tools.setColors" {
-                let fg = action.params.get("foreground").and_then(|v| v.as_str());
-                let bg = action.params.get("background").and_then(|v| v.as_str());
-                if let Err(e) = client_ipc.set_colors(fg, bg).await {
-                    tracing::warn!("Failed to set colors via IPC: {e}");
-                }
-            } else if action.command == "raster.process" {
-                if let Err(e) = execute_raster_process_action(
-                    &client_ipc,
-                    &action.params,
-                    &dynamic_engine_ipc,
-                    &egui_ctx_holder_ipc,
-                )
-                .await
-                {
-                    tracing::error!("Failed to execute raster.process: {e}");
-                }
-            } else {
-                let first_try = client_ipc
-                    .execute_command(&action.command, action.params.clone())
-                    .await;
-                if let Err(e) = first_try {
-                    let host_lang = core_contracts::Language::Auto.resolve(None).code();
-                    let (translated, changed) =
-                        workflow_engine::runner::translate_value_to_host(&action.params, host_lang);
-                    if changed {
-                        if let Err(retry_err) = client_ipc
-                            .execute_command(&action.command, translated)
-                            .await
-                        {
-                            tracing::warn!(
-                                "Failed to execute IPC action '{}' (retry failed: {retry_err}, original: {e})",
-                                action.command
-                            );
-                        }
-                    } else {
-                        tracing::warn!("Failed to execute IPC action '{}': {e}", action.command);
-                    }
-                }
-            }
-        }
-    });
+    let config_path_ipc = config_path.clone();
+
+    spawn_ipc_action_dispatcher(
+        &rt_handle,
+        ipc_action_rx,
+        client_ipc,
+        dynamic_engine_ipc,
+        egui_ctx_holder_ipc,
+        config_path_ipc,
+    );
 
     if is_daemon_only {
         println!("\nPhotoCraft Companion is active in system tray! (Press Ctrl+C to stop)");
@@ -765,41 +365,42 @@ fn main() -> anyhow::Result<()> {
     let config_path_for_launch = config_path.clone();
     let rt_handle_launch = rt_handle.clone();
     let on_launch_requested: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-        let cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
-        let configured_path = cfg.photocraft_path.as_deref();
-        let resolved_exe = PhotoCraftClient::find_photocraft_executable(configured_path)
-            .or_else(|| {
-                info!("PhotoCraft executable not automatically found. Prompting user to select application...");
-                let mut dialog = rfd::FileDialog::new()
-                    .set_title("Locate PhotoCraft Application / Executable");
-                #[cfg(target_os = "windows")]
-                {
-                    dialog = dialog.add_filter("Executable", &["exe"]);
-                }
-                #[cfg(target_os = "macos")]
-                {
-                    dialog = dialog.add_filter("PhotoCraft App / Executable", &["app", ""]);
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    dialog = dialog
-                        .add_filter(
-                            "PhotoCraft Executable / AppImage / Desktop Entry",
-                            &["AppImage", "appimage", "desktop", "bin", ""],
-                        )
-                        .add_filter("All Files (*)", &["*"]);
-                }
-                if let Some(picked) = dialog.pick_file() {
-                    let mut updated_cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
-                    updated_cfg.photocraft_path = Some(picked.clone());
-                    if let Err(e) = updated_cfg.save(&config_path_for_launch) {
-                        tracing::warn!("Failed to save photocraft_path: {e}");
+        let current_cfg = core_contracts::CompanionConfig::load_or_default(&config_path_for_launch);
+        let resolved_exe =
+            PhotoCraftClient::find_photocraft_executable(current_cfg.photocraft_path.as_deref())
+                .or_else(|| {
+                    let mut dialog =
+                        rfd::FileDialog::new().set_title("Locate PhotoCraft Executable");
+                    #[cfg(target_os = "windows")]
+                    {
+                        dialog = dialog.add_filter("Executable", &["exe"]);
                     }
-                    PhotoCraftClient::find_photocraft_executable(Some(&picked))
-                } else {
-                    None
-                }
-            });
+                    #[cfg(target_os = "macos")]
+                    {
+                        dialog = dialog.add_filter("PhotoCraft App / Executable", &["app", ""]);
+                    }
+                    #[cfg(target_os = "linux")]
+                    {
+                        dialog = dialog
+                            .add_filter(
+                                "PhotoCraft Executable / AppImage / Desktop Entry",
+                                &["AppImage", "appimage", "desktop", "bin", ""],
+                            )
+                            .add_filter("All Files (*)", &["*"]);
+                    }
+                    if let Some(picked) = dialog.pick_file() {
+                        let mut updated_cfg = core_contracts::CompanionConfig::load_or_default(
+                            &config_path_for_launch,
+                        );
+                        updated_cfg.photocraft_path = Some(picked.clone());
+                        if let Err(e) = updated_cfg.save(&config_path_for_launch) {
+                            tracing::warn!("Failed to save photocraft_path: {e}");
+                        }
+                        PhotoCraftClient::find_photocraft_executable(Some(&picked))
+                    } else {
+                        None
+                    }
+                });
 
         if let Some(exe_path) = resolved_exe {
             info!(
@@ -809,6 +410,7 @@ fn main() -> anyhow::Result<()> {
             match PhotoCraftClient::launch_photocraft(&exe_path, port, None) {
                 Ok(_child) => {
                     info!("PhotoCraft process spawned successfully!");
+                    PhotoCraftClient::invalidate_process_running_cache();
                     let c = client_for_launch.clone();
                     rt_handle_launch.spawn(async move {
                         for _ in 0..10 {
@@ -830,199 +432,16 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    // Background poller for live active session colors (PhotoCraft -> Plugins)
-    let client_colors = client.clone();
-    let dynamic_engine_colors = dynamic_engine.clone();
-    let is_conn_colors = is_connected.clone();
-    let ctx_holder_colors = egui_ctx_holder.clone();
-    let ai_colors = ai.clone();
-    let manifests_map: Arc<HashMap<String, PluginManifest>> = Arc::new(
-        manifests
-            .iter()
-            .map(|m| (m.id.clone(), m.clone()))
-            .collect(),
+    // Background poller for live active session colors and document info
+    spawn_session_sync_worker(
+        &rt_handle,
+        client.clone(),
+        dynamic_engine.clone(),
+        is_connected.clone(),
+        egui_ctx_holder.clone(),
+        ai,
+        &manifests,
     );
-
-    rt_handle.spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_millis(400));
-        loop {
-            interval.tick().await;
-            if !is_conn_colors.load(Ordering::Relaxed) {
-                continue;
-            }
-
-            if let Ok(doc) = client_colors.get_document_info().await {
-                let updated_sel = {
-                    if let Ok(mut engine) = dynamic_engine_colors.lock() {
-                        let prev = engine.has_selection;
-                        engine.has_selection = doc.has_selection;
-                        let dispatched = engine
-                            .dispatch_selection_state(doc.has_selection, doc.selection_bounds);
-                        let rev_dispatched = if doc.revision > 0 {
-                            engine.dispatch_document_revision(doc.revision)
-                        } else {
-                            false
-                        };
-                        dispatched || rev_dispatched || (prev != doc.has_selection)
-                    } else {
-                        false
-                    }
-                };
-                if updated_sel {
-                    if let Ok(guard) = ctx_holder_colors.lock() {
-                        if let Some(ctx) = guard.as_ref() {
-                            ctx.request_repaint();
-                        }
-                    }
-                }
-            }
-
-            let needs_sync = {
-                if let Ok(engine) = dynamic_engine_colors.lock() {
-                    engine
-                        .has_open_windows_with_subscription(core_contracts::IPC_SUB_SESSION_COLORS)
-                } else {
-                    false
-                }
-            };
-
-            if needs_sync {
-                if let Ok((fg, bg)) = client_colors.get_session_colors().await {
-                    let updated = {
-                        if let Ok(mut engine) = dynamic_engine_colors.lock() {
-                            engine.dispatch_session_colors(&fg, &bg)
-                        } else {
-                            false
-                        }
-                    };
-                    if updated {
-                        if let Ok(guard) = ctx_holder_colors.lock() {
-                            if let Some(ctx) = guard.as_ref() {
-                                ctx.request_repaint();
-                            }
-                        }
-                    }
-                }
-            }
-
-            let subscribed_image_plugin = {
-                if let Ok(engine) = dynamic_engine_colors.lock() {
-                    engine.first_open_window_with_subscription(
-                        core_contracts::IPC_SUB_ACTIVE_LAYER_IMAGE,
-                    )
-                } else {
-                    None
-                }
-            };
-
-            if let Some(plugin_id) = subscribed_image_plugin {
-                let needs_thumb = {
-                    if let Ok(engine) = dynamic_engine_colors.lock() {
-                        engine.get_preview_image(&plugin_id).is_none()
-                    } else {
-                        false
-                    }
-                };
-
-                if needs_thumb {
-                    if let Ok(img) = client_colors.copy_active_layer_image().await {
-                        let orig_w = img.width();
-                        let orig_h = img.height();
-                        if orig_w > 0 && orig_h > 0 {
-                            let scale =
-                                raster_engine::calculate_preview_scale(orig_w, orig_h, 1280);
-                            let target_w = ((orig_w as f32 * scale).round() as u32).max(1);
-                            let target_h = ((orig_h as f32 * scale).round() as u32).max(1);
-                            let thumbnail = image::imageops::resize(
-                                &img,
-                                target_w,
-                                target_h,
-                                image::imageops::FilterType::Triangle,
-                            );
-                            if let Ok(mut engine) = dynamic_engine_colors.lock() {
-                                engine.set_preview_image(&plugin_id, thumbnail, scale);
-                            }
-                            if let Ok(guard) = ctx_holder_colors.lock() {
-                                if let Some(ctx) = guard.as_ref() {
-                                    ctx.request_repaint();
-                                }
-                            }
-
-                            // If plugin declares auto_run_model_role, run model inference asynchronously
-                            if let Some(m) = manifests_map.get(&plugin_id) {
-                                if let Some(ref ui_cfg) = m.interactive_ui {
-                                    if let Some(ref role) = ui_cfg.auto_run_model_role {
-                                        if let Some(model_req) = m.model_by_role(role) {
-                                            if let Some(model_path) = ai_colors.resolve_model_path(
-                                                &model_req.name,
-                                                m.plugin_dir.as_deref(),
-                                            ) {
-                                                if let Some(ref ai_cfg) = m.ai {
-                                                    if let Ok(mut engine) =
-                                                        dynamic_engine_colors.lock()
-                                                    {
-                                                        engine.set_busy(&plugin_id, true);
-                                                    }
-                                                    if let Ok(guard) = ctx_holder_colors.lock() {
-                                                        if let Some(ctx) = guard.as_ref() {
-                                                            ctx.request_repaint();
-                                                        }
-                                                    }
-
-                                                    let ai_worker = ai_colors.clone();
-                                                    let ai_cfg_worker = ai_cfg.clone();
-                                                    let dyn_engine_worker =
-                                                        dynamic_engine_colors.clone();
-                                                    let ctx_holder_worker =
-                                                        ctx_holder_colors.clone();
-                                                    let pid_worker = plugin_id.clone();
-                                                    let model_path_worker = model_path.clone();
-                                                    let img_worker = img.clone();
-
-                                                    tokio::task::spawn_blocking(move || {
-                                                        if let Ok(mask) = ai_worker
-                                                            .execute_segmentation(
-                                                                &model_path_worker,
-                                                                &img_worker,
-                                                                &ai_cfg_worker,
-                                                            )
-                                                        {
-                                                            if let Ok(mut engine) =
-                                                                dyn_engine_worker.lock()
-                                                            {
-                                                                engine.set_role_mask(
-                                                                    &pid_worker,
-                                                                    mask,
-                                                                );
-                                                                engine.set_busy(&pid_worker, false);
-                                                            }
-                                                            if let Ok(guard) =
-                                                                ctx_holder_worker.lock()
-                                                            {
-                                                                if let Some(ctx) = guard.as_ref() {
-                                                                    ctx.request_repaint();
-                                                                }
-                                                            }
-                                                            return;
-                                                        }
-                                                        if let Ok(mut engine) =
-                                                            dyn_engine_worker.lock()
-                                                        {
-                                                            engine.set_busy(&pid_worker, false);
-                                                        }
-                                                    });
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    });
 
     let is_process_running: Arc<dyn Fn() -> bool + Send + Sync> =
         Arc::new(photocraft_bridge::PhotoCraftClient::is_photocraft_process_running);
@@ -1047,464 +466,4 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     Ok(())
-}
-
-fn parse_hex_rgba(hex: &str) -> std::result::Result<image::Rgba<u8>, ()> {
-    let clean = hex.trim().trim_start_matches('#');
-    match clean.len() {
-        6 => {
-            let r = u8::from_str_radix(&clean[0..2], 16).map_err(|_| ())?;
-            let g = u8::from_str_radix(&clean[2..4], 16).map_err(|_| ())?;
-            let b = u8::from_str_radix(&clean[4..6], 16).map_err(|_| ())?;
-            Ok(image::Rgba([r, g, b, 255]))
-        }
-        8 => {
-            let r = u8::from_str_radix(&clean[0..2], 16).map_err(|_| ())?;
-            let g = u8::from_str_radix(&clean[2..4], 16).map_err(|_| ())?;
-            let b = u8::from_str_radix(&clean[4..6], 16).map_err(|_| ())?;
-            let a = u8::from_str_radix(&clean[6..8], 16).map_err(|_| ())?;
-            Ok(image::Rgba([r, g, b, a]))
-        }
-        _ => Err(()),
-    }
-}
-
-async fn execute_raster_process_action(
-    client: &photocraft_bridge::PhotoCraftClient,
-    params: &serde_json::Value,
-    dynamic_engine: &Arc<std::sync::Mutex<DynamicToolEngine>>,
-    egui_ctx_holder: &Arc<std::sync::Mutex<Option<overlay_ui::egui::Context>>>,
-) -> core_contracts::Result<()> {
-    let task = params.get("task").and_then(|v| v.as_str()).unwrap_or("");
-    match task {
-        "capture_canvas_frame" => {
-            let p_val = params.get("params").unwrap_or(params);
-            let path_str = p_val.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            if !path_str.is_empty() {
-                let target_path = std::path::PathBuf::from(path_str);
-                match client
-                    .call("ui.screenshot", serde_json::json!({ "focus": false }))
-                    .await
-                {
-                    Ok(res) => {
-                        let b64_opt = res
-                            .get("image_base64")
-                            .or_else(|| res.get("data"))
-                            .or_else(|| res.get("base64"))
-                            .and_then(|v| v.as_str());
-                        if let Some(b64) = b64_opt {
-                            let clean = if let Some(idx) = b64.find(',') {
-                                if b64.starts_with("data:") {
-                                    &b64[idx + 1..]
-                                } else {
-                                    b64
-                                }
-                            } else {
-                                b64
-                            };
-                            if let Ok(bytes) = core_contracts::decode_base64(clean) {
-                                if let Some(parent) = target_path.parent() {
-                                    let _ = std::fs::create_dir_all(parent);
-                                }
-                                if let Err(e) = std::fs::write(&target_path, bytes) {
-                                    tracing::error!(
-                                        "Failed to save captured frame to {}: {e}",
-                                        target_path.display()
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Failed to capture ui.screenshot: {e}");
-                    }
-                }
-            }
-            Ok(())
-        }
-        "refresh_preview" => {
-            if let Some(plugin_id) = params.get("plugin_id").and_then(|v| v.as_str()) {
-                if let Ok(mut engine) = dynamic_engine.lock() {
-                    engine.clear_preview_and_role_mask(plugin_id);
-                }
-                if let Ok(guard) = egui_ctx_holder.lock() {
-                    if let Some(ctx) = guard.as_ref() {
-                        ctx.request_repaint();
-                    }
-                }
-            }
-            Ok(())
-        }
-        "lens_blur" => {
-            let plugin_id = params
-                .get("plugin_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            if !plugin_id.is_empty() {
-                if let Ok(mut engine) = dynamic_engine.lock() {
-                    engine.set_busy(plugin_id, true);
-                }
-                if let Ok(guard) = egui_ctx_holder.lock() {
-                    if let Some(ctx) = guard.as_ref() {
-                        ctx.request_repaint();
-                    }
-                }
-            }
-
-            let result = async {
-                let doc = client.get_document_info().await.ok();
-                let source_name = doc
-                    .as_ref()
-                    .and_then(|d| d.active_layer_name.clone())
-                    .unwrap_or_else(|| "Layer".to_string());
-                let lang = core_contracts::Language::Auto.resolve(None);
-
-                let src = client.copy_active_layer_image().await?;
-                if src.width() == 0 || src.height() == 0 {
-                    return Err(core_contracts::CompanionError::Plugin(
-                        "Active layer has empty dimensions".to_string(),
-                    ));
-                }
-
-                let p_val = params.get("params").unwrap_or(params);
-                let mut lens_params = raster_engine::LensBlurParams::default();
-
-                if let Some(b) = p_val.get("fog_enabled").and_then(|v| v.as_bool()) {
-                    lens_params.fog_enabled = b;
-                }
-                if let Some(hex) = p_val.get("fog_color").and_then(|v| v.as_str()) {
-                    if let Ok(c) = parse_hex_rgba(hex) {
-                        lens_params.fog_color = [c.0[0], c.0[1], c.0[2], c.0[3]];
-                    }
-                }
-                if let Some(n) = p_val.get("fog_density").and_then(|v| v.as_f64()) {
-                    lens_params.fog_density = n as f32;
-                }
-                if let Some(n) = p_val.get("fog_start").and_then(|v| v.as_f64()) {
-                    lens_params.fog_start = n as f32;
-                }
-                if let Some(n) = p_val.get("fog_falloff").and_then(|v| v.as_f64()) {
-                    lens_params.fog_falloff = n as f32;
-                }
-                if let Some(idx) = p_val.get("fog_blend_mode").and_then(|v| v.as_u64()) {
-                    lens_params.fog_blend_mode = idx as u8;
-                }
-                if let Some(b) = p_val.get("bokeh_enabled").and_then(|v| v.as_bool()) {
-                    lens_params.bokeh_enabled = b;
-                }
-                if let Some(n) = p_val.get("focus_distance").and_then(|v| v.as_f64()) {
-                    lens_params.focus_distance = n as f32;
-                }
-                if let Some(n) = p_val.get("dof_width").and_then(|v| v.as_f64()) {
-                    lens_params.dof_width = n as f32;
-                }
-                if let Some(n) = p_val.get("blur_radius").and_then(|v| v.as_f64()) {
-                    lens_params.blur_radius = n as f32;
-                }
-                if let Some(n) = p_val.get("specular_bloom").and_then(|v| v.as_f64()) {
-                    lens_params.specular_bloom = n as f32;
-                }
-
-                let cached_mask = {
-                    if let Ok(engine) = dynamic_engine.lock() {
-                        engine.get_role_mask(plugin_id).cloned()
-                    } else {
-                        None
-                    }
-                };
-
-                let depth_map = cached_mask.unwrap_or_else(|| {
-                    image::GrayImage::from_pixel(src.width(), src.height(), image::Luma([128]))
-                });
-
-                let depth_map =
-                    if depth_map.width() != src.width() || depth_map.height() != src.height() {
-                        image::imageops::resize(
-                            &depth_map,
-                            src.width(),
-                            src.height(),
-                            image::imageops::FilterType::Triangle,
-                        )
-                    } else {
-                        depth_map
-                    };
-
-                let fog_as_separate = params
-                    .get("fog_as_separate_layer")
-                    .and_then(|v| v.as_bool())
-                    .or_else(|| {
-                        params
-                            .get("output_mode")
-                            .and_then(|v| v.as_str())
-                            .map(|m| m == "split" || m == "split_layers")
-                    })
-                    .unwrap_or(true);
-
-                let bokeh_name = lang.format_bokeh_name(&source_name);
-
-                if fog_as_separate {
-                    let (defocused, fog_layer_opt) =
-                        raster_engine::render_lens_blur_split(&src, &depth_map, &lens_params);
-                    let paste_res = client.paste_image_in_place(&defocused).await?;
-                    let fallback_id = client
-                        .get_document_info()
-                        .await
-                        .ok()
-                        .and_then(|i| i.active_layer);
-                    let result_layer_id = paste_res
-                        .get("layer")
-                        .or_else(|| paste_res.get("layerId"))
-                        .or_else(|| paste_res.get("id"))
-                        .and_then(|l| l.as_u64())
-                        .or(fallback_id);
-
-                    if let Some(new_layer_id) = result_layer_id {
-                        let _ = client.rename_layer(new_layer_id, &bokeh_name).await;
-                    }
-
-                    if let Some(fog_layer) = fog_layer_opt {
-                        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-                        let fog_res = client.paste_image_in_place(&fog_layer).await?;
-                        let fallback_fog = client
-                            .get_document_info()
-                            .await
-                            .ok()
-                            .and_then(|i| i.active_layer);
-                        let fog_layer_id = fog_res
-                            .get("layer")
-                            .or_else(|| fog_res.get("layerId"))
-                            .or_else(|| fog_res.get("id"))
-                            .and_then(|l| l.as_u64())
-                            .or(fallback_fog);
-
-                        if let Some(fog_id) = fog_layer_id {
-                            let fog_name = lang.fog_layer_name();
-                            let _ = client.rename_layer(fog_id, fog_name).await;
-                        }
-                    }
-                } else {
-                    let merged = raster_engine::render_lens_blur(&src, &depth_map, &lens_params);
-                    let paste_res = client.paste_image_in_place(&merged).await?;
-                    let fallback_id = client
-                        .get_document_info()
-                        .await
-                        .ok()
-                        .and_then(|i| i.active_layer);
-                    let result_layer_id = paste_res
-                        .get("layer")
-                        .or_else(|| paste_res.get("layerId"))
-                        .or_else(|| paste_res.get("id"))
-                        .and_then(|l| l.as_u64())
-                        .or(fallback_id);
-
-                    if let Some(new_layer_id) = result_layer_id {
-                        let _ = client.rename_layer(new_layer_id, &bokeh_name).await;
-                    }
-                }
-
-                Ok(())
-            }
-            .await;
-
-            if !plugin_id.is_empty() {
-                if let Ok(mut engine) = dynamic_engine.lock() {
-                    engine.set_busy(plugin_id, false);
-                }
-                if let Ok(guard) = egui_ctx_holder.lock() {
-                    if let Some(ctx) = guard.as_ref() {
-                        ctx.request_repaint();
-                    }
-                }
-            }
-
-            result
-        }
-        "extrude_2_5d" => {
-            // 1. Fetch active layer image
-            let src = client.copy_active_layer_image().await?;
-            if src.width() == 0 || src.height() == 0 {
-                return Err(core_contracts::CompanionError::Plugin(
-                    "Active layer has empty dimensions".to_string(),
-                ));
-            }
-
-            // 2. Parse extrusion params
-            let p_val = params.get("params").unwrap_or(params);
-            let mut extrude_params = raster_engine::ExtrudeParams::default();
-
-            if let Some(angle) = p_val.get("angle_deg").and_then(|v| v.as_f64()) {
-                extrude_params.angle_deg = angle as f32;
-            }
-            if let Some(dist) = p_val.get("distance").and_then(|v| v.as_f64()) {
-                extrude_params.distance = dist as f32;
-            }
-            if let Some(front_hex) = p_val.get("front_color").and_then(|v| v.as_str()) {
-                if let Ok(c) = parse_hex_rgba(front_hex) {
-                    extrude_params.front_color = Some(c);
-                }
-            }
-            if let Some(start_hex) = p_val.get("body_start_color").and_then(|v| v.as_str()) {
-                if let Ok(c) = parse_hex_rgba(start_hex) {
-                    extrude_params.body_gradient_start = c;
-                }
-            }
-            if let Some(end_hex) = p_val.get("body_end_color").and_then(|v| v.as_str()) {
-                if let Ok(c) = parse_hex_rgba(end_hex) {
-                    extrude_params.body_gradient_end = c;
-                }
-            }
-            if let Some(bevel) = p_val.get("bevel_radius").and_then(|v| v.as_f64()) {
-                extrude_params.bevel_radius = bevel as f32;
-            }
-            if let Some(highlight) = p_val.get("bevel_highlight").and_then(|v| v.as_f64()) {
-                extrude_params.bevel_highlight = highlight as f32;
-            }
-            if let Some(shadow_blur) = p_val.get("shadow_blur").and_then(|v| v.as_f64()) {
-                extrude_params.shadow_blur = shadow_blur as f32;
-            }
-            if let Some(shadow_opacity) = p_val.get("shadow_opacity").and_then(|v| v.as_f64()) {
-                extrude_params.shadow_opacity = shadow_opacity as f32;
-            }
-            if let Some(shadow_dist) = p_val.get("shadow_distance").and_then(|v| v.as_f64()) {
-                extrude_params.shadow_distance = shadow_dist as f32;
-            }
-            if let Some(light_angle) = p_val
-                .get("light_angle_deg")
-                .or_else(|| p_val.get("light_angle"))
-                .and_then(|v| v.as_f64())
-            {
-                extrude_params.light_angle_deg = light_angle as f32;
-            }
-            if let Some(light_int) = p_val.get("light_intensity").and_then(|v| v.as_f64()) {
-                extrude_params.light_intensity = light_int as f32;
-            }
-            if let Some(persp) = p_val.get("perspective").and_then(|v| v.as_f64()) {
-                extrude_params.perspective = persp as f32;
-            }
-
-            // 3. Composite source layer onto full document canvas or dynamic padding to eliminate clipping
-            let doc_info = client.get_document_info().await.ok();
-            let render_canvas = if let Some(ref doc) = doc_info {
-                if let (true, true, Some(b)) =
-                    (doc.width > 0, doc.height > 0, doc.active_layer_bounds)
-                {
-                    let left = b[0].max(0) as u32;
-                    let top = b[1].max(0) as u32;
-                    let canvas_w = doc.width.max(left + src.width());
-                    let canvas_h = doc.height.max(top + src.height());
-                    let mut canvas = image::RgbaImage::new(canvas_w, canvas_h);
-                    image::imageops::overlay(&mut canvas, &src, left as i64, top as i64);
-                    canvas
-                } else {
-                    pad_source_for_extrusion(&src, &extrude_params)
-                }
-            } else {
-                pad_source_for_extrusion(&src, &extrude_params)
-            };
-
-            let is_split = p_val
-                .get("output_mode")
-                .and_then(|v| v.as_str())
-                .map(|m| m == "split" || m == "split_layers")
-                .unwrap_or(false);
-
-            if is_split {
-                extrude_params.output_mode = raster_engine::ExtrudeOutputMode::SplitLayers;
-                let (front, body, shadow) =
-                    raster_engine::render_extrude_split(&render_canvas, &extrude_params);
-
-                // Insert in bottom-to-top Z-order with 40ms micro-pause
-                if let Some(sh) = shadow {
-                    client.paste_image_in_place(&sh).await?;
-                    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-                }
-                client.paste_image_in_place(&body).await?;
-                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
-                client.paste_image_in_place(&front).await?;
-            } else {
-                let merged = raster_engine::render_extrude_2_5d(&render_canvas, &extrude_params);
-                client.paste_image_in_place(&merged).await?;
-            }
-
-            Ok(())
-        }
-        unknown => Err(core_contracts::CompanionError::Plugin(format!(
-            "Unsupported raster task: '{unknown}'"
-        ))),
-    }
-}
-
-fn pad_source_for_extrusion(
-    src: &image::RgbaImage,
-    params: &raster_engine::ExtrudeParams,
-) -> image::RgbaImage {
-    let rad = params.angle_deg.to_radians();
-    let total_dist = params.distance + params.shadow_distance;
-    let sx = rad.cos() * total_dist;
-    let sy = rad.sin() * total_dist;
-    let blur_pad = (params.shadow_blur * 2.0 + params.bevel_radius + 20.0).ceil() as u32;
-    let pad_left = blur_pad + (if sx < 0.0 { sx.abs().ceil() as u32 } else { 0 });
-    let pad_right = blur_pad + (if sx > 0.0 { sx.ceil() as u32 } else { 0 });
-    let pad_top = blur_pad + (if sy < 0.0 { sy.abs().ceil() as u32 } else { 0 });
-    let pad_bottom = blur_pad + (if sy > 0.0 { sy.ceil() as u32 } else { 0 });
-
-    let total_w = src.width() + pad_left + pad_right;
-    let total_h = src.height() + pad_top + pad_bottom;
-    let mut padded = image::RgbaImage::new(total_w, total_h);
-    image::imageops::overlay(&mut padded, src, pad_left as i64, pad_top as i64);
-    padded
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_find_plugins_dir() {
-        let p = find_plugins_dir();
-        assert!(p.to_string_lossy().contains("plugins"));
-    }
-
-    #[test]
-    fn test_find_photocraft_data_dir() {
-        let p = find_photocraft_data_dir();
-        assert!(
-            p.to_string_lossy().contains("PhotoCraftData")
-                || p.to_string_lossy().contains("PhotoCraft")
-        );
-    }
-
-    #[test]
-    fn test_apply_win32_menu_theme() {
-        // Mode 1: AllowDark / System, Mode 2: ForceDark, Mode 3: ForceLight
-        apply_win32_menu_theme(1);
-        apply_win32_menu_theme(2);
-        apply_win32_menu_theme(3);
-    }
-
-    #[test]
-    fn test_no_code_plugin_not_duplicated_as_pre_commands() {
-        use core_contracts::{PluginCommandStep, PluginManifest, PluginType};
-        let m = PluginManifest {
-            id: "test.nocode".to_string(),
-            name: "Test NoCode".to_string(),
-            plugin_type: PluginType::NoCode,
-            commands: vec![PluginCommandStep {
-                command: "layer.duplicate".to_string(),
-                params: serde_json::json!({}),
-                save_as: None,
-                ignore_errors: false,
-                when: None,
-                description: None,
-            }],
-            ..Default::default()
-        };
-        // Verify that pre-commands condition strictly checks plugin_type != PluginType::NoCode
-        let should_run_pre_commands = m.plugin_type != PluginType::NoCode && !m.commands.is_empty();
-        assert!(
-            !should_run_pre_commands,
-            "NoCode commands must never be executed as pre-commands to avoid duplicate execution"
-        );
-    }
 }

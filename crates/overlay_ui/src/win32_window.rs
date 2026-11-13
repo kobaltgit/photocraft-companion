@@ -233,6 +233,53 @@ pub fn calculate_toolstrip_spawn_pos(panel_width: f32) -> Option<[f32; 2]> {
     Some(calculate_primary_screen_center(panel_width, 70.0))
 }
 
+/// Calculates adjacent spawn position for an interactive plugin window next to the toolstrip.
+/// toolbar_rect: [min_x, min_y, max_x, max_y]
+/// window_size: [width, height]
+/// is_vertical: whether the toolstrip is vertically oriented
+pub fn calculate_adjacent_spawn_position(
+    toolbar_rect: [f32; 4],
+    window_size: [f32; 2],
+    is_vertical: bool,
+) -> [f32; 2] {
+    if !toolbar_rect.iter().all(|v| v.is_finite()) || !window_size.iter().all(|v| v.is_finite()) {
+        return [100.0, 100.0];
+    }
+
+    let min_x = toolbar_rect[0];
+    let min_y = toolbar_rect[1];
+    let max_x = toolbar_rect[2];
+    let max_y = toolbar_rect[3];
+    let offset = 8.0;
+
+    if is_vertical {
+        // Try placing to the right of the vertical toolbar
+        let right_pos = [max_x + offset, min_y];
+        if is_position_visible_on_screen(right_pos, window_size) {
+            return right_pos;
+        }
+        // Try placing to the left of the vertical toolbar
+        let left_pos = [min_x - window_size[0] - offset, min_y];
+        if is_position_visible_on_screen(left_pos, window_size) {
+            return left_pos;
+        }
+    } else {
+        // Try placing below the horizontal toolbar
+        let bottom_pos = [min_x, max_y + offset];
+        if is_position_visible_on_screen(bottom_pos, window_size) {
+            return bottom_pos;
+        }
+        // Try placing above the horizontal toolbar
+        let top_pos = [min_x, min_y - window_size[1] - offset];
+        if is_position_visible_on_screen(top_pos, window_size) {
+            return top_pos;
+        }
+    }
+
+    // Fallback: place aligned with toolbar start or clamp
+    [min_x + offset, min_y + offset]
+}
+
 /// Returns the system small icon dimension (width in pixels) based on SM_CXSMICON.
 /// Defaults to 16 if not on Windows or if query fails.
 pub fn get_system_small_icon_size() -> u32 {
@@ -452,5 +499,37 @@ mod tests {
                 "get_or_create_native_icons must return Some on Windows"
             );
         }
+    }
+
+    #[test]
+    fn test_adjacent_spawn_vertical_toolbar() {
+        let toolbar_rect = [100.0, 100.0, 140.0, 500.0];
+        let window_size = [300.0, 400.0];
+        let pos = calculate_adjacent_spawn_position(toolbar_rect, window_size, true);
+        assert!(pos[0].is_finite());
+        assert!(pos[1].is_finite());
+        assert!(pos[0] == 148.0 || pos[0] == -208.0 || pos[0] == 108.0);
+        assert!(pos[1] == 100.0 || pos[1] == 108.0);
+    }
+
+    #[test]
+    fn test_adjacent_spawn_horizontal_toolbar() {
+        let toolbar_rect = [200.0, 100.0, 600.0, 140.0];
+        let window_size = [320.0, 450.0];
+        let pos = calculate_adjacent_spawn_position(toolbar_rect, window_size, false);
+        assert!(pos[0].is_finite());
+        assert!(pos[1].is_finite());
+        assert!(pos[1] == 148.0 || pos[1] == -358.0 || pos[1] == 108.0);
+        assert!(pos[0] == 200.0 || pos[0] == 208.0);
+    }
+
+    #[test]
+    fn test_adjacent_spawn_nan_inf_handling() {
+        let toolbar_rect = [f32::NAN, 100.0, 140.0, 500.0];
+        let window_size = [300.0, f32::INFINITY];
+        let pos = calculate_adjacent_spawn_position(toolbar_rect, window_size, true);
+        assert!(pos[0].is_finite());
+        assert!(pos[1].is_finite());
+        assert_eq!(pos, [100.0, 100.0]);
     }
 }

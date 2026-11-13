@@ -211,6 +211,62 @@ fn check_widget_localization(widget: &core_contracts::WidgetNode, file_path: &Pa
                 file_path.display()
             );
         }
+        core_contracts::WidgetNode::TextInput {
+            id,
+            label_ru,
+            placeholder,
+            placeholder_ru,
+            action_button_label,
+            action_button_label_ru,
+            ..
+        } => {
+            assert!(
+                label_ru.is_some() && !label_ru.as_ref().unwrap().trim().is_empty(),
+                "Widget TextInput '{}' in {} missing 'label_ru'",
+                id,
+                file_path.display()
+            );
+            assert!(
+                label_ru
+                    .as_ref()
+                    .unwrap()
+                    .chars()
+                    .any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)),
+                "Widget TextInput '{}' in {} 'label_ru' must contain Cyrillic",
+                id,
+                file_path.display()
+            );
+            if placeholder.is_some() {
+                assert!(
+                    placeholder_ru.is_some() && !placeholder_ru.as_ref().unwrap().trim().is_empty(),
+                    "Widget TextInput '{}' in {} has placeholder but missing 'placeholder_ru'",
+                    id,
+                    file_path.display()
+                );
+            }
+            if action_button_label.is_some() {
+                assert!(
+                    action_button_label_ru.is_some() && !action_button_label_ru.as_ref().unwrap().trim().is_empty(),
+                    "Widget TextInput '{}' in {} has action_button_label but missing 'action_button_label_ru'",
+                    id,
+                    file_path.display()
+                );
+            }
+        }
+        core_contracts::WidgetNode::ProgressBar { id, label_ru, .. } => {
+            if label_ru.is_some() {
+                assert!(
+                    label_ru
+                        .as_ref()
+                        .unwrap()
+                        .chars()
+                        .any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)),
+                    "Widget ProgressBar '{}' in {} 'label_ru' must contain Cyrillic",
+                    id,
+                    file_path.display()
+                );
+            }
+        }
         core_contracts::WidgetNode::Row { items } => {
             for item in items {
                 check_widget_localization(item, file_path);
@@ -242,5 +298,70 @@ fn test_all_plugin_rhai_scripts_compile() {
             file_path.display(),
             res.err().unwrap()
         );
+    }
+}
+
+#[test]
+fn test_no_encoding_mojibake_in_plugin_manifests_or_scripts() {
+    let root = find_workspace_root();
+    let plugins_dir = root.join("plugins");
+    if !plugins_dir.exists() {
+        return;
+    }
+
+    let mut target_files = Vec::new();
+    collect_files_with_ext(&plugins_dir, "json", &mut target_files);
+    collect_files_with_ext(&plugins_dir, "rhai", &mut target_files);
+
+    for file_path in target_files {
+        let content = fs::read_to_string(&file_path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
+
+        for (line_num, line) in content.lines().enumerate() {
+            let chars: Vec<char> = line.chars().collect();
+            for i in 0..chars.len() {
+                if (chars[i] == '\u{0420}' || chars[i] == '\u{0421}') && i + 1 < chars.len() {
+                    let next = chars[i + 1];
+                    let is_mojibake = matches!(
+                        next,
+                        '\u{2018}'
+                            | '\u{2019}'
+                            | '\u{201A}'
+                            | '\u{201C}'
+                            | '\u{201D}'
+                            | '\u{201E}'
+                            | '\u{2039}'
+                            | '\u{203A}'
+                            | '\u{2013}'
+                            | '\u{2014}'
+                            | '\u{2122}'
+                            | '\u{045E}'
+                            | '\u{040E}'
+                            | '\u{045A}'
+                            | '\u{0409}'
+                            | '\u{0459}'
+                            | '\u{040A}'
+                            | '\u{0458}'
+                            | '\u{0408}'
+                            | '\u{045B}'
+                            | '\u{040B}'
+                            | '\u{045C}'
+                            | '\u{040C}'
+                            | '\u{045D}'
+                            | '\u{040D}'
+                            | '\u{045F}'
+                            | '\u{040F}'
+                    );
+                    if is_mojibake {
+                        panic!(
+                            "Found encoding mojibake (double UTF-8 artifact) in {}:{}: '{}'",
+                            file_path.display(),
+                            line_num + 1,
+                            line.trim()
+                        );
+                    }
+                }
+            }
+        }
     }
 }

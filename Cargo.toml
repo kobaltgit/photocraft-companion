@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "2.1.0"
+version = "2.1.1"
 edition = "2021"
 authors = ["kobaltGIT"]
 license = "MIT OR Apache-2.0"
@@ -44,6 +44,8 @@ sha2 = "0.10"
 hex = "0.4"
 sys-locale = "0.3"
 winres = "0.1"
+ureq = { version = "3.4", default-features = false, features = ["rustls", "json"] }
+base64 = "0.22"
 
 [profile.dev]
 opt-level = 0

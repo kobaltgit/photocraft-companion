@@ -1,41 +1,62 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+fn collect_rs_in_path(path: &Path, out: &mut Vec<PathBuf>) {
+    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
+        out.push(path.to_path_buf());
+    } else if path.is_dir() {
+        if let Ok(entries) = fs::read_dir(path) {
+            for entry in entries.flatten() {
+                collect_rs_in_path(&entry.path(), out);
+            }
+        }
+    }
+}
 
 #[test]
 fn test_no_unlocalized_cyrillic_in_ui_crates() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let src_dir = Path::new(manifest_dir).join("src");
 
-    // Files that should never contain any Cyrillic text at all
-    let strictly_latin_files = [
+    // Targets that should never contain any Cyrillic text at all
+    let strictly_latin_targets = [
         "icons.rs",
         "store.rs",
         "theme.rs",
+        "toolstrip",
         "toolstrip.rs",
         "updater.rs",
         "win32_window.rs",
     ];
 
-    for file_name in strictly_latin_files {
-        let file_path = src_dir.join(file_name);
-        if file_path.exists() {
-            let content = fs::read_to_string(&file_path)
-                .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
-            for (line_num, line) in content.lines().enumerate() {
-                // Ignore comments
-                let trimmed = line.trim();
-                if trimmed.starts_with("//") {
-                    continue;
-                }
-                for ch in line.chars() {
-                    assert!(
-                        !('\u{0400}'..='\u{04FF}').contains(&ch),
-                        "Found unlocalized Cyrillic character '{}' in strictly Latin file {}:{}",
-                        ch,
-                        file_name,
-                        line_num + 1
-                    );
-                }
+    let mut files = Vec::new();
+    for target in strictly_latin_targets {
+        let target_path = src_dir.join(target);
+        if target_path.exists() {
+            collect_rs_in_path(&target_path, &mut files);
+        }
+    }
+
+    for file_path in files {
+        if file_path.file_name().and_then(|s| s.to_str()) == Some("tests.rs") {
+            continue;
+        }
+        let content = fs::read_to_string(&file_path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
+        for (line_num, line) in content.lines().enumerate() {
+            // Ignore comments
+            let trimmed = line.trim();
+            if trimmed.starts_with("//") {
+                continue;
+            }
+            for ch in line.chars() {
+                assert!(
+                    !('\u{0400}'..='\u{04FF}').contains(&ch),
+                    "Found unlocalized Cyrillic character '{}' in strictly Latin file {}:{}",
+                    ch,
+                    file_path.display(),
+                    line_num + 1
+                );
             }
         }
     }
@@ -46,10 +67,19 @@ fn test_manager_and_offline_modal_cyrillic_strictly_localized() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let src_dir = Path::new(manifest_dir).join("src");
 
-    let localized_files = ["manager.rs", "offline_modal.rs"];
+    let localized_targets = ["manager", "manager.rs", "offline_modal.rs"];
+    let mut files = Vec::new();
+    for target in localized_targets {
+        let target_path = src_dir.join(target);
+        if target_path.exists() {
+            collect_rs_in_path(&target_path, &mut files);
+        }
+    }
 
-    for file_name in localized_files {
-        let file_path = src_dir.join(file_name);
+    for file_path in files {
+        if file_path.file_name().and_then(|s| s.to_str()) == Some("tests.rs") {
+            continue;
+        }
         let content = fs::read_to_string(&file_path)
             .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
 
@@ -89,7 +119,7 @@ fn test_manager_and_offline_modal_cyrillic_strictly_localized() {
                 assert!(
                     is_in_t_call || is_lang_selector,
                     "Found unlocalized Cyrillic text outside of .t(...) call in {}:{}: '{}'",
-                    file_name,
+                    file_path.display(),
                     line_num + 1,
                     trimmed
                 );
@@ -103,11 +133,17 @@ fn test_all_t_translation_pairs_integrity() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let src_dir = Path::new(manifest_dir).join("src");
 
-    let localized_files = ["manager.rs", "offline_modal.rs"];
+    let localized_targets = ["manager", "manager.rs", "offline_modal.rs"];
+    let mut files = Vec::new();
+    for target in localized_targets {
+        let target_path = src_dir.join(target);
+        if target_path.exists() {
+            collect_rs_in_path(&target_path, &mut files);
+        }
+    }
     let mut total_pairs_checked = 0;
 
-    for file_name in localized_files {
-        let file_path = src_dir.join(file_name);
+    for file_path in files {
         let content_full = fs::read_to_string(&file_path)
             .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file_path.display()));
 
@@ -129,13 +165,13 @@ fn test_all_t_translation_pairs_integrity() {
                 assert!(
                     !en.trim().is_empty(),
                     "Empty English translation in {}: near index {}",
-                    file_name,
+                    file_path.display(),
                     start
                 );
                 assert!(
                     !ru.trim().is_empty(),
                     "Empty Russian translation in {}: near index {}",
-                    file_name,
+                    file_path.display(),
                     start
                 );
 
@@ -144,7 +180,8 @@ fn test_all_t_translation_pairs_integrity() {
                 assert!(
                     has_latin,
                     "English translation has no Latin characters in {}: '{}'",
-                    file_name, en
+                    file_path.display(),
+                    en
                 );
 
                 // 3. Russian variant must have Cyrillic letters (or be a technical port/IP string)
@@ -153,7 +190,7 @@ fn test_all_t_translation_pairs_integrity() {
                 assert!(
                     has_cyrillic || is_technical,
                     "Russian translation missing Cyrillic characters in {}: '{}'",
-                    file_name,
+                    file_path.display(),
                     ru
                 );
 
@@ -163,7 +200,7 @@ fn test_all_t_translation_pairs_integrity() {
                         en.trim(),
                         ru.trim(),
                         "English and Russian strings are identical in {}: '{}'",
-                        file_name,
+                        file_path.display(),
                         en
                     );
                 }
@@ -175,7 +212,7 @@ fn test_all_t_translation_pairs_integrity() {
                         !en.contains(ph) && !ru.contains(ph),
                         "Found placeholder '{}' in translation pair in {}: En: '{}', Ru: '{}'",
                         ph,
-                        file_name,
+                        file_path.display(),
                         en,
                         ru
                     );
@@ -235,12 +272,16 @@ fn find_closing_quote(s: &str) -> Option<usize> {
 #[test]
 fn test_no_cjk_or_unsupported_glyphs_in_ui_dictionary() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    let mod_rs_path = Path::new(manifest_dir)
-        .join("src")
-        .join("i18n")
-        .join("mod.rs");
-    let content = fs::read_to_string(&mod_rs_path)
-        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", mod_rs_path.display()));
+    let i18n_dir = Path::new(manifest_dir).join("src").join("i18n");
+    let mut files = Vec::new();
+    if i18n_dir.is_dir() {
+        for entry in fs::read_dir(&i18n_dir).unwrap().flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("rs") {
+                files.push(p);
+            }
+        }
+    }
 
     // CJK character ranges: Hiragana, Katakana, CJK Unified Ideographs, Hangul, etc.
     let is_cjk = |c: char| {
@@ -254,16 +295,20 @@ fn test_no_cjk_or_unsupported_glyphs_in_ui_dictionary() {
         )
     };
 
-    for (line_num, line) in content.lines().enumerate() {
-        for ch in line.chars() {
-            assert!(
-                !is_cjk(ch),
-                "Found unsupported CJK glyph '{}' (U+{:04X}) in {} at line {}: tofu box risk in egui!",
-                ch,
-                ch as u32,
-                mod_rs_path.display(),
-                line_num + 1
-            );
+    for file in files {
+        let content = fs::read_to_string(&file)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", file.display()));
+        for (line_num, line) in content.lines().enumerate() {
+            for ch in line.chars() {
+                assert!(
+                    !is_cjk(ch),
+                    "Found unsupported CJK glyph '{}' (U+{:04X}) in {} at line {}: tofu box risk in egui!",
+                    ch,
+                    ch as u32,
+                    file.display(),
+                    line_num + 1
+                );
+            }
         }
     }
 }

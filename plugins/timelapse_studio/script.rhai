@@ -42,6 +42,57 @@ fn on_state_changed(state) {
         return state;
     }
 
+    let export_job = poll_tool_job("timelapse_export");
+    if export_job["status"] == "completed" {
+        clear_tool_job("timelapse_export");
+        state["is_exporting"] = false;
+        let out_path = state["pending_export_path"];
+        if export_job["success"] == true || export_job["exit_code"] == 0 {
+            state["last_exported_path"] = out_path;
+            state["is_recording"] = false;
+            state.clear_badge();
+            state["banner_message"] = t("Export successful! Video saved.", "Экспорт завершен! Видео успешно создано.");
+            state["banner_style"] = "success";
+
+            if state["auto_clean"] == true {
+                clean_session_dir(state["session_dir"]);
+                state["frame_count"] = 0;
+                state["session_info"] = t("Status: Idle | Frames: 0", "Статус: Ожидание | Кадров: 0");
+                state["stats_info"] = t("Recorded frames: 0 | Video length: ~0.0s", "Записано кадров: 0 | Длина видео: ~0.0с");
+            }
+        } else {
+            let err_msg = if export_job["error"] != () && export_job["error"] != "" {
+                export_job["error"]
+            } else if export_job["stderr"] != () && export_job["stderr"] != "" {
+                export_job["stderr"]
+            } else {
+                t("FFmpeg encoding failed.", "Ошибка кодирования FFmpeg.")
+            };
+            state["banner_message"] = t("Export failed: ", "Ошибка экспорта: ") + err_msg;
+            state["banner_style"] = "error";
+        }
+    }
+
+    let download_job = poll_tool_job("timelapse_download_ffmpeg");
+    if download_job["status"] == "completed" {
+        clear_tool_job("timelapse_download_ffmpeg");
+        state["is_downloading"] = false;
+        if download_job["success"] == true || is_tool_installed("ffmpeg") == true {
+            state["banner_message"] = t("FFmpeg installed successfully! Ready to export.", "FFmpeg успешно установлен! Готово к экспорту.");
+            state["banner_style"] = "success";
+        } else {
+            let err = if download_job["error"] != () && download_job["error"] != "" {
+                download_job["error"]
+            } else if download_job["stderr"] != () && download_job["stderr"] != "" {
+                download_job["stderr"]
+            } else {
+                t("Download failed.", "Ошибка загрузки.")
+            };
+            state["banner_message"] = t("Failed to setup FFmpeg: ", "Не удалось установить FFmpeg: ") + err;
+            state["banner_style"] = "error";
+        }
+    }
+
     if state["action_btn_start_record"] == true {
         state["action_btn_start_record"] = false;
         let count = state["frame_count"].to_int();
@@ -222,31 +273,12 @@ fn on_state_changed(state) {
             args.push("yuv420p");
             args.push(out_path);
 
-            let result = execute_tool("ffmpeg", args);
-            if result["success"] == true || result["exit_code"] == 0 {
-                state["last_exported_path"] = out_path;
-                state["is_recording"] = false;
-                state.clear_badge();
-                state["banner_message"] = t("Export successful! Video saved.", "Экспорт завершен! Видео успешно создано.");
-                state["banner_style"] = "success";
-
-                if state["auto_clean"] == true {
-                    clean_session_dir(session_dir);
-                    state["frame_count"] = 0;
-                    state["session_info"] = t("Status: Idle | Frames: 0", "Статус: Ожидание | Кадров: 0");
-                    state["stats_info"] = t("Recorded frames: 0 | Video length: ~0.0s", "Записано кадров: 0 | Длина видео: ~0.0с");
-                }
-            } else {
-                let err_msg = if result["error"] != () && result["error"] != "" {
-                    result["error"]
-                } else if result["stderr"] != () && result["stderr"] != "" {
-                    result["stderr"]
-                } else {
-                    t("FFmpeg encoding failed.", "Ошибка кодирования FFmpeg.")
-                };
-                state["banner_message"] = t("Export failed: ", "Ошибка экспорта: ") + err_msg;
-                state["banner_style"] = "error";
-            }
+            state["pending_export_path"] = out_path;
+            state["is_exporting"] = true;
+            state["banner_message"] = t("Exporting video in background, please wait...", "Экспорт видео в фоне, пожалуйста подождите...");
+            state["banner_style"] = "info";
+            execute_tool_async("timelapse_studio", "ffmpeg", args, "timelapse_export");
+            return state;
         }
         return state;
     } else if state["action_btn_reveal_file"] == true {
@@ -267,32 +299,18 @@ fn on_state_changed(state) {
             return state;
         }
 
-        state["banner_message"] = t("Downloading FFmpeg, please wait...", "Скачивание FFmpeg, пожалуйста подождите...");
+        state["is_downloading"] = true;
+        state["banner_message"] = t("Downloading FFmpeg in background, please wait...", "Скачивание FFmpeg в фоне, пожалуйста подождите...");
         state["banner_style"] = "info";
 
         let ps_cmd = "$ErrorActionPreference = 'Stop'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $zip = 'PhotoCraftData/sessions/ffmpeg_setup.zip'; $extractDir = 'PhotoCraftData/sessions/ffmpeg_temp'; $binDir = 'PhotoCraftData/bin'; if (!(Test-Path $binDir)) { New-Item -ItemType Directory -Force -Path $binDir | Out-Null }; if (Test-Path $extractDir) { Remove-Item -Recurse -Force $extractDir }; Invoke-WebRequest -Uri 'https://github.com/GyanD/codexffmpeg/releases/download/7.0/ffmpeg-7.0-essentials_build.zip' -OutFile $zip; Expand-Archive -Path $zip -DestinationPath $extractDir -Force; $exe = Get-ChildItem -Path $extractDir -Filter 'ffmpeg.exe' -Recurse | Select-Object -First 1; if ($exe) { Copy-Item -Path $exe.FullName -Destination (Join-Path $binDir 'ffmpeg.exe') -Force; } else { throw 'ffmpeg.exe not found in archive' }; Remove-Item -Path $zip -Force -ErrorAction SilentlyContinue; Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue;";
 
-        let res = execute_tool("powershell", [
+        execute_tool_async("timelapse_studio", "powershell", [
             "-NoProfile",
             "-NonInteractive",
             "-Command",
             ps_cmd
-        ]);
-
-        if res["success"] == true || is_tool_installed("ffmpeg") == true {
-            state["banner_message"] = t("FFmpeg installed successfully! Ready to export.", "FFmpeg успешно установлен! Готово к экспорту.");
-            state["banner_style"] = "success";
-        } else {
-            let err = if res["error"] != () && res["error"] != "" {
-                res["error"]
-            } else if res["stderr"] != () && res["stderr"] != "" {
-                res["stderr"]
-            } else {
-                t("Download failed.", "Ошибка загрузки.")
-            };
-            state["banner_message"] = t("Failed to setup FFmpeg: ", "Не удалось установить FFmpeg: ") + err;
-            state["banner_style"] = "error";
-        }
+        ], "timelapse_download_ffmpeg");
         return state;
     }
 

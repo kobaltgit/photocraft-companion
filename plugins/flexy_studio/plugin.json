@@ -1,0 +1,369 @@
+{
+  "id": "ui.photocraft.plugins.flexy_studio",
+  "name": "Flexy Studio",
+  "name_ru": "Студия Flexy AI",
+  "version": "1.0.0",
+  "description": "Official cloud AI studio powered by Flexy AI: neural generation, ControlNet, inpainting, portrait retouch, face swap, and outpainting.",
+  "description_ru": "Официальная облачная ИИ-студия на базе Flexy AI: нейрогенерация, ControlNet, умный ластик, ретушь портретов, замена лиц и расширение холста.",
+  "author": "kobaltGIT & XpucT",
+  "plugin_type": "interactive_ui",
+  "icon": "icon.svg",
+  "commands": [],
+  "models": [],
+  "runtime_tools": [],
+  "interactive_ui": {
+    "api_key_service": "flexy_ai",
+    "window_title": "Flexy Studio",
+    "window_title_ru": "Студия Flexy AI",
+    "default_width": 480.0,
+    "default_height": 520.0,
+    "script": "script.rhai",
+    "ipc_subscriptions": [
+      "document.revision",
+      "document.selection"
+    ],
+    "widgets": [
+      {
+        "type": "banner",
+        "id": "status_banner",
+        "message_binding": "banner_message",
+        "style_binding": "banner_style"
+      },
+      {
+        "type": "text_input",
+        "id": "api_key",
+        "label": "API Key",
+        "label_ru": "API-ключ",
+        "placeholder": "flexy-...",
+        "placeholder_ru": "flexy-...",
+        "is_password": true,
+        "action_button_id": "check_balance",
+        "action_button_label": "Check",
+        "action_button_label_ru": "Проверить"
+      },
+      {
+        "type": "row",
+        "items": [
+          {
+            "type": "label",
+            "text_binding": "balance_text"
+          },
+          {
+            "type": "button",
+            "id": "btn_open_profile",
+            "label": "Profile & API Key",
+            "label_ru": "Личный кабинет",
+            "url": "https://flexy-ai.com/profile"
+          }
+        ]
+      },
+      {
+        "type": "progress_bar",
+        "id": "progress",
+        "label": "Progress",
+        "label_ru": "Прогресс",
+        "show_percentage": true
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "tabs",
+        "id": "flexy_tabs",
+        "default_index": 0,
+        "tabs": [
+          {
+            "id": "tab_generate",
+            "title": "Generate",
+            "title_ru": "Генерация",
+            "widgets": [
+              {
+                "type": "text_input",
+                "id": "gen_prompt",
+                "label": "Prompt",
+                "label_ru": "Промпт",
+                "placeholder": "Describe desired scene in English or Russian...",
+                "placeholder_ru": "Опишите желаемую сцену на русском или английском...",
+                "multiline": true
+              },
+              {
+                "type": "dropdown",
+                "id": "gen_model",
+                "label": "Model",
+                "label_ru": "Модель",
+                "options": [
+                  "Flexy (High Quality)",
+                  "Turbo (Fast Generation)"
+                ],
+                "options_ru": [
+                  "Flexy (Высокое качество)",
+                  "Turbo (Быстрая генерация)"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "dropdown",
+                "id": "gen_style",
+                "label": "Style Preset",
+                "label_ru": "Стиль",
+                "options": [
+                  "Standard (No Style)",
+                  "Cinematic",
+                  "Professional Photo",
+                  "Dramatic Photo",
+                  "Vintage Photo",
+                  "Fujifilm Film",
+                  "Neo Retro",
+                  "Gloomy Dark",
+                  "Art Painting",
+                  "Art Watercolor",
+                  "3D Animation Movie",
+                  "Clean Line Art",
+                  "Anime Style",
+                  "Comic Book",
+                  "Vector Logo",
+                  "Sticker Graphic"
+                ],
+                "options_ru": [
+                  "Стандартный (Без стиля)",
+                  "Кинематографичный",
+                  "Профессиональное фото",
+                  "Драматичное фото",
+                  "Винтажное фото",
+                  "Пленка Fujifilm",
+                  "Нео-ретро",
+                  "Мрачный нуар",
+                  "Живопись маслом",
+                  "Акварель",
+                  "3D Мультфильм",
+                  "Контурный рисунок (Line Art)",
+                  "Аниме",
+                  "Комикс",
+                  "Векторный логотип",
+                  "Стикер"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "segmented",
+                "id": "gen_ratio",
+                "options": ["1:1", "16:9", "9:16", "3:4", "21:9"],
+                "default_index": 0
+              },
+              {
+                "type": "slider",
+                "id": "gen_width",
+                "label": "Width (px)",
+                "label_ru": "Ширина (px)",
+                "min": 512.0,
+                "max": 1536.0,
+                "step": 64.0,
+                "default": 1024.0
+              },
+              {
+                "type": "slider",
+                "id": "gen_height",
+                "label": "Height (px)",
+                "label_ru": "Высота (px)",
+                "min": 512.0,
+                "max": 1536.0,
+                "step": 64.0,
+                "default": 1024.0
+              },
+              {
+                "type": "dropdown",
+                "id": "controlnet_mode",
+                "label": "ControlNet Guide",
+                "label_ru": "ControlNet направляющая",
+                "options": [
+                  "None (Pure Text)",
+                  "Line Art (Active Layer)",
+                  "Canny Edges (Active Layer)",
+                  "Depth Map (Active Layer)",
+                  "Scribble (Active Layer)",
+                  "Pose Skeleton (Active Layer)"
+                ],
+                "options_ru": [
+                  "Отключен (Только текст)",
+                  "Line Art (Активный слой)",
+                  "Контуры Canny (Активный слой)",
+                  "Карта глубины (Активный слой)",
+                  "Набросок кистью (Активный слой)",
+                  "Поза человека (Активный слой)"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "toggle",
+                "id": "gen_tiling",
+                "label": "Seamless Tiling Pattern",
+                "label_ru": "Бесшовная текстура (Tiling)",
+                "default": false
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "button",
+                "id": "btn_generate",
+                "label": "Generate New Layer",
+                "label_ru": "Сгенерировать новый слой"
+              }
+            ]
+          },
+          {
+            "id": "tab_inpaint",
+            "title": "Inpaint & Erase",
+            "title_ru": "Ластик и Заливка",
+            "widgets": [
+              {
+                "type": "dropdown",
+                "id": "inpaint_task",
+                "label": "Editing Mode",
+                "label_ru": "Режим редактирования",
+                "options": [
+                  "Smart Eraser (Object Removal)",
+                  "Generative Fill (Inpainting)",
+                  "Watermark Remover"
+                ],
+                "options_ru": [
+                  "Умный ластик (Удаление объекта)",
+                  "Генеративная заливка (Inpaint)",
+                  "Удаление водяных знаков"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "text_input",
+                "id": "inpaint_prompt",
+                "label": "Prompt",
+                "label_ru": "Промпт",
+                "placeholder": "Describe what to create inside the selected area...",
+                "placeholder_ru": "Опишите, что заполнить в выделенной области...",
+                "multiline": true
+              },
+              {
+                "type": "slider",
+                "id": "inpaint_denoise",
+                "label": "Denoise Strength",
+                "label_ru": "Сила изменения",
+                "min": 0.1,
+                "max": 1.0,
+                "step": 0.05,
+                "default": 0.75
+              },
+              {
+                "type": "toggle",
+                "id": "inpaint_context",
+                "label": "Full Canvas Context",
+                "label_ru": "Учитывать окружение холста",
+                "default": true
+              },
+              {
+                "type": "toggle",
+                "id": "inpaint_in_place",
+                "label": "Replace in Active Layer (In-Place)",
+                "label_ru": "Заменять на активном слое (In-Place)",
+                "default": true
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "button",
+                "id": "btn_inpaint",
+                "label": "Apply to Active Layer",
+                "label_ru": "Применить к активному слою"
+              }
+            ]
+          },
+          {
+            "id": "tab_portrait",
+            "title": "Portrait & Face",
+            "title_ru": "Портрет",
+            "widgets": [
+              {
+                "type": "dropdown",
+                "id": "portrait_task",
+                "label": "Operation",
+                "label_ru": "Операция",
+                "options": [
+                  "Natural Retouch (Soft)",
+                  "Studio Retouch (Glamour)",
+                  "Oldify Photo (Vintage Age)"
+                ],
+                "options_ru": [
+                  "Естественная ретушь (Мягкая)",
+                  "Студийная ретушь (Глянец)",
+                  "Состаривание (Эффект возраста)"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "slider",
+                "id": "retouch_strength",
+                "label": "Intensity",
+                "label_ru": "Интенсивность",
+                "min": 0.1,
+                "max": 1.0,
+                "step": 0.05,
+                "default": 0.8
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "button",
+                "id": "btn_portrait",
+                "label": "Process Portrait",
+                "label_ru": "Обработать портрет"
+              }
+            ]
+          },
+          {
+            "id": "tab_canvas",
+            "title": "Canvas & BG",
+            "title_ru": "Холст",
+            "widgets": [
+              {
+                "type": "dropdown",
+                "id": "canvas_task",
+                "label": "Operation",
+                "label_ru": "Операция",
+                "options": [
+                  "Outpaint / Canvas Expansion",
+                  "Background Changer",
+                  "Colorize B&W Image"
+                ],
+                "options_ru": [
+                  "Расширение полотна (Outpaint)",
+                  "Замена фона (Background Changer)",
+                  "Колоризация ч/б фото"
+                ],
+                "default_index": 0
+              },
+              {
+                "type": "text_input",
+                "id": "outpaint_prompt",
+                "label": "Prompt",
+                "label_ru": "Промпт",
+                "placeholder": "Describe surrounding scene to extend or new background...",
+                "placeholder_ru": "Опишите окружающее пространство или новый фон...",
+                "multiline": true
+              },
+              {
+                "type": "separator"
+              },
+              {
+                "type": "button",
+                "id": "btn_canvas",
+                "label": "Execute Operation",
+                "label_ru": "Выполнить операцию"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

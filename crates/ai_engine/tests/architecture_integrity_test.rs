@@ -264,9 +264,13 @@ fn collect_rs_files(dir: &Path, files: &mut Vec<PathBuf>) {
 
 /// Scan a file for integrity violations, skipping #[cfg(test)] modules and test files
 fn scan_file_for_violations(file_path: &Path) -> Vec<IntegrityViolation> {
-    // Skip test files (*_test.rs or files inside tests/ directories)
+    // Skip test files (*_test.rs, tests.rs, or files inside tests/ directories)
     let path_str = file_path.to_string_lossy().replace('\\', "/");
-    if path_str.ends_with("_test.rs") || path_str.contains("/tests/") {
+    if path_str.ends_with("_test.rs")
+        || path_str.ends_with("/tests.rs")
+        || path_str.ends_with("_tests.rs")
+        || path_str.contains("/tests/")
+    {
         return Vec::new();
     }
 
@@ -528,7 +532,7 @@ fn test_companion_app_main_zero_plugin_command_sniffing() {
     let content = fs::read_to_string(&main_rs_path)
         .unwrap_or_else(|e| panic!("Failed to read {}: {e}", main_rs_path.display()));
 
-    const ALLOWED_CORE_ACTIONS: &[&str] = &["tools.setColors", "raster.process"];
+    const ALLOWED_CORE_ACTIONS: &[&str] = &["tools.setColors", "raster.process", "cloud.process"];
 
     let mut in_test_module = false;
     for (line_idx, line) in content.lines().enumerate() {
@@ -562,7 +566,7 @@ fn test_companion_app_main_zero_plugin_command_sniffing() {
 
 #[test]
 fn test_allowed_host_dispatch_invariant_catches_unauthorized_command() {
-    const ALLOWED_CORE_ACTIONS: &[&str] = &["tools.setColors", "raster.process"];
+    const ALLOWED_CORE_ACTIONS: &[&str] = &["tools.setColors", "raster.process", "cloud.process"];
 
     let valid_line = "if action.command == \"tools.setColors\" {";
     let is_valid = ALLOWED_CORE_ACTIONS
@@ -575,6 +579,12 @@ fn test_allowed_host_dispatch_invariant_catches_unauthorized_command() {
         .iter()
         .any(|allowed| valid_raster.contains(&format!("\"{allowed}\"")));
     assert!(is_valid_raster);
+
+    let valid_cloud = "} else if action.command == \"cloud.process\" {";
+    let is_valid_cloud = ALLOWED_CORE_ACTIONS
+        .iter()
+        .any(|allowed| valid_cloud.contains(&format!("\"{allowed}\"")));
+    assert!(is_valid_cloud);
 
     let forbidden_line = "if action.command == \"selection.modify_composite\" {";
     let is_forbidden = ALLOWED_CORE_ACTIONS
