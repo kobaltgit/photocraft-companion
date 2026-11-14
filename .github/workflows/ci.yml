@@ -30,6 +30,11 @@ jobs:
       - name: Code Formatting Check
         run: cargo fmt --all -- --check
 
+      - name: Prepare Target Dirs for Dynamic Linking
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target\debug\examples, target\debug\deps, target\release\examples, target\release\deps | Out-Null
+
       - name: Cargo Check (Workspace)
         run: cargo check --workspace --all-targets -j 1
 

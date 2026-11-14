@@ -3,7 +3,6 @@ use image::{GrayImage, RgbaImage};
 use ort::session::Session;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tracing::warn;
 
 pub(crate) type SessionKey = (PathBuf, std::time::SystemTime, bool);
 
@@ -166,7 +165,7 @@ impl AiEngine {
                     b
                 }
                 Err(e) => {
-                    warn!("DirectML provider setup failed ({e}), falling back to CPU");
+                    tracing::warn!("DirectML provider setup failed ({e}), falling back to CPU");
                     Session::builder()
                         .map_err(|e| {
                             CompanionError::AiEngine(format!("Failed to re-init builder: {e}"))
