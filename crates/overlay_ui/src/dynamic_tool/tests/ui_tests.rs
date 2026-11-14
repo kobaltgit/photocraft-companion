@@ -676,7 +676,7 @@ fn test_dynamic_tool_geometry_persistence() {
     };
 
     // 1. Create engine and set config path
-    let mut engine = DynamicToolEngine::new(&[manifest.clone()], None);
+    let mut engine = DynamicToolEngine::new(std::slice::from_ref(&manifest), None);
     engine.set_config_path(config_path.clone());
 
     // 2. Initial state: last_pos and last_size are None

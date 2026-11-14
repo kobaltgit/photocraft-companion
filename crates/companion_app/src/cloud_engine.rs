@@ -239,8 +239,7 @@ pub async fn execute_cloud_process_action(
             if let Some(v_str) = v.as_str() {
                 let resolved_val = if v_str == "$api_key" {
                     resolved_api_key.clone()
-                } else if v_str.starts_with("$api_key:") {
-                    let svc = &v_str[9..];
+                } else if let Some(svc) = v_str.strip_prefix("$api_key:") {
                     config.api_keys.get(svc).cloned().unwrap_or_default()
                 } else {
                     v_str.to_string()

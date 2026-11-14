@@ -53,6 +53,7 @@ pub fn spawn_session_sync_worker(
 
             // Only poll get_document_info frequently (400ms) if an open window subscribes to canvas changes.
             // When idle or just floating, poll at calm 2000ms pace (every 5 ticks) to eliminate PhotoCraft GPU frame stalls!
+            #[allow(clippy::manual_is_multiple_of)]
             let should_poll_doc = has_active_sub || (tick_counter % 5 == 0);
 
             if should_poll_doc {

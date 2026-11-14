@@ -126,7 +126,7 @@ impl DynamicToolEngine {
                     }
                 } else if let Some(ref cfg_path) = self.config_path {
                     let cfg = core_contracts::CompanionConfig::load_or_default(cfg_path);
-                    for (_service_name, key_val) in &cfg.api_keys {
+                    for key_val in cfg.api_keys.values() {
                         if !key_val.is_empty() {
                             let curr = state
                                 .values

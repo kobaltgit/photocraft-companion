@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::info;
 
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_action_dispatcher(
     rt: &tokio::runtime::Runtime,
     mut action_rx: tokio::sync::mpsc::UnboundedReceiver<String>,

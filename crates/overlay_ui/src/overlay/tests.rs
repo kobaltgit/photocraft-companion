@@ -1,3 +1,5 @@
+#![allow(clippy::arc_with_non_send_sync, clippy::field_reassign_with_default)]
+
 use super::*;
 use crate::calculate_toolstrip_spawn_pos;
 use eframe::egui;

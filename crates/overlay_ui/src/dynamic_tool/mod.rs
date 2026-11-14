@@ -407,7 +407,7 @@ impl DynamicToolEngine {
         let mut completed_notifications = Vec::new();
         let mut has_running_jobs = false;
         if let Ok(mut jobs) = self.async_tool_jobs.lock() {
-            for (_job_id, entry) in jobs.iter_mut() {
+            for entry in jobs.values_mut() {
                 if entry.status == rhai_bridge::ToolJobStatus::Running {
                     has_running_jobs = true;
                 } else if entry.status == rhai_bridge::ToolJobStatus::Completed && !entry.notified {
