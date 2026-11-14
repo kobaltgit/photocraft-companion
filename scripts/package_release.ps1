@@ -30,8 +30,6 @@ Copy-Item -Recurse (Join-Path $RootDir "plugins") -Destination $PortableDir
 if (Test-Path (Join-Path $DistDir "registry.json")) {
     Copy-Item (Join-Path $DistDir "registry.json") -Destination $PortableDir
 }
-New-Item -ItemType Directory -Force -Path (Join-Path $PortableDir "scripts") | Out-Null
-Copy-Item (Join-Path $RootDir "scripts\fetch_models.ps1") -Destination (Join-Path $PortableDir "scripts")
 Copy-Item (Join-Path $RootDir "README.md") -Destination $PortableDir
 Copy-Item (Join-Path $RootDir "LICENSE") -Destination $PortableDir
 

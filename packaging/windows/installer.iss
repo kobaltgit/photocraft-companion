@@ -40,7 +40,6 @@ Name: "startupicon"; Description: "Launch Companion at Windows startup (tray mod
 [Files]
 Source: "..\..\target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "..\..\scripts\fetch_models.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\registry.json"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
