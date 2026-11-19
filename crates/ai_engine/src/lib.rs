@@ -1,5 +1,6 @@
 pub mod engine;
 pub mod inpainting;
+pub mod loader;
 pub mod plugin_adapter;
 pub mod segmentation;
 pub mod tiling;
