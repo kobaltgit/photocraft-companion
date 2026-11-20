@@ -2,7 +2,7 @@
 ; Produces: PhotoCraft-Companion-Setup-Windows-x64.exe
 
 #define MyAppName "PhotoCraft Companion"
-#define MyAppVersion "2.1.1"
+#define MyAppVersion "2.2.2"
 #define MyAppPublisher "kobaltGIT"
 #define MyAppURL "https://github.com/kobaltgit/photocraft-companion"
 #define MyAppExeName "photocraft-companion.exe"
@@ -39,6 +39,8 @@ Name: "startupicon"; Description: "Launch Companion at Windows startup (tray mod
 
 [Files]
 Source: "..\..\target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\target\release\onnxruntime.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\..\target\release\DirectML.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "..\..\plugins\*"; DestDir: "{app}\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion

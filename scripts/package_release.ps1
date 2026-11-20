@@ -11,7 +11,19 @@ Set-Location $RootDir
 Write-Host ">>> Building release binary (photocraft-companion)..." -ForegroundColor Cyan
 cargo build --package companion_app --release -j 1
 
-$Version = "2.1.1"
+# Ensure official Microsoft ONNX Runtime dynamic library is available for packaging
+if (-not (Test-Path (Join-Path $RootDir "target\release\onnxruntime.dll"))) {
+    Write-Host ">>> Fetching official Microsoft ONNX Runtime DLL..." -ForegroundColor Cyan
+    $NupkgUrl = "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.20.0/microsoft.ml.onnxruntime.directml.1.20.0.nupkg"
+    $TempZip = Join-Path $RootDir "target\ort_directml.zip"
+    curl.exe -s -L -o $TempZip $NupkgUrl
+    tar.exe -xf $TempZip -C (Join-Path $RootDir "target") runtimes/win-x64/native
+    Copy-Item (Join-Path $RootDir "target\runtimes\win-x64\native\onnxruntime.dll") -Destination (Join-Path $RootDir "target\release\") -Force
+    Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
+    Remove-Item -Recurse (Join-Path $RootDir "target\runtimes") -Force -ErrorAction SilentlyContinue
+}
+
+$Version = "2.2.2"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"
@@ -26,6 +38,12 @@ cargo run --package plugin_validator -j 1 -- --validate plugins --build-registry
 
 Write-Host ">>> Assembling portable distribution bundle..." -ForegroundColor Cyan
 Copy-Item (Join-Path $RootDir "target\release\photocraft-companion.exe") -Destination $PortableDir
+if (Test-Path (Join-Path $RootDir "target\release\onnxruntime.dll")) {
+    Copy-Item (Join-Path $RootDir "target\release\onnxruntime.dll") -Destination $PortableDir
+}
+if (Test-Path (Join-Path $RootDir "target\release\DirectML.dll")) {
+    Copy-Item (Join-Path $RootDir "target\release\DirectML.dll") -Destination $PortableDir
+}
 Copy-Item -Recurse (Join-Path $RootDir "plugins") -Destination $PortableDir
 if (Test-Path (Join-Path $DistDir "registry.json")) {
     Copy-Item (Join-Path $DistDir "registry.json") -Destination $PortableDir

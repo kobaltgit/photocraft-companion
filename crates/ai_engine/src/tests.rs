@@ -322,3 +322,27 @@ fn test_bake_layer_offset_negative_offset_clips_safely() {
     assert_eq!(baked.height(), 100);
     assert_eq!(baked.get_pixel(10, 10), &Rgba([77, 88, 99, 255]));
 }
+
+#[test]
+fn test_loader_cpu_feature_detection_is_consistent() {
+    let avx = crate::loader::is_avx_supported();
+    let avx2 = crate::loader::is_avx2_supported();
+    // AVX2 requires AVX1 by definition
+    if avx2 {
+        assert!(avx, "AVX2 must imply AVX support");
+    }
+}
+
+#[test]
+fn test_loader_find_onnxruntime_dll_does_not_panic() {
+    // Calling find_onnxruntime_dll should safely return Option<PathBuf> without panic
+    let _ = crate::loader::find_onnxruntime_dll();
+}
+
+#[test]
+fn test_loader_ensure_ort_initialized_is_idempotent() {
+    let res1 = crate::loader::ensure_ort_initialized();
+    let res2 = crate::loader::ensure_ort_initialized();
+    // Subsequent calls must return identical results
+    assert_eq!(res1.is_ok(), res2.is_ok());
+}

@@ -143,6 +143,8 @@ impl AiEngine {
 
     /// Load ONNX session with DirectML or CPU execution providers
     pub fn create_session(&self, model_path: &Path, force_cpu: bool) -> Result<Session> {
+        crate::loader::ensure_ort_initialized()?;
+
         let _is_cpu_only = force_cpu
             || self
                 .cpu_fallback_models

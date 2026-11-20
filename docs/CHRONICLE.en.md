@@ -4692,6 +4692,43 @@ In strict adherence to the DevKit guidelines:
 * Plugin catalog validation confirmed 16/16 plugins, packaged `.pcpl` archives, updated `README.md` and `README.ru.md`.
 * Synchronously updated `CHECKLIST.md` (Stage 126), `BUGS_AND_ISSUES.md` (BUG-126), and bilingual chronicle.
 
+## [2026-11-19 21:55] Chapter 135: Universal Dynamic ONNX Runtime Loading and Elimination of 0xC000001D Hardware Fault on Pre-AVX2 CPUs (BUG-127 / Issue #16 / SPEC-005)
+
+*Time: November 19, 2026, 21:55 (~35 minutes)*
+
+User `giusmed47` reported [GitHub Issue #16](https://github.com/kobaltgit/photocraft-companion/issues/16): when attempting to launch PhotoCraft Companion on an Intel Core i7-2600 CPU (Sandy Bridge architecture, 2011) running Windows 10, the process terminated abruptly within 1–2 seconds with exit code `-1073741795` (`0xC000001D` — `STATUS_ILLEGAL_INSTRUCTION`), without rendering any interface windows. Meanwhile, the host PhotoCraft editor operated without issues.
+
+### Root Cause Investigation
+Exit code `0xC000001D` is a low-level CPU hardware exception triggered when the processor decoder encounters an instruction not physically present in its silicon circuitry. Sandy Bridge natively supports SSE4.2 and AVX1, but **completely lacks AVX2, FMA3, and BMI1/BMI2** (which debuted with Intel Haswell in 2013).
+Our codebase audit revealed the exact culprit:
+- The `ort` dependency enabled the `download-binaries` feature, causing `ort-sys` to fetch a precompiled static library (`static=onnxruntime`) from `ort.pyke.io` targeted at the `x86-64-v3` microarchitecture (mandatory AVX2);
+- This library was statically linked directly into `photocraft-companion.exe`. At process launch, C++ CRT static constructors executed an AVX2 opcode, triggering an immediate hardware crash. The user was prevented from even seeing the floating toolbar, color palettes, or black-and-white filters that do not rely on machine learning!
+
+### Architectural Solution (SPEC-005)
+Rather than splitting the project into fragmented "Legacy" builds (which would balloon CI/CD cycles and confuse non-technical artists), we implemented a clean industrial architecture:
+1. **Transition to `load-dynamic`**: In `Cargo.toml` and `crates/ai_engine/Cargo.toml`, replaced `download-binaries` with the industry-standard `load-dynamic` flag. The `photocraft-companion.exe` binary was decoupled from the monolithic static C++ runtime and compiled targeting clean baseline x86-64 (SSE2). Binary size plummeted **from 65 MB to 14 MB**!
+2. **Modular Dynamic Loader (`crates/ai_engine/src/loader.rs`)**:
+   - Strictly observed the Code File Size Guard (Soft Cap <= 500 lines): encapsulated DLL loading in a dedicated 120-line module;
+   - Implemented thread-safe, one-time lazy initialization via `ensure_ort_initialized()` and `OnceLock`;
+   - Automated candidate resolution for `onnxruntime.dll` adjacent to the executable, in user data, and across system paths;
+   - Added CPU capability inspection via `is_avx_supported()` and `is_avx2_supported()`.
+3. **Lazy Core Integration in `engine.rs`**: Runtime initialization is deferred strictly to `create_session`, guaranteeing zero impact on UI startup responsiveness.
+4. **Packaging Automation**: Updated `package_release.ps1` and `installer.iss` to automatically stage `onnxruntime.dll` and `DirectML.dll`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* `cargo fmt --all -- --check` — 0 diffs.
+* 100% of workspace test suites passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 14 tests (including 3 new loader tests) + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 54 tests + `file_size_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `companion_app`: 18 tests;
+  - `overlay_ui`: 109 tests;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 16 tests.
+* Plugin catalog validator verified 16/16 plugins with 0 errors.
+* Synchronously updated `CHECKLIST.md` (Stage 127), `BUGS_AND_ISSUES.md` (BUG-127), `.specify/specs/005-universal-onnx-load-dynamic/tasks.md`, and the bilingual chronicle.
+
+
 
 
 
