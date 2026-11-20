@@ -340,8 +340,10 @@ fn test_plugin_manager_app_restores_enabled_plugins_from_config() {
     let is_connected = Arc::new(AtomicBool::new(false));
 
     let config_path = CompanionConfig::resolve_config_path(&temp_dir);
-    let mut cfg = CompanionConfig::default();
-    cfg.enabled_plugins = vec!["plugin.enabled".to_string()];
+    let cfg = CompanionConfig {
+        enabled_plugins: vec!["plugin.enabled".to_string()],
+        ..Default::default()
+    };
     cfg.save(&config_path).unwrap();
 
     let m1 = PluginManifest {

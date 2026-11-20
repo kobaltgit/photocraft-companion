@@ -3240,7 +3240,6 @@ version = "2.2.3"
 dependencies = [
  "anyhow",
  "core_contracts",
- "rhai",
  "roxmltree 0.20.0",
  "serde",
  "serde_json",
