@@ -4728,6 +4728,26 @@ Rather than splitting the project into fragmented "Legacy" builds (which would b
 * Plugin catalog validator verified 16/16 plugins with 0 errors.
 * Synchronously updated `CHECKLIST.md` (Stage 127), `BUGS_AND_ISSUES.md` (BUG-127), `.specify/specs/005-universal-onnx-load-dynamic/tasks.md`, and the bilingual chronicle.
 
+---
+
+## [2026-11-20 05:40] Chapter 136: Field Verification on Real Sandy Bridge Core i7-2600 Hardware, PR #17 Merge, and Stable Release v2.2.2
+
+*Time: November 20, 2026, 05:40 (~20 minutes)*
+
+The published experimental pre-release build `v2.2.2-beta.1` was delivered to the defect reporter on [GitHub Issue #16](https://github.com/kobaltgit/photocraft-companion/issues/16) (`@giusmed47`) for direct real-world testing on his Intel Core i7-2600 Sandy Bridge workstation lacking AVX2 under Windows 10.
+
+### 1. User Confirmation and Field Results
+The user downloaded the portable archive `PhotoCraft-Companion-v2.2.2-windows-x64-portable.zip` and completed full testing:
+> *“Grazie infinite. Non avrei mai pensato che tu mi avessi aiutato così velocemente. **Funziona tutto, finalmente anche io posso lavorare con Companion.** Voglio solo sapere se, nel futuro, quando richiederà di aggiornarsi, io avrò lo stesso problema. Grazie ancora e veramente, non ho parole.”*
+
+The hardware crash `0xC000001D` (`STATUS_ILLEGAL_INSTRUCTION`) has been completely eradicated. The baseline x86-64 binary starts immediately, the floating toolstrip and palettes render without lag, and the dynamic runtime `onnxruntime.dll` via the integrated MLAS dispatcher successfully executes neural network operations utilizing the AVX1 and SSE4.2 instructions available on legacy CPUs.
+
+### 2. PR #17 Merge and Stable Release v2.2.2
+1. **PR #17 Merged into `main`**: Pull request [#17](https://github.com/kobaltgit/photocraft-companion/pull/17) was cleanly merged into the primary branch via squash commit. Dynamic runtime loading and baseline x86-64 compatibility became permanent foundational pillars of the codebase.
+2. **Issue #16 Resolved**: The user was fully reassured that future automatic updates will retain this universal architecture, and Issue #16 was transitioned to `RESOLVED` and closed.
+3. **Official Stable Release v2.2.2**: Updated `docs/RELEASE_NOTES_v2.2.2.md`. Prepared and pushed Git release tag `v2.2.2` to initiate the stable, multi-platform production build and release workflow.
+
+
 
 
 
