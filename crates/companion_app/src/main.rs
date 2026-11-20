@@ -115,6 +115,7 @@ fn main() -> anyhow::Result<()> {
     // 2. Load companion configuration first to obtain user token and connection settings
     let config_path = core_contracts::CompanionConfig::resolve_config_path(&data_dir);
     let companion_cfg = core_contracts::CompanionConfig::load_or_default(&config_path);
+    registry.reconcile_enabled_state(&companion_cfg.enabled_plugins);
     let initial_token = companion_cfg
         .token
         .clone()

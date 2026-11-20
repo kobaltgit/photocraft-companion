@@ -325,3 +325,42 @@ fn test_models_installed_cache_ttl() {
     assert!(ok2);
     invalidate_models_installed_cache(Some(&manifest.id));
 }
+
+#[test]
+fn test_plugin_manager_app_restores_enabled_plugins_from_config() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "mgr_enabled_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _ = std::fs::create_dir_all(&temp_dir);
+    let prefs_file = temp_dir.join("preferences.json");
+    let is_connected = Arc::new(AtomicBool::new(false));
+
+    let config_path = CompanionConfig::resolve_config_path(&temp_dir);
+    let mut cfg = CompanionConfig::default();
+    cfg.enabled_plugins = vec!["plugin.enabled".to_string()];
+    cfg.save(&config_path).unwrap();
+
+    let m1 = PluginManifest {
+        id: "plugin.enabled".to_string(),
+        name: "Plugin Enabled".to_string(),
+        enabled: true,
+        ..Default::default()
+    };
+    let m2 = PluginManifest {
+        id: "plugin.disabled".to_string(),
+        name: "Plugin Disabled".to_string(),
+        enabled: true,
+        ..Default::default()
+    };
+
+    let app = PluginManagerApp::new(vec![m1, m2], &prefs_file, is_connected);
+    assert_eq!(app.manifests.len(), 2);
+    assert!(app.manifests[0].enabled);
+    assert!(!app.manifests[1].enabled);
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
+}

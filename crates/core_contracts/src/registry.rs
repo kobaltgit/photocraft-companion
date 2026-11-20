@@ -297,6 +297,17 @@ impl PluginRegistry {
         &self.manifests
     }
 
+    /// Reconcile loaded manifests against a list of enabled plugin IDs (e.g. from CompanionConfig).
+    /// If `enabled_ids` is empty, no filtering is performed (all plugins remain enabled by default).
+    pub fn reconcile_enabled_state(&mut self, enabled_ids: &[String]) {
+        if enabled_ids.is_empty() {
+            return;
+        }
+        for m in &mut self.manifests {
+            m.enabled = enabled_ids.contains(&m.id);
+        }
+    }
+
     /// Execute plugin by ID or action_id
     pub async fn execute(&self, id_or_action: &str, ctx: &PluginContext) -> Result<PluginResult> {
         let plugin = self.get(id_or_action).ok_or_else(|| {
@@ -631,5 +642,63 @@ mod tests {
         assert_eq!(manifests[0].plugin_type, PluginType::NativeAlgorithm);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_registry_reconcile_enabled_state_filters_disabled_plugins() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "registry_reconcile_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut registry = PluginRegistry::new(&temp_dir);
+        let m1 = PluginManifest {
+            id: "plugin.a".to_string(),
+            name: "Plugin A".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        let m2 = PluginManifest {
+            id: "plugin.b".to_string(),
+            name: "Plugin B".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        registry.manifests = vec![m1, m2];
+
+        registry.reconcile_enabled_state(&["plugin.a".to_string()]);
+        assert!(registry.manifests[0].enabled);
+        assert!(!registry.manifests[1].enabled);
+    }
+
+    #[test]
+    fn test_registry_reconcile_enabled_state_empty_keeps_all_enabled() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "registry_reconcile_empty_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let mut registry = PluginRegistry::new(&temp_dir);
+        let m1 = PluginManifest {
+            id: "plugin.a".to_string(),
+            name: "Plugin A".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        let m2 = PluginManifest {
+            id: "plugin.b".to_string(),
+            name: "Plugin B".to_string(),
+            enabled: true,
+            ..Default::default()
+        };
+        registry.manifests = vec![m1, m2];
+
+        registry.reconcile_enabled_state(&[]);
+        assert!(registry.manifests[0].enabled);
+        assert!(registry.manifests[1].enabled);
     }
 }

@@ -57,7 +57,7 @@ pub struct PluginManagerApp {
 
 impl PluginManagerApp {
     pub fn new(
-        manifests: Vec<PluginManifest>,
+        mut manifests: Vec<PluginManifest>,
         prefs_path: impl Into<PathBuf>,
         is_connected: Arc<AtomicBool>,
     ) -> Self {
@@ -65,6 +65,12 @@ impl PluginManagerApp {
         let data_dir = prefs_path.parent().unwrap_or(&prefs_path).to_path_buf();
         let config_path = CompanionConfig::resolve_config_path(&data_dir);
         let cfg = CompanionConfig::load_or_default(&config_path);
+
+        if !cfg.enabled_plugins.is_empty() {
+            for m in &mut manifests {
+                m.enabled = cfg.enabled_plugins.contains(&m.id);
+            }
+        }
 
         let photocraft_path = cfg
             .photocraft_path

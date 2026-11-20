@@ -4747,6 +4747,41 @@ The hardware crash `0xC000001D` (`STATUS_ILLEGAL_INSTRUCTION`) has been complete
 2. **Issue #16 Resolved**: The user was fully reassured that future automatic updates will retain this universal architecture, and Issue #16 was transitioned to `RESOLVED` and closed.
 3. **Official Stable Release v2.2.2**: Updated `docs/RELEASE_NOTES_v2.2.2.md`. Prepared and pushed Git release tag `v2.2.2` to initiate the stable, multi-platform production build and release workflow.
 
+---
+
+## [2026-11-20 12:20] Chapter 137: Restoring Plugin Enabled Selection on Startup (BUG-128 / Issue #18 / SPEC-006)
+
+*Time: November 20, 2026, 12:20 (~20 minutes)*
+
+Users reported a persistence defect [Issue #18 / BUG-128]: when disabling plugins in the Plugin Manager (`PluginManagerApp`) and clicking "Save Settings", the active extension IDs were properly serialized to the `enabled_plugins` array in `companion_config.json`. However, during application startup, this preference was completely ignored: every manifest defaulted to `enabled: true`, restoring all 17 buttons on the floating toolbar and checking all boxes in the manager. Furthermore, any subsequent save operation would overwrite the user's customized selection with all plugins enabled.
+
+### Architectural Solution (SPEC-006)
+1. **Declarative Reconciliation in `PluginRegistry` (`crates/core_contracts/src/registry.rs`)**:
+   - Added a clean, generic method `reconcile_enabled_state(&mut self, enabled_ids: &[String])` to `PluginRegistry`;
+   - If `enabled_ids` is empty (such as on a fresh installation), no filtering occurs, preserving all installed plugins as enabled by default;
+   - When non-empty, each manifest's `m.enabled` flag is set according to membership in `enabled_ids`.
+2. **Application Composition Root (`crates/companion_app/src/main.rs`)**:
+   - Immediately following `companion_cfg` loading, `registry.reconcile_enabled_state(&companion_cfg.enabled_plugins)` is executed;
+   - This ensures that `manifests` supplied to `OverlayBar::from_manifests` and `launch_companion_overlay` reflects user settings from the first render frame, avoiding visual flicker or toolbar resizing.
+3. **Defense-in-Depth in Plugin Manager UI (`crates/overlay_ui/src/manager/mod.rs`)**:
+   - Enhanced `PluginManagerApp::new` to reconcile input manifests against `cfg.enabled_plugins` to handle standalone or external invocation scenarios.
+4. **Unit Tests**:
+   - Added `test_registry_reconcile_enabled_state_filters_disabled_plugins` and `test_registry_reconcile_enabled_state_empty_keeps_all_enabled` in `core_contracts`;
+   - Added `test_plugin_manager_app_restores_enabled_plugins_from_config` in `overlay_ui`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* Code formatting check `cargo fmt --all -- --check` — 0 differences.
+* 100% of workspace tests passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 14 tests + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 56 tests + `file_size_lint_test`;
+  - `companion_app`: 18 tests;
+  - `overlay_ui`: 110 tests + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 16 tests.
+* Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
+* Synchronously updated `docs/CHECKLIST.md` (Stage 128), `docs/BUGS_AND_ISSUES.md` (BUG-128), and bilingual chronicle.
+
 
 
 

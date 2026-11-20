@@ -19,7 +19,6 @@
 * **The Solution (SPEC-005):**
   * Switched the `ort` engine from static linkage (`download-binaries`) to dynamic loading (`load-dynamic`).
   * `photocraft-companion.exe` is now compiled as a clean, portable baseline `x86-64` binary that launches reliably on any 64-bit CPU.
-  * Executable binary size decreased dramatically from 65 MB down to **14 MB**!
   * ONNX Runtime is now loaded dynamically via official Microsoft `onnxruntime.dll` equipped with MLAS CPUID runtime dispatch, automatically choosing AVX1/SSE4.2 math routines on older CPUs and AVX2/AVX-512 on modern hardware.
   * Added `crates/ai_engine/src/loader.rs` (120 lines) with hardware instruction detection (`is_avx_supported()`, `is_avx2_supported()`).
 
@@ -35,7 +34,6 @@ If you are running an older processor without AVX2 (e.g. Intel Sandy Bridge, Ivy
 * **Решение (SPEC-005):**
   * Движок переведен со статической линковки на динамическую загрузку `load-dynamic`.
   * `photocraft-companion.exe` теперь скомпилирован как чистый x86-64 бинарник без AVX2-инструкций в основном коде.
-  * **Размер исполняемого файла снижен с 65 МБ до 14 МБ!**
   * Библиотека `onnxruntime.dll` теперь подгружается динамически: на современных ПК задействуются AVX2 и DirectML, а на Sandy Bridge — инструкции AVX1 и SSE4.2 через внутренний диспетчер Microsoft MLAS.
   * Создан компактный загрузчик `crates/ai_engine/src/loader.rs` с определением инструкций процессора.
 

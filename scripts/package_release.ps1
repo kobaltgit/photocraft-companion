@@ -23,7 +23,7 @@ if (-not (Test-Path (Join-Path $RootDir "target\release\onnxruntime.dll"))) {
     Remove-Item -Recurse (Join-Path $RootDir "target\runtimes") -Force -ErrorAction SilentlyContinue
 }
 
-$Version = "2.2.2"
+$Version = "2.2.3"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"
