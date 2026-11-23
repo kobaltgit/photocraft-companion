@@ -38,7 +38,7 @@ if (-not (Test-Path $DmlDll)) {
     Remove-Item -Recurse (Join-Path $RootDir "target\bin") -Force -ErrorAction SilentlyContinue
 }
 
-$Version = "2.2.4"
+$Version = "2.2.5"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"

@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-VERSION="2.2.4"
+VERSION="2.2.5"
 DIST_DIR="${ROOT_DIR}/dist"
 
 cd "${ROOT_DIR}"
@@ -94,6 +94,7 @@ Section: graphics
 Priority: optional
 Architecture: amd64
 Maintainer: kobaltGIT <kobaltmail@gmail.com>
+Depends: libc6 (>= 2.35), libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1, libssl3, libx11-6, libwayland-client0
 Description: PhotoCraft Companion - floating toolstrip and AI plugin system
 EOF
 

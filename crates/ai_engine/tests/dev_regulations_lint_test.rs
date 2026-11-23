@@ -342,6 +342,42 @@ fn test_resource_guard_config_and_release_scripts() {
 }
 
 // =========================================================================
+// 3.1 Linux Build Baseline Guard (GLIBC 2.35 / Ubuntu 22.04 LTS / BUG-130)
+// =========================================================================
+
+#[test]
+fn test_linux_build_workflow_glibc_baseline_guard() {
+    let root = find_workspace_root();
+
+    // 1. .github/workflows/release.yml: build-linux MUST use ubuntu-22.04
+    let release_yml_path = root.join(".github").join("workflows").join("release.yml");
+    let release_content = fs::read_to_string(&release_yml_path)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", release_yml_path.display()));
+    assert!(
+        release_content.contains("runs-on: ubuntu-22.04"),
+        "GLIBC baseline violation: .github/workflows/release.yml must use 'runs-on: ubuntu-22.04' for Linux packaging to ensure GLIBC 2.35 compatibility across Ubuntu 22.04+, Ubuntu 24.04+, and Linux Mint 22"
+    );
+
+    // 2. .github/workflows/ci.yml: test-linux MUST use ubuntu-22.04
+    let ci_yml_path = root.join(".github").join("workflows").join("ci.yml");
+    let ci_content = fs::read_to_string(&ci_yml_path)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", ci_yml_path.display()));
+    assert!(
+        ci_content.contains("runs-on: ubuntu-22.04"),
+        "GLIBC baseline violation: .github/workflows/ci.yml must use 'runs-on: ubuntu-22.04' for Linux test job"
+    );
+
+    // 3. scripts/package_release.sh must declare libc6 (>= 2.35) in DEBIAN/control
+    let sh_path = root.join("scripts").join("package_release.sh");
+    let sh_content = fs::read_to_string(&sh_path)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", sh_path.display()));
+    assert!(
+        sh_content.contains("libc6 (>= 2.35)"),
+        "GLIBC baseline violation: scripts/package_release.sh must declare 'libc6 (>= 2.35)' in DEBIAN/control"
+    );
+}
+
+// =========================================================================
 // 4. Chronicle Bilingual Synchronization Guard (Rule 2.2)
 // =========================================================================
 

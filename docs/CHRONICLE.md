@@ -4818,6 +4818,41 @@ PR #14 обновлен до финального стабильного рел�
 * Валидатор плагинов подтвердил 16/16 расширений (`--skip-network`).
 * Синхронно обновлены `docs/CHECKLIST.md` (Этап 129), `docs/BUGS_AND_ISSUES.md` (BUG-129) и двуязычная летопись.
 
+---
+
+## [2026-11-23 19:40] Глава 139: Совместимость Linux с GLIBC 2.35 и стабилизация сборщика релизов (BUG-130 / Issue #20)
+
+*Время: 23 ноября 2026, 19:40 (~15 минут)*
+
+Пользователь SergioNoge сообщил в [Issue #20](https://github.com/kobaltgit/photocraft-companion/issues/20) о невозможности запуска предсобранных Linux-бинарников PhotoCraft Companion на Linux Mint 22.x: при запуске бинарник аварийно завершался сообщением `/lib/x86_64-linux-gnu/libm.so.6: version 'GLIBC_2.43' not found (required by photocraft-companion)`. Поскольку Linux Mint 22.x базируется на актуальном LTS-релизе Ubuntu 24.04 c GLIBC 2.39, системное обновление GLIBC для обычного пользователя небезопасно и может вывести дистрибутив из строя.
+
+### Исследование первопричины
+В сборочном пайплайне `.github/workflows/release.yml` для упаковки DEB и portable-архивов под Linux использовался бегунок `runs-on: ubuntu-latest`. В облачной инфраструктуре GitHub Actions образ `ubuntu-latest` регулярно обновляется и поставляется с новейшими версиями системного тулчейна. При компиляции Rust-бинарника динамический компоновщик связывает вызовы `libm.so.6` и `libc.so.6` с новейшими версиями символов (GLIBC 2.43). Из-за строгой обратной модели версионирования символов GLIBC в Linux бинарник, скомпилированный на системе с более новой GLIBC, принципиально отказывается запускаться на дистрибутивах со стабильными версиями библиотеки (GLIBC 2.39 в Ubuntu 24.04 / Mint 22, GLIBC 2.36 в Debian 12).
+
+### Реализованное решение
+1. **Фиксация сборочного окружения в GitHub Actions (`.github/workflows/release.yml`)**:
+   - Сборочная джоба `build-linux` переведена со скользящего `ubuntu-latest` на стабильный базовый LTS-раннер `runs-on: ubuntu-22.04`.
+   - В окружении Ubuntu 22.04 бинарник линкуется против sysroot с `GLIBC 2.35`, что гарантирует безупречный запуск на подавляющем большинстве дистрибутивов экосистемы: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Linux Mint 21/22, Debian 12 (Bookworm), Fedora, Arch Linux и Astra Linux.
+2. **Синхронизация окружения в CI (`.github/workflows/ci.yml`)**:
+   - Джоба `test-linux` в основном CI-пайплайне также зафиксирована на `runs-on: ubuntu-22.04`, гарантируя прогон тестов на базовом наборе библиотек.
+3. **Декларация зависимостей в DEB-пакете (`scripts/package_release.sh`)**:
+   - В секцию метаданных `DEBIAN/control` добавлена строка зависимостей `Depends: libc6 (>= 2.35), libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1, libssl3, libx11-6, libwayland-client0`, обеспечивающая корректную проверку совместимости менеджерами пакетов `apt` и `dpkg`.
+4. **Автоматический сторож регламента (`crates/ai_engine/tests/dev_regulations_lint_test.rs`)**:
+   - Написан тест `test_linux_build_workflow_glibc_baseline_guard`, проверяющий наличие `runs-on: ubuntu-22.04` в workflow-файлах и объявление `libc6 (>= 2.35)` в скрипте упаковки, исключая риск случайной регрессии.
+
+### Результаты верификации (Resource Guard & Definition of Done)
+* Проверка форматирования `cargo fmt --all -- --check` — 0 расхождений.
+* 100% тестов воркспейса пройдены под Resource Guard (`-j 1`):
+  - `ai_engine`: 15 тестов + `architecture_integrity_test` + 9 тестов `dev_regulations_lint_test`;
+  - `core_contracts`: 56 тестов + `file_size_lint_test`;
+  - `companion_app`: 19 тестов;
+  - `overlay_ui`: 110 тестов + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 тестов + `session_colors_test`;
+  - `plugin_validator`: 15 тестов;
+  - `raster_engine`: 16 тестов.
+* Валидатор плагинов подтвердил корректность всех 16 плагинов (`--skip-network`).
+* Синхронно обновлены `docs/CHECKLIST.md` (Этап 130), `docs/BUGS_AND_ISSUES.md` (BUG-130) и двуязычная летопись.
+
 
 
 

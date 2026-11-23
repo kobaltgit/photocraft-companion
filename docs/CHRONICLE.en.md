@@ -4824,6 +4824,41 @@ A user reported a frustrating defect with **Generative AI Fill (LaMa)** (`ai.pho
 * Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
 * Synchronously updated `docs/CHECKLIST.md` (Stage 129), `docs/BUGS_AND_ISSUES.md` (BUG-129), and bilingual chronicle.
 
+---
+
+## [2026-11-23 19:40] Chapter 139: Linux GLIBC 2.35 Baseline Compatibility and Packaging Runner Stabilization (BUG-130 / Issue #20)
+
+*Time: November 23, 2026, 19:40 (~15 minutes)*
+
+User SergioNoge reported in [Issue #20](https://github.com/kobaltgit/photocraft-companion/issues/20) that prebuilt Linux binaries of PhotoCraft Companion failed to launch on Linux Mint 22.x with the dynamic loader error: `/lib/x86_64-linux-gnu/libm.so.6: version 'GLIBC_2.43' not found (required by photocraft-companion)`. Because Linux Mint 22.x is based on the stable Ubuntu 24.04 LTS release shipping GLIBC 2.39, upgrading GLIBC system-wide is hazardous for end users and risks breaking system packages.
+
+### Root Cause Investigation
+In `.github/workflows/release.yml`, the Linux packaging job for DEB and portable tarball distributions was configured with `runs-on: ubuntu-latest`. In GitHub Actions hosted runners, `ubuntu-latest` continually advances to the newest available distro versions with bleeding-edge compiler sysroots. When compiling Rust binaries against system `libc.so.6` and `libm.so.6`, dynamic symbol resolution binds to the latest GLIBC version present in the runner (GLIBC 2.43). Under Linux symbol versioning rules, binaries compiled against a newer GLIBC refuse to execute on older distros (e.g. GLIBC 2.39 in Ubuntu 24.04 / Linux Mint 22, GLIBC 2.36 in Debian 12).
+
+### Implemented Solutions
+1. **Runner Baseline Pinning in Release Workflow (`.github/workflows/release.yml`)**:
+   - Pinned the `build-linux` job from rolling `ubuntu-latest` to the stable LTS baseline runner `runs-on: ubuntu-22.04`.
+   - Under Ubuntu 22.04, the binary links against a sysroot with `GLIBC 2.35`, guaranteeing backward compatibility across all major Linux distributions: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Linux Mint 21/22, Debian 12 (Bookworm), Fedora, Arch Linux, and Astra Linux.
+2. **CI Test Environment Synchronization (`.github/workflows/ci.yml`)**:
+   - Switched the `test-linux` CI workflow job to `runs-on: ubuntu-22.04` as well, ensuring tests validate on the LTS baseline.
+3. **DEB Control File Dependency Metadata (`scripts/package_release.sh`)**:
+   - Explicitly added `Depends: libc6 (>= 2.35), libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1, libssl3, libx11-6, libwayland-client0` in `DEBIAN/control`, preventing broken runtime states on outdated platforms.
+4. **Automated Regulation Guard (`crates/ai_engine/tests/dev_regulations_lint_test.rs`)**:
+   - Added regression test `test_linux_build_workflow_glibc_baseline_guard`, ensuring `release.yml` and `ci.yml` never silently regress to `ubuntu-latest` and that `package_release.sh` enforces the `libc6 (>= 2.35)` constraint.
+
+### Verification Results (Resource Guard & Definition of Done)
+* Code formatting check `cargo fmt --all -- --check` — 0 differences.
+* 100% of workspace tests passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 15 tests + `architecture_integrity_test` + 9 tests `dev_regulations_lint_test`;
+  - `core_contracts`: 56 tests + `file_size_lint_test`;
+  - `companion_app`: 19 tests;
+  - `overlay_ui`: 110 tests + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 16 tests.
+* Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
+* Synchronously updated `docs/CHECKLIST.md` (Stage 130), `docs/BUGS_AND_ISSUES.md` (BUG-130), and bilingual chronicle.
+
 
 
 
