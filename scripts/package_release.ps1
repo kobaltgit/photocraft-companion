@@ -14,17 +14,28 @@ cargo build --package companion_app --release -j 1
 # Ensure official Microsoft ONNX Runtime dynamic library and DirectML are available for packaging
 $OrtDll = Join-Path $RootDir "target\release\onnxruntime.dll"
 $DmlDll = Join-Path $RootDir "target\release\DirectML.dll"
+New-Item -ItemType Directory -Force -Path (Join-Path $RootDir "target\release") | Out-Null
 
-if ((-not (Test-Path $OrtDll)) -or (-not (Test-Path $DmlDll))) {
-    Write-Host ">>> Fetching official Microsoft ONNX Runtime + DirectML DLLs..." -ForegroundColor Cyan
+if (-not (Test-Path $OrtDll)) {
+    Write-Host ">>> Fetching official Microsoft ONNX Runtime DLL..." -ForegroundColor Cyan
     $NupkgUrl = "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.20.0/microsoft.ml.onnxruntime.directml.1.20.0.nupkg"
-    $TempZip = Join-Path $RootDir "target\ort_directml.zip"
+    $TempZip = Join-Path $RootDir "target\ort.zip"
     curl.exe -s -L -o $TempZip $NupkgUrl
-    tar.exe -xf $TempZip -C (Join-Path $RootDir "target") runtimes/win-x64/native
+    tar.exe -xf $TempZip -C (Join-Path $RootDir "target") runtimes/win-x64/native/onnxruntime.dll
     Copy-Item (Join-Path $RootDir "target\runtimes\win-x64\native\onnxruntime.dll") -Destination (Join-Path $RootDir "target\release\") -Force
-    Copy-Item (Join-Path $RootDir "target\runtimes\win-x64\native\DirectML.dll") -Destination (Join-Path $RootDir "target\release\") -Force
     Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
     Remove-Item -Recurse (Join-Path $RootDir "target\runtimes") -Force -ErrorAction SilentlyContinue
+}
+
+if (-not (Test-Path $DmlDll)) {
+    Write-Host ">>> Fetching official Microsoft DirectML DLL..." -ForegroundColor Cyan
+    $DmlNupkgUrl = "https://api.nuget.org/v3-flatcontainer/microsoft.ai.directml/1.15.4/microsoft.ai.directml.1.15.4.nupkg"
+    $TempZip = Join-Path $RootDir "target\dml.zip"
+    curl.exe -s -L -o $TempZip $DmlNupkgUrl
+    tar.exe -xf $TempZip -C (Join-Path $RootDir "target") bin/x64-win/DirectML.dll
+    Copy-Item (Join-Path $RootDir "target\bin\x64-win\DirectML.dll") -Destination (Join-Path $RootDir "target\release\") -Force
+    Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
+    Remove-Item -Recurse (Join-Path $RootDir "target\bin") -Force -ErrorAction SilentlyContinue
 }
 
 $Version = "2.2.4"
