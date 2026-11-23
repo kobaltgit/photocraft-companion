@@ -31,6 +31,16 @@ pub enum AiOutputType {
     GrayscaleLayer,
 }
 
+/// Execution provider preference for neural models (GPU acceleration or CPU fallback)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionProviderPreference {
+    #[default]
+    Auto,
+    Cpu,
+    DirectMl,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AiPipelineConfig {
     pub task: AiTask,
@@ -46,4 +56,6 @@ pub struct AiPipelineConfig {
     pub input_size: Option<u32>,
     #[serde(default)]
     pub output_type: Option<AiOutputType>,
+    #[serde(default)]
+    pub execution_provider: Option<ExecutionProviderPreference>,
 }

@@ -163,11 +163,15 @@ fn test_ai_pipeline_config_paradigms_serialization() {
     assert_eq!(cfg_sr.task, AiTask::SuperResolution);
     assert_eq!(cfg_sr.scale, Some(4));
 
-    // Test inpainting
-    let json_inp = r#"{"task": "inpainting", "normalize": "raw_255"}"#;
+    // Test inpainting with execution_provider
+    let json_inp = r#"{"task": "inpainting", "normalize": "raw_255", "execution_provider": "cpu"}"#;
     let cfg_inp: AiPipelineConfig = serde_json::from_str(json_inp).unwrap();
     assert_eq!(cfg_inp.task, AiTask::Inpainting);
     assert_eq!(cfg_inp.normalize, Some(NormalizationMode::Raw255));
+    assert_eq!(
+        cfg_inp.execution_provider,
+        Some(ExecutionProviderPreference::Cpu)
+    );
 
     // Test depth_map / segmentation_mask with ImageNet & GrayscaleLayer
     let json_depth = r#"{

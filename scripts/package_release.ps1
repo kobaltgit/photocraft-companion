@@ -11,19 +11,23 @@ Set-Location $RootDir
 Write-Host ">>> Building release binary (photocraft-companion)..." -ForegroundColor Cyan
 cargo build --package companion_app --release -j 1
 
-# Ensure official Microsoft ONNX Runtime dynamic library is available for packaging
-if (-not (Test-Path (Join-Path $RootDir "target\release\onnxruntime.dll"))) {
-    Write-Host ">>> Fetching official Microsoft ONNX Runtime DLL..." -ForegroundColor Cyan
+# Ensure official Microsoft ONNX Runtime dynamic library and DirectML are available for packaging
+$OrtDll = Join-Path $RootDir "target\release\onnxruntime.dll"
+$DmlDll = Join-Path $RootDir "target\release\DirectML.dll"
+
+if ((-not (Test-Path $OrtDll)) -or (-not (Test-Path $DmlDll))) {
+    Write-Host ">>> Fetching official Microsoft ONNX Runtime + DirectML DLLs..." -ForegroundColor Cyan
     $NupkgUrl = "https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime.directml/1.20.0/microsoft.ml.onnxruntime.directml.1.20.0.nupkg"
     $TempZip = Join-Path $RootDir "target\ort_directml.zip"
     curl.exe -s -L -o $TempZip $NupkgUrl
     tar.exe -xf $TempZip -C (Join-Path $RootDir "target") runtimes/win-x64/native
     Copy-Item (Join-Path $RootDir "target\runtimes\win-x64\native\onnxruntime.dll") -Destination (Join-Path $RootDir "target\release\") -Force
+    Copy-Item (Join-Path $RootDir "target\runtimes\win-x64\native\DirectML.dll") -Destination (Join-Path $RootDir "target\release\") -Force
     Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
     Remove-Item -Recurse (Join-Path $RootDir "target\runtimes") -Force -ErrorAction SilentlyContinue
 }
 
-$Version = "2.2.3"
+$Version = "2.2.4"
 $DistDir = Join-Path $RootDir "dist"
 $PortableDir = Join-Path $DistDir "photocraft-companion-v$Version-windows-x64-portable"
 $ZipPath = Join-Path $DistDir "PhotoCraft-Companion-v$Version-windows-x64-portable.zip"

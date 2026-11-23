@@ -94,12 +94,12 @@ pub use host_i18n::{is_translatable_param, normalize_term, to_canonical, to_host
 pub mod plugin;
 pub use plugin::{
     ActionRequest, AiOutputType, AiPipelineConfig, AiTask, AlgorithmConfig, BannerStyle,
-    BridgeOperations, DynamicBadgeState, ExecutionState, InteractiveUiConfig, ModelRequirement,
-    ModifierItemConfig, NormalizationMode, Plugin, PluginCommandStep, PluginContext,
-    PluginInputSource, PluginIpcAction, PluginLocaleInfo, PluginManifest, PluginOutputMode,
-    PluginResult, PluginType, RuntimeToolRequirement, SharedExecutionStatus, SubAction, WidgetNode,
-    IPC_SUB_ACTIVE_LAYER_IMAGE, IPC_SUB_DOCUMENT_REVISION, IPC_SUB_SELECTION_STATE,
-    IPC_SUB_SESSION_COLORS,
+    BridgeOperations, DynamicBadgeState, ExecutionProviderPreference, ExecutionState,
+    InteractiveUiConfig, ModelRequirement, ModifierItemConfig, NormalizationMode, Plugin,
+    PluginCommandStep, PluginContext, PluginInputSource, PluginIpcAction, PluginLocaleInfo,
+    PluginManifest, PluginOutputMode, PluginResult, PluginType, RuntimeToolRequirement,
+    SharedExecutionStatus, SubAction, WidgetNode, IPC_SUB_ACTIVE_LAYER_IMAGE,
+    IPC_SUB_DOCUMENT_REVISION, IPC_SUB_SELECTION_STATE, IPC_SUB_SESSION_COLORS,
 };
 
 pub mod config;

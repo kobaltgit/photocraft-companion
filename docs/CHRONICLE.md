@@ -4776,6 +4776,48 @@ PR #14 обновлен до финального стабильного рел�
 * Валидатор каталога плагинов подтвердил корректность всех 16 плагинов (`--skip-network`).
 * Синхронно обновлены `docs/CHECKLIST.md` (Этап 128), `docs/BUGS_AND_ISSUES.md` (BUG-128) и двуязычная летопись.
 
+---
+
+## [2026-11-23 15:45] Глава 138: Надежность Generative AI Fill (LaMa), защита от клиппинга и поставка DirectML (BUG-129 / Issue #19)
+
+*Время: 23 ноября 2026, 15:45 (~25 минут)*
+
+Пользователь сообщил в [Issue #19](https://github.com/kobaltgit/photocraft-companion/issues/19) о неприятном поведении инструмента **Generative AI Fill (LaMa)** (`ai.photocraft.plugins.inpaint`): генерация запускалась, прогресс шел, но после завершения результат либо вовсе не применялся к холсту, либо слой обрезался и искажался, а тулбар сбрасывал состояние. Дополнительно выяснилось, что в релизных пакетах Windows и портативном архиве отсутствовала библиотека `DirectML.dll`, из-за чего пользователи были лишены аппаратного ускорения инференса на GPU DirectX 12.
+
+### Архитектурное исследование первопричин
+1. **Клиппинг контуром выделения PhotoCraft**: При активном контуре выделения на холсте команда `edit.pasteSpecial.pasteInPlace` обрезает вставляемый растр до геометрических границ этого контура (схожий эффект мы ранее искоренили в BUG-126 для облачного движка).
+2. **Исключение для Inpainting в адаптере ИИ-движка**: В `crates/ai_engine/src/plugin_adapter.rs` исторически присутствовало искусственное условие `if ai_cfg.task != AiTask::Inpainting`, из-за которого результат генерации не разворачивался на размеры холста через `bake_layer_offset_onto_canvas`. В сочетании с активным выделением вставка происходила со сдвигом координат.
+3. **Знаковая геометрия маски**: Метод `copy_active_layer_and_selection_mask()` в `core_contracts` не учитывал относительное смещение слоя `active_layer_bounds` (`canvas_x - lx`), что приводило к искажению маски, если слой был смещен относительно левого верхнего угла документа.
+4. **Аппаратный сбой DirectML на Fast Fourier Convolutions**: Архитектура нейросети LaMa использует спектральные преобразования Фурье (FFC). В официальном драйвере Microsoft DirectML (`DirectML.dll` / `DmlExecutionProvider`) присутствует фатальный дефект обработки узла `MatMul_5` внутри частотного блока `convg2g / rfftn`, приводящий к аппаратному сбою `0xC0000005 (STATUS_ACCESS_VIOLATION)` и падению всего процесса. При этом на CPU с AVX2 инференс выполняется 100% стабильно всего за ~1.5–2 секунды.
+5. **Комплектация DirectML**: Скрипт `scripts/package_release.ps1` извлекал из пакета NuGet только `onnxruntime.dll`, пропуская `DirectML.dll`.
+
+### Реализованные решения
+1. **Декларативное управление Execution Provider (`crates/core_contracts/src/plugin/pipeline.rs` и `plugins/inpaint/plugin.json`)**:
+   - В `core_contracts` добавлено универсальное перечисление `ExecutionProviderPreference` (`Auto`, `Cpu`, `DirectMl`), а в манифесте `inpaint` объявлено `"execution_provider": "cpu"`.
+   - В `ai_engine` метод `enforce_execution_provider_preference` напрямую направляет инференс LaMa на оптимизированный CPU рантайм, полностью исключая краш `0xC0000005`. Все остальные модели (RMBG, Depth Anything, RealESRGAN) сохраняют полноценное ускорение GPU DirectML.
+2. **Снятие выделения и единообразный пайплайн вставки (`crates/ai_engine/src/plugin_adapter.rs`)**:
+   - Устранено искусственное условие: функция `bake_layer_offset_onto_canvas` теперь применяется ко всем Native AI задачам единообразно, гарантируя разворачивание слоя-заплатки в габариты холста.
+   - Перед вызовом `paste_image_in_place` добавлен `if ctx.document.has_selection { let _ = ctx.client.deselect().await; }`, исключая обрезку вставляемого растра. После чистой вставки декларативная команда `layer.mergeDown` бесшовно сплавляет заплатку с исходным слоем.
+3. **Точный знаковый расчет маски (`crates/core_contracts/src/plugin/manifest.rs`)**:
+   - Метод `copy_active_layer_and_selection_mask()` переведен на строгое вычисление `layer_x = canvas_x - lx` и `layer_y = canvas_y - ly` с валидацией границ слоя.
+4. **Поставка DirectML (`scripts/package_release.ps1`)**:
+   - Обеспечено извлечение и гарантированное копирование как `onnxruntime.dll`, так и `DirectML.dll` в `target\release\`, корень портабельного архива и установщик Inno Setup.
+5. **Модульные тесты (`crates/companion_app/src/tests.rs` и `crates/ai_engine/src/tests.rs`)**:
+   - Добавлены тесты `test_copy_active_layer_and_selection_mask_with_shifted_layer_bounds` и `test_enforce_execution_provider_preference`.
+
+### Результаты верификации (Resource Guard & Definition of Done)
+* Проверка стиля кода `cargo fmt --all -- --check` — 0 расхождений.
+* 100% тестов воркспейса пройдены под Resource Guard (`-j 1`):
+  - `ai_engine`: 15 тестов + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 56 тестов + `file_size_lint_test`;
+  - `companion_app`: 19 тестов;
+  - `overlay_ui`: 110 тестов + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 тестов + `session_colors_test`;
+  - `plugin_validator`: 15 тестов;
+  - `raster_engine`: 16 тестов.
+* Валидатор плагинов подтвердил 16/16 расширений (`--skip-network`).
+* Синхронно обновлены `docs/CHECKLIST.md` (Этап 129), `docs/BUGS_AND_ISSUES.md` (BUG-129) и двуязычная летопись.
+
 
 
 

@@ -59,6 +59,7 @@ async fn test_copy_active_layer_and_selection_mask_default_impl() {
     struct TestBridge {
         has_sel: bool,
         bounds: Option<[i32; 4]>,
+        layer_bounds: Option<[i32; 4]>,
         copy_count: AtomicUsize,
     }
 
@@ -102,6 +103,7 @@ async fn test_copy_active_layer_and_selection_mask_default_impl() {
                 height: 50,
                 has_selection: self.has_sel,
                 selection_bounds: self.bounds,
+                active_layer_bounds: self.layer_bounds,
                 ..Default::default()
             })
         }
@@ -111,6 +113,7 @@ async fn test_copy_active_layer_and_selection_mask_default_impl() {
     let no_sel_bridge = TestBridge {
         has_sel: false,
         bounds: None,
+        layer_bounds: None,
         copy_count: AtomicUsize::new(0),
     };
     let (img, mask) = no_sel_bridge
@@ -125,6 +128,7 @@ async fn test_copy_active_layer_and_selection_mask_default_impl() {
     let sel_bridge = TestBridge {
         has_sel: true,
         bounds: Some([5, 5, 10, 10]),
+        layer_bounds: None,
         copy_count: AtomicUsize::new(0),
     };
     let (img, mask) = sel_bridge
@@ -144,6 +148,117 @@ async fn test_copy_active_layer_and_selection_mask_default_impl() {
     assert_eq!(mask.get_pixel(0, 0)[0], 0);
     assert_eq!(mask.get_pixel(4, 4)[0], 0);
     assert_eq!(mask.get_pixel(15, 15)[0], 0);
+
+    // Case 3: Shifted active layer at [10, 10, 50, 50], selection at [15, 15, 10, 10]
+    let shifted_bridge = TestBridge {
+        has_sel: true,
+        bounds: Some([15, 15, 10, 10]),
+        layer_bounds: Some([10, 10, 50, 50]),
+        copy_count: AtomicUsize::new(0),
+    };
+    let (img, mask) = shifted_bridge
+        .copy_active_layer_and_selection_mask()
+        .await
+        .unwrap();
+    assert_eq!(img.width(), 50);
+    assert_eq!(img.height(), 50);
+    assert!(mask.is_some());
+    let mask = mask.unwrap();
+    assert_eq!(mask.width(), 50);
+    assert_eq!(mask.height(), 50);
+    // canvas_x = 15 + cx, layer_x = canvas_x - 10 = 5 + cx.
+    // Cutout cx: 0..10 maps to layer_x: 5..15
+    assert_eq!(mask.get_pixel(5, 5)[0], 255);
+    assert_eq!(mask.get_pixel(14, 14)[0], 255);
+    assert_eq!(mask.get_pixel(0, 0)[0], 0);
+    assert_eq!(mask.get_pixel(4, 4)[0], 0);
+    assert_eq!(mask.get_pixel(15, 15)[0], 0);
+}
+
+#[tokio::test]
+async fn test_copy_active_layer_and_selection_mask_with_shifted_layer_bounds() {
+    use async_trait::async_trait;
+    use core_contracts::{BridgeOperations, DocumentInfo, Result};
+    use image::{Rgba, RgbaImage};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct OffsetTestBridge {
+        bounds: Option<[i32; 4]>,
+        layer_bounds: Option<[i32; 4]>,
+        copy_count: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl BridgeOperations for OffsetTestBridge {
+        async fn execute_command(
+            &self,
+            _command: &str,
+            _params: serde_json::Value,
+        ) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+        async fn copy_active_layer_image(&self) -> Result<RgbaImage> {
+            let count = self.copy_count.fetch_add(1, Ordering::SeqCst);
+            if count == 0 {
+                // Cutout 20x20
+                let mut img = RgbaImage::new(20, 20);
+                for p in img.pixels_mut() {
+                    *p = Rgba([255, 0, 0, 255]);
+                }
+                Ok(img)
+            } else {
+                // Full active layer 100x100
+                let mut img = RgbaImage::new(100, 100);
+                for p in img.pixels_mut() {
+                    *p = Rgba([0, 255, 0, 255]);
+                }
+                Ok(img)
+            }
+        }
+        async fn paste_image_in_place(&self, _image: &RgbaImage) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+        async fn rename_layer(&self, _layer_id: u64, _new_name: &str) -> Result<serde_json::Value> {
+            Ok(serde_json::json!({}))
+        }
+        async fn get_document_info(&self) -> Result<DocumentInfo> {
+            Ok(DocumentInfo {
+                name: "Offset Doc".to_string(),
+                width: 200,
+                height: 200,
+                has_selection: true,
+                selection_bounds: self.bounds,
+                active_layer_bounds: self.layer_bounds,
+                ..Default::default()
+            })
+        }
+    }
+
+    // Active layer at (50, 50), size 100x100.
+    // Selection at canvas (60, 70), size 20x20.
+    // Layer coordinates should be: 60 - 50 = 10, 70 - 50 = 20.
+    let bridge = OffsetTestBridge {
+        bounds: Some([60, 70, 20, 20]),
+        layer_bounds: Some([50, 50, 100, 100]),
+        copy_count: AtomicUsize::new(0),
+    };
+
+    let (img, mask) = bridge.copy_active_layer_and_selection_mask().await.unwrap();
+    assert_eq!(img.width(), 100);
+    assert_eq!(img.height(), 100);
+    let mask = mask.expect("Mask must be generated when selection is present");
+    assert_eq!(mask.width(), 100);
+    assert_eq!(mask.height(), 100);
+
+    // Inside mask in layer space (10..30, 20..40)
+    assert_eq!(mask.get_pixel(10, 20)[0], 255);
+    assert_eq!(mask.get_pixel(29, 39)[0], 255);
+
+    // Outside mask in layer space
+    assert_eq!(mask.get_pixel(9, 20)[0], 0);
+    assert_eq!(mask.get_pixel(10, 19)[0], 0);
+    assert_eq!(mask.get_pixel(30, 40)[0], 0);
+    assert_eq!(mask.get_pixel(0, 0)[0], 0);
 }
 
 #[test]

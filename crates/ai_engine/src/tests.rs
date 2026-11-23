@@ -34,6 +34,7 @@ fn test_generic_ai_plugin_manifest_binding() {
             normalize: Some(NormalizationMode::ZeroToOne),
             input_size: None,
             output_type: None,
+            execution_provider: None,
         }),
         ..Default::default()
     };
@@ -234,6 +235,7 @@ fn test_depth_map_plugin_manifest_binding() {
             normalize: Some(NormalizationMode::Centered),
             input_size: Some(518),
             output_type: Some(core_contracts::AiOutputType::GrayscaleLayer),
+            execution_provider: None,
         }),
         ..Default::default()
     };
@@ -345,4 +347,49 @@ fn test_loader_ensure_ort_initialized_is_idempotent() {
     let res2 = crate::loader::ensure_ort_initialized();
     // Subsequent calls must return identical results
     assert_eq!(res1.is_ok(), res2.is_ok());
+}
+
+#[test]
+fn test_enforce_execution_provider_preference() {
+    use core_contracts::{AiPipelineConfig, AiTask, ExecutionProviderPreference};
+    use std::path::{Path, PathBuf};
+
+    let engine = crate::AiEngine::new(PathBuf::from("target"));
+    let dummy_path = Path::new("dummy/model.onnx");
+
+    // Default or Auto preference does not force CPU
+    let cfg_auto = AiPipelineConfig {
+        task: AiTask::SegmentationMask,
+        scale: None,
+        tile_size: None,
+        tile_pad: None,
+        normalize: None,
+        input_size: None,
+        output_type: None,
+        execution_provider: Some(ExecutionProviderPreference::Auto),
+    };
+    engine.enforce_execution_provider_preference(dummy_path, &cfg_auto);
+    assert!(!engine
+        .cpu_fallback_models
+        .lock()
+        .unwrap()
+        .contains(&dummy_path.to_path_buf()));
+
+    // Cpu preference forces model into cpu_fallback_models
+    let cfg_cpu = AiPipelineConfig {
+        task: AiTask::Inpainting,
+        scale: None,
+        tile_size: None,
+        tile_pad: None,
+        normalize: None,
+        input_size: None,
+        output_type: None,
+        execution_provider: Some(ExecutionProviderPreference::Cpu),
+    };
+    engine.enforce_execution_provider_preference(dummy_path, &cfg_cpu);
+    assert!(engine
+        .cpu_fallback_models
+        .lock()
+        .unwrap()
+        .contains(&dummy_path.to_path_buf()));
 }

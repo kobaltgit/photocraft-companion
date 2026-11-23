@@ -4782,6 +4782,48 @@ Users reported a persistence defect [Issue #18 / BUG-128]: when disabling plugin
 * Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
 * Synchronously updated `docs/CHECKLIST.md` (Stage 128), `docs/BUGS_AND_ISSUES.md` (BUG-128), and bilingual chronicle.
 
+---
+
+## [2026-11-23 15:45] Chapter 138: Generative AI Fill (LaMa) Canvas Alignment, Clipping Protection & DirectML Packaging (BUG-129 / Issue #19)
+
+*Time: November 23, 2026, 15:45 (~25 minutes)*
+
+A user reported a frustrating defect with **Generative AI Fill (LaMa)** (`ai.photocraft.plugins.inpaint`) in [Issue #19](https://github.com/kobaltgit/photocraft-companion/issues/19): the inpainting inference would run and display progress, but upon completion, the generated patch was either not applied to the canvas, was clipped to the selection box, or misaligned, while the toolbar state reset. In addition, inspection of the Windows release artifacts revealed that `DirectML.dll` was missing from the portable zip and installer packages, depriving users of DirectX 12 GPU acceleration.
+
+### Root Cause Analysis
+1. **Selection Clipping in PhotoCraft**: When an active selection exists on the canvas, PhotoCraft's `edit.pasteSpecial.pasteInPlace` clips the pasted image to the selection's geometric boundaries (analogous to the issue resolved in BUG-126 for cloud inpainting).
+2. **Inpainting Special-Casing in AI Engine**: In `crates/ai_engine/src/plugin_adapter.rs`, an artificial exception `if ai_cfg.task != AiTask::Inpainting` bypassed `bake_layer_offset_onto_canvas`. Consequently, inpainting results were not expanded to canvas dimensions, causing misalignment when the layer had a non-zero offset.
+3. **Signed Mask Geometry**: In `crates/core_contracts/src/plugin/manifest.rs`, `copy_active_layer_and_selection_mask()` did not account for the layer's top-left offset (`canvas_x - lx`), causing mask distortion when the active layer was shifted relative to the canvas origin.
+4. **DirectML Hardware Driver Crash on Fast Fourier Convolutions**: LaMa architecture relies heavily on Fast Fourier Convolutions (FFC). In the official Microsoft DirectML execution provider (`DirectML.dll` / `DmlExecutionProvider`), an unhandled bug occurs when translating `MatMul_5` inside the frequency-domain block `convg2g / rfftn`, resulting in an unrecoverable hardware exception `0xC0000005 (STATUS_ACCESS_VIOLATION)` terminating the process. Conversely, running on CPU with AVX2 executes with 100% stability in ~1.5–2 seconds.
+5. **DirectML Packaging Omission**: The packaging script `scripts/package_release.ps1` extracted only `onnxruntime.dll` from the NuGet package into `target\release\`, forgetting `DirectML.dll`.
+
+### Implemented Solutions
+1. **Declarative Execution Provider Control (`crates/core_contracts/src/plugin/pipeline.rs` & `plugins/inpaint/plugin.json`)**:
+   - Added generic enum `ExecutionProviderPreference` (`Auto`, `Cpu`, `DirectMl`) to `core_contracts`, declaring `"execution_provider": "cpu"` in the inpaint manifest.
+   - In `ai_engine`, `enforce_execution_provider_preference` routes LaMa directly to the optimized CPU session, eliminating the `0xC0000005` crash. All other models (RMBG, Depth Anything, RealESRGAN) retain full DirectML GPU acceleration.
+2. **Clipping Protection & Unified Pasting Pipeline (`crates/ai_engine/src/plugin_adapter.rs`)**:
+   - Removed the inpainting special case: `bake_layer_offset_onto_canvas` is now applied uniformly across all Native AI tasks, ensuring patches span full canvas coordinates.
+   - Added `if ctx.document.has_selection { let _ = ctx.client.deselect().await; }` prior to `paste_image_in_place`, preventing clipping by the active selection. Declarative `layer.mergeDown` post-command then seamlessly fuses the patch into the active layer.
+3. **Signed Coordinate Geometry for Selection Masks (`crates/core_contracts/src/plugin/manifest.rs`)**:
+   - Updated `copy_active_layer_and_selection_mask()` to map canvas coordinates to layer coordinates via `layer_x = canvas_x - lx` and `layer_y = canvas_y - ly` with bounds checking.
+4. **DirectML Packaging (`scripts/package_release.ps1`)**:
+   - Ensured both `onnxruntime.dll` and `DirectML.dll` are extracted and copied into `target\release\`, the portable distribution root, and the Inno Setup installer.
+5. **Regression Unit Tests (`crates/companion_app/src/tests.rs` & `crates/ai_engine/src/tests.rs`)**:
+   - Added tests `test_copy_active_layer_and_selection_mask_with_shifted_layer_bounds` and `test_enforce_execution_provider_preference`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* Code formatting check `cargo fmt --all -- --check` — 0 differences.
+* 100% of workspace tests passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 15 tests + `architecture_integrity_test` + `dev_regulations_lint_test`;
+  - `core_contracts`: 56 tests + `file_size_lint_test`;
+  - `companion_app`: 19 tests;
+  - `overlay_ui`: 110 tests + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 16 tests.
+* Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
+* Synchronously updated `docs/CHECKLIST.md` (Stage 129), `docs/BUGS_AND_ISSUES.md` (BUG-129), and bilingual chronicle.
+
 
 
 

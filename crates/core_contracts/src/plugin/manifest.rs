@@ -457,16 +457,23 @@ pub trait BridgeOperations {
         let mut mask = image::GrayImage::new(w, h);
         let (bx0, by0) = doc
             .selection_bounds
-            .map(|b| (b[0].max(0) as u32, b[1].max(0) as u32))
+            .map(|b| (b[0] as i64, b[1] as i64))
+            .unwrap_or((0, 0));
+        let (lx, ly) = doc
+            .active_layer_bounds
+            .map(|b| (b[0] as i64, b[1] as i64))
             .unwrap_or((0, 0));
 
         for cy in 0..cutout.height() {
             for cx in 0..cutout.width() {
                 if cutout.get_pixel(cx, cy)[3] > 0 {
-                    let tx = bx0 + cx;
-                    let ty = by0 + cy;
-                    if tx < w && ty < h {
-                        mask.put_pixel(tx, ty, image::Luma([255]));
+                    let canvas_x = bx0 + cx as i64;
+                    let canvas_y = by0 + cy as i64;
+                    let layer_x = canvas_x - lx;
+                    let layer_y = canvas_y - ly;
+
+                    if layer_x >= 0 && layer_x < w as i64 && layer_y >= 0 && layer_y < h as i64 {
+                        mask.put_pixel(layer_x as u32, layer_y as u32, image::Luma([255]));
                     }
                 }
             }

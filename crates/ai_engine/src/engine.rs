@@ -195,6 +195,22 @@ impl AiEngine {
         })
     }
 
+    pub(crate) fn enforce_execution_provider_preference(
+        &self,
+        model_path: &Path,
+        config: &AiPipelineConfig,
+    ) {
+        if config.execution_provider == Some(core_contracts::ExecutionProviderPreference::Cpu) {
+            let mut fallback = self
+                .cpu_fallback_models
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if !fallback.contains(&model_path.to_path_buf()) {
+                fallback.push(model_path.to_path_buf());
+            }
+        }
+    }
+
     /// Paradigm 1: Image-to-Image (Denoise, Deblur, Colorization, 1:1 Filters)
     pub fn execute_image_to_image(
         &self,
@@ -202,6 +218,7 @@ impl AiEngine {
         img: &RgbaImage,
         config: &AiPipelineConfig,
     ) -> Result<RgbaImage> {
+        self.enforce_execution_provider_preference(model_path, config);
         let tile_size = config.tile_size.unwrap_or(512);
         let tile_pad = config.tile_pad.unwrap_or(16);
 
@@ -225,6 +242,7 @@ impl AiEngine {
         img: &RgbaImage,
         config: &AiPipelineConfig,
     ) -> Result<RgbaImage> {
+        self.enforce_execution_provider_preference(model_path, config);
         let scale = config.scale.unwrap_or(2);
         let tile_size = config.tile_size.unwrap_or(512);
         let tile_pad = config.tile_pad.unwrap_or(16);
@@ -250,6 +268,7 @@ impl AiEngine {
         mask: &GrayImage,
         config: &AiPipelineConfig,
     ) -> Result<RgbaImage> {
+        self.enforce_execution_provider_preference(model_path, config);
         let norm_mode = config
             .normalize
             .as_ref()
@@ -267,6 +286,7 @@ impl AiEngine {
         img: &RgbaImage,
         config: &AiPipelineConfig,
     ) -> Result<GrayImage> {
+        self.enforce_execution_provider_preference(model_path, config);
         let norm_mode = config
             .normalize
             .as_ref()

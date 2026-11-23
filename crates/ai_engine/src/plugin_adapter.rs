@@ -43,6 +43,7 @@ impl Plugin for GenericAiPlugin {
             normalize: None,
             input_size: None,
             output_type: None,
+            execution_provider: None,
         });
 
         // 1. Locate model
@@ -62,6 +63,17 @@ impl Plugin for GenericAiPlugin {
                     model_req.name
                 ))
             })?;
+
+        if ai_cfg.execution_provider == Some(core_contracts::ExecutionProviderPreference::Cpu) {
+            let mut fallback = self
+                .engine
+                .cpu_fallback_models
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if !fallback.contains(&model_path) {
+                fallback.push(model_path.clone());
+            }
+        }
 
         // 2. Fetch input according to task and selection
         let (input_img, inpaint_mask) = if ai_cfg.task == AiTask::Inpainting {
@@ -173,16 +185,16 @@ impl Plugin for GenericAiPlugin {
         let source_layer_id = ctx.document.active_layer;
 
         // 4. Output Integration according to output_mode
-        let paste_target = if ai_cfg.task != AiTask::Inpainting {
-            bake_layer_offset_onto_canvas(
-                &processed_img,
-                ctx.document.active_layer_bounds,
-                ctx.document.width,
-                ctx.document.height,
-            )
-        } else {
-            processed_img.clone()
-        };
+        let paste_target = bake_layer_offset_onto_canvas(
+            &processed_img,
+            ctx.document.active_layer_bounds,
+            ctx.document.width,
+            ctx.document.height,
+        );
+
+        if ctx.document.has_selection {
+            let _ = ctx.client.deselect().await;
+        }
 
         let paste_res = ctx.client.paste_image_in_place(&paste_target).await?;
         let result_layer_id = paste_res

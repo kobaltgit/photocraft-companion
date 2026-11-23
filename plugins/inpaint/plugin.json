@@ -2,7 +2,7 @@
     "id":  "ai.photocraft.plugins.inpaint",
     "name":  "AI Generative Fill (LaMa)",
     "version":  "1.0.0",
-    "description":  "Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via DirectML GPU.",
+    "description":  "Zero-prompt neural generative fill and object eraser for PhotoCraft using LaMa model via optimized ONNX Runtime.",
     "author":  "kobaltGIT",
     "plugin_type":  "native_ai",
     "action_id":  "plugin:inpaint",
@@ -15,7 +15,8 @@
                           }
                       ],
     "ai":  {
-               "task":  "inpainting"
+               "task":  "inpainting",
+               "execution_provider":  "cpu"
            },
     "models":  [
                    {
