@@ -77,19 +77,32 @@ pub fn sync_missing_bundled_plugins(bundled_dir: &Path, user_dir: &Path) {
         Err(_) => return,
     };
 
-    let mut existing_ids = std::collections::HashSet::new();
+    struct ExistingPlugin {
+        path: PathBuf,
+        version: String,
+    }
+    let mut user_plugins_by_id: std::collections::HashMap<String, ExistingPlugin> =
+        std::collections::HashMap::new();
     let mut existing_folders = std::collections::HashSet::new();
+
     if let Ok(user_entries) = std::fs::read_dir(user_dir) {
         for entry in user_entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                existing_folders.insert(entry.file_name().to_string_lossy().to_string());
+                let folder_name = entry.file_name().to_string_lossy().to_string();
+                existing_folders.insert(folder_name);
                 let manifest_path = path.join("plugin.json");
                 if let Ok(content) = std::fs::read_to_string(&manifest_path) {
                     if let Ok(manifest) =
                         serde_json::from_str::<core_contracts::PluginManifest>(&content)
                     {
-                        existing_ids.insert(manifest.id);
+                        user_plugins_by_id.insert(
+                            manifest.id,
+                            ExistingPlugin {
+                                path,
+                                version: manifest.version,
+                            },
+                        );
                     }
                 }
             }
@@ -102,26 +115,44 @@ pub fn sync_missing_bundled_plugins(bundled_dir: &Path, user_dir: &Path) {
             continue;
         }
         let folder_name = entry.file_name().to_string_lossy().to_string();
-        if existing_folders.contains(&folder_name) {
-            continue;
-        }
 
-        let manifest_path = path.join("plugin.json");
-        if let Ok(content) = std::fs::read_to_string(&manifest_path) {
-            if let Ok(manifest) = serde_json::from_str::<core_contracts::PluginManifest>(&content) {
-                if existing_ids.contains(&manifest.id) {
-                    continue;
-                }
+        let bundled_manifest_path = path.join("plugin.json");
+        let bundled_manifest = match std::fs::read_to_string(&bundled_manifest_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<core_contracts::PluginManifest>(&c).ok())
+        {
+            Some(m) => m,
+            None => continue,
+        };
+
+        if let Some(existing) = user_plugins_by_id.get(&bundled_manifest.id) {
+            if core_contracts::is_version_newer(&bundled_manifest.version, &existing.version) {
+                tracing::info!(
+                    "Updating bundled plugin '{}' (v{} -> v{}) in user directory: {}",
+                    bundled_manifest.name,
+                    existing.version,
+                    bundled_manifest.version,
+                    existing.path.display()
+                );
+                let _ = copy_dir_all(&path, &existing.path);
             }
+        } else if existing_folders.contains(&folder_name) {
+            let target = user_dir.join(&folder_name);
+            tracing::info!(
+                "Refreshing bundled plugin folder '{}' in user directory: {}",
+                folder_name,
+                target.display()
+            );
+            let _ = copy_dir_all(&path, &target);
+        } else {
+            let target = user_dir.join(&folder_name);
+            tracing::info!(
+                "Seeding missing bundled plugin '{}' to user directory: {}",
+                folder_name,
+                target.display()
+            );
+            let _ = copy_dir_all(&path, &target);
         }
-
-        let target = user_dir.join(&folder_name);
-        tracing::info!(
-            "Seeding missing bundled plugin '{}' to user directory: {}",
-            folder_name,
-            target.display()
-        );
-        let _ = copy_dir_all(&path, &target);
     }
 }
 

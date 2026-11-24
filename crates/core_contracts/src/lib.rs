@@ -113,6 +113,9 @@ pub use package::{
 pub mod registry;
 pub use registry::{AiPluginFactory, AlgorithmPluginFactory, NoCodePlugin, PluginRegistry};
 
+pub mod version;
+pub use version::is_version_newer;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DocumentInfo {
     pub name: String,

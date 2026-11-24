@@ -4864,3 +4864,47 @@ In `.github/workflows/release.yml`, the Linux packaging job for DEB and portable
 
 
 
+
+
+---
+
+## [2026-11-24 09:20] Chapter 140: Intelligent Bundled Plugin Auto-Sync and Inpaint v1.0.1 Release (BUG-131 / Issue #21 / v2.2.6)
+
+*Time: November 24, 2026, 09:20 (~25 minutes)*
+
+In [GitHub Issue #21](https://github.com/kobaltgit/photocraft-companion/issues/21), a user reported that AI Generative Fill (LaMa Inpainting) continued to trigger DirectML access violation crashes (`0xC0000005`) on Windows even after installing Companion v2.2.4.
+
+### Root Cause Investigation
+A thorough audit of the application lifecycle in protected Windows environments (`C:\Program Files\PhotoCraft Companion\`) revealed two root causes:
+1. **Frozen Plugin Version:** Although the `"execution_provider": "cpu"` directive was added to `plugins/inpaint/plugin.json` in v2.2.4, the plugin version remained `1.0.0`. As a result, the built-in Plugin Store did not detect any updates in the registry manifest and did not offer an in-app update.
+2. **Unconditional Seeding Skip:** On companion startup, `discovery::sync_missing_bundled_plugins()` checked the user plugins directory `%APPDATA%\PhotoCraftData\plugins\`. If a folder named `inpaint` already existed, the seeding process skipped it unconditionally (`if existing_folders.contains(&folder_name) { continue; }`). Consequently, the obsolete `plugin.json` lacking the CPU execution provider directive remained on the user's disk permanently, even after reinstalling via newer setup installers.
+
+### Implemented Solutions
+1. **Centralized SemVer in Core Contracts (`crates/core_contracts/src/version.rs`)**:
+   - Extracted the positional SemVer comparison function `is_version_newer()` into a clean, dependency-free contracts module.
+   - `crates/overlay_ui/src/updater.rs` now re-exports `pub use core_contracts::is_version_newer;`, eliminating code duplication while maintaining 100% backward compatibility for all UI tests.
+2. **Intelligent Bundled Plugin Synchronization (`crates/companion_app/src/discovery.rs`)**:
+   - Upon launch, Companion scans existing user plugins and indexes them by unique `manifest.id`.
+   - When a bundled plugin has a higher SemVer version (`bundled.version > installed.version`), manifests, SVG icons, READMEs, and Rhai scripts are automatically updated in place.
+   - **Zero Weight Loss:** The synchronization routine never removes files from target plugin directories. Heavy neural network models (`models/lama_inpaint.onnx`, 208 MB) remain intact, requiring no re-download.
+   - **Folder Duplication Protection:** Indexing by `manifest.id` prevents redundant folder creation if the installed plugin resides in a custom-named folder.
+3. **Inpaint v1.0.1 Bump and Registry Rebuild**:
+   - Updated `plugins/inpaint/plugin.json` version to `1.0.1`.
+   - Ran `plugin_validator` to rebuild `dist/registry.json`, package lightweight `dist/inpaint.pcpl` (v1.0.1), and synchronize catalog tables in `README.md` and `README.ru.md`.
+4. **App Version 2.2.6 Synchronization across 5 Release Files**:
+   - Synchronized version `2.2.6` across `Cargo.toml`, `scripts/package_release.ps1`, `scripts/package_release.sh`, `packaging/windows/installer.iss`, and `packaging/macos/Info.plist`.
+5. **Unit Tests (`crates/companion_app/src/tests.rs` and `crates/core_contracts/src/version.rs`)**:
+   - Added unit tests `test_sync_bundled_plugins_updates_older_version_without_deleting_models` and `test_sync_bundled_plugins_matches_by_id_avoiding_duplicate_folders`.
+
+### Verification Results (Resource Guard & Definition of Done)
+* Code formatting check `cargo fmt --all -- --check` — 0 differences.
+* 100% of workspace tests passed under Resource Guard (`-j 1`):
+  - `ai_engine`: 15 tests + `architecture_integrity_test` + 9 tests `dev_regulations_lint_test`;
+  - `core_contracts`: 57 tests + `file_size_lint_test`;
+  - `companion_app`: 21 tests;
+  - `overlay_ui`: 110 tests + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 tests + `session_colors_test`;
+  - `plugin_validator`: 15 tests;
+  - `raster_engine`: 16 tests.
+* Plugin validator verified all 16 plugins with zero errors (`--skip-network`).
+* Synchronously updated `docs/CHECKLIST.md` (Stage 131), `docs/BUGS_AND_ISSUES.md` (BUG-131), release notes `docs/RELEASE_NOTES_v2.2.6.md`, and bilingual chronicle.

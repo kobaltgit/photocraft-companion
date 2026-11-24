@@ -4858,3 +4858,47 @@ PR #14 обновлен до финального стабильного рел�
 
 
 
+
+
+---
+
+## [2026-11-24 09:20] Глава 140: Интеллектуальная автосинхронизация бандловых плагинов и релиз Inpaint v1.0.1 (BUG-131 / Issue #21 / v2.2.6)
+
+*Время: 24 ноября 2026, 09:20 (~25 минут)*
+
+В тикете [GitHub Issue #21](https://github.com/kobaltgit/photocraft-companion/issues/21) пользователь сообщил о воспроизведении сбоя инференса при вызове AI Generative Fill (LaMa Inpainting) на Windows: плагин продолжал завершаться аппаратной ошибкой `0xC0000005` в драйвере DirectML даже после выхода фикса в версии Companion 2.2.4.
+
+### Исследование первопричины
+При детальном аудите жизненного цикла установки приложения в защищенный каталог Windows (`C:\Program Files\PhotoCraft Companion\`) вскрылись две ключевые проблемы:
+1. **Замороженная версия плагина:** В релизе 2.2.4 в файл `plugins/inpaint/plugin.json` действительно была добавлена директива `"execution_provider": "cpu"`, однако номер версии плагина остался `1.0.0`. Из-за этого встроенный Plugin Store не видел обновлений в манифесте реестра и не предлагал пользователю обновить плагин.
+2. **Безусловный пропуск при сидинге:** Функция обнаружения и инициализации плагинов `discovery::sync_missing_bundled_plugins()` при старте компаньона проверяла пользовательскую директорию `%APPDATA%\PhotoCraftData\plugins\` и при наличии папки с именем `inpaint` безусловно пропускала её (`if existing_folders.contains(&folder_name) { continue; }`). В результате устаревший `plugin.json` без директивы CPU оставался на диске пользователя навсегда, даже после обновления самого приложения через новый инсталлятор Windows.
+
+### Реализованное решение
+1. **Централизация SemVer в контрактах ядра (`crates/core_contracts/src/version.rs`)**:
+   - Алгоритм строгого позиционного сравнения версий `is_version_newer()` вынесен в чистый модуль ядра без внешних зависимостей.
+   - Модуль автоапдейтера `crates/overlay_ui/src/updater.rs` переведен на реэкспорт `pub use core_contracts::is_version_newer;`, исключая дублирование логики и сохраняя 100% обратную совместимость для всех тестов UI.
+2. **Интеллектуальная синхронизация бандла (`crates/companion_app/src/discovery.rs`)**:
+   - При старте Companion сканирует установленные плагины пользователя и индексирует их по уникальному `manifest.id`.
+   - Если версия плагина в бандле программы новее установленной (`bundled.version > installed.version`), манифест, SVG-иконки, README и скрипты автоматически обновляются поверх старых файлов.
+   - **Zero Weight Loss (Сохранение моделей):** Синхронизация не удаляет существующие файлы в папке плагина. Тяжелые скачанные веса моделей (`models/lama_inpaint.onnx`, 208 МБ) остаются полностью нетронутыми, повторная загрузка пользователю не требуется.
+   - **Защита от дубликатов:** Сопоставление по `manifest.id` предотвращает дублирование папок, если установленный плагин находится в папке с нестандартным именем.
+3. **Обновление плагина Inpaint до v1.0.1 и каталога**:
+   - В `plugins/inpaint/plugin.json` зафиксирована версия `1.0.1`.
+   - Валидатором `plugin_validator` пересобраны `dist/registry.json`, легкий архив `dist/inpaint.pcpl` (v1.0.1) и синхронизированы таблицы каталогов в `README.md` и `README.ru.md`.
+4. **Синхронизация версии приложения v2.2.6 в 5 файлах**:
+   - Версия приложения обновлена до `2.2.6` в `Cargo.toml`, `scripts/package_release.ps1`, `scripts/package_release.sh`, `packaging/windows/installer.iss` и `packaging/macos/Info.plist`.
+5. **Модульные тесты (`crates/companion_app/src/tests.rs` и `crates/core_contracts/src/version.rs`)**:
+   - Написаны тесты `test_sync_bundled_plugins_updates_older_version_without_deleting_models` и `test_sync_bundled_plugins_matches_by_id_avoiding_duplicate_folders`.
+
+### Результаты верификации (Resource Guard & Definition of Done)
+* Проверка форматирования `cargo fmt --all -- --check` — 0 расхождений.
+* 100% тестов воркспейса пройдены под Resource Guard (`-j 1`):
+  - `ai_engine`: 15 тестов + `architecture_integrity_test` + 9 тестов `dev_regulations_lint_test`;
+  - `core_contracts`: 57 тестов + `file_size_lint_test`;
+  - `companion_app`: 21 тест;
+  - `overlay_ui`: 110 тестов + `i18n_lint_test`;
+  - `photocraft_bridge`: 36 тестов + `session_colors_test`;
+  - `plugin_validator`: 15 тестов;
+  - `raster_engine`: 16 тестов.
+* Валидатор плагинов подтвердил корректность всех 16 плагинов (`--skip-network`).
+* Синхронно обновлены `docs/CHECKLIST.md` (Этап 131), `docs/BUGS_AND_ISSUES.md` (BUG-131), релизные заметки `docs/RELEASE_NOTES_v2.2.6.md` и двуязычная летопись.

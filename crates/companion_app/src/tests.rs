@@ -335,3 +335,129 @@ fn test_compose_patch_layer_transparency_and_alignment() {
     let defect_pixel = patch_layer.get_pixel(crop_x + 5, crop_y + 5);
     assert_eq!(*defect_pixel, Rgba([255, 0, 0, 255]));
 }
+
+#[test]
+fn test_sync_bundled_plugins_updates_older_version_without_deleting_models() {
+    use crate::discovery::sync_missing_bundled_plugins;
+
+    let test_root = std::env::temp_dir().join(format!(
+        "photocraft_test_sync_update_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bundled = test_root.join("bundled");
+    let user_plugins = test_root.join("user_plugins");
+
+    // 1. Setup bundled plugin v1.0.1
+    let bundled_inpaint = bundled.join("inpaint");
+    std::fs::create_dir_all(&bundled_inpaint).unwrap();
+    std::fs::write(
+        bundled_inpaint.join("plugin.json"),
+        r#"{
+            "id": "ai.photocraft.plugins.inpaint",
+            "name": "AI Generative Fill (LaMa)",
+            "version": "1.0.1",
+            "description": "Updated",
+            "author": "kobaltGIT",
+            "ai": { "task": "inpainting", "execution_provider": "cpu" }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(bundled_inpaint.join("icon.svg"), "<svg>v2</svg>").unwrap();
+
+    // 2. Setup user installed plugin v1.0.0 with downloaded model
+    let user_inpaint = user_plugins.join("inpaint");
+    let user_models = user_inpaint.join("models");
+    std::fs::create_dir_all(&user_models).unwrap();
+    std::fs::write(
+        user_inpaint.join("plugin.json"),
+        r#"{
+            "id": "ai.photocraft.plugins.inpaint",
+            "name": "AI Generative Fill (LaMa)",
+            "version": "1.0.0",
+            "description": "Old",
+            "author": "kobaltGIT",
+            "ai": { "task": "inpainting" }
+        }"#,
+    )
+    .unwrap();
+    std::fs::write(user_inpaint.join("icon.svg"), "<svg>v1</svg>").unwrap();
+    let model_file = user_models.join("lama_inpaint.onnx");
+    std::fs::write(&model_file, b"DUMMY_ONNX_WEIGHTS_PERSIST").unwrap();
+
+    // 3. Run sync
+    sync_missing_bundled_plugins(&bundled, &user_plugins);
+
+    // 4. Verify manifest and icon updated
+    let updated_manifest = std::fs::read_to_string(user_inpaint.join("plugin.json")).unwrap();
+    assert!(updated_manifest.contains(r#""version": "1.0.1""#));
+    assert!(updated_manifest.contains(r#""execution_provider": "cpu""#));
+    assert_eq!(
+        std::fs::read_to_string(user_inpaint.join("icon.svg")).unwrap(),
+        "<svg>v2</svg>"
+    );
+
+    // 5. Verify model weights were preserved completely
+    assert!(model_file.exists());
+    assert_eq!(
+        std::fs::read(&model_file).unwrap(),
+        b"DUMMY_ONNX_WEIGHTS_PERSIST"
+    );
+
+    let _ = std::fs::remove_dir_all(&test_root);
+}
+
+#[test]
+fn test_sync_bundled_plugins_matches_by_id_avoiding_duplicate_folders() {
+    use crate::discovery::sync_missing_bundled_plugins;
+
+    let test_root = std::env::temp_dir().join(format!(
+        "photocraft_test_sync_id_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let bundled = test_root.join("bundled");
+    let user_plugins = test_root.join("user_plugins");
+
+    // 1. Bundled folder name is "inpaint"
+    let bundled_inpaint = bundled.join("inpaint");
+    std::fs::create_dir_all(&bundled_inpaint).unwrap();
+    std::fs::write(
+        bundled_inpaint.join("plugin.json"),
+        r#"{
+            "id": "ai.photocraft.plugins.inpaint",
+            "name": "AI Generative Fill (LaMa)",
+            "version": "1.0.1",
+            "description": "Bundled"
+        }"#,
+    )
+    .unwrap();
+
+    // 2. User folder has custom folder name "custom_lama_folder" but same id
+    let user_custom = user_plugins.join("custom_lama_folder");
+    std::fs::create_dir_all(&user_custom).unwrap();
+    std::fs::write(
+        user_custom.join("plugin.json"),
+        r#"{
+            "id": "ai.photocraft.plugins.inpaint",
+            "name": "AI Generative Fill (LaMa)",
+            "version": "1.0.0",
+            "description": "Installed"
+        }"#,
+    )
+    .unwrap();
+
+    // 3. Run sync
+    sync_missing_bundled_plugins(&bundled, &user_plugins);
+
+    // 4. Verify existing folder was updated and no duplicate folder "inpaint" was created
+    assert!(!user_plugins.join("inpaint").exists());
+    let custom_manifest = std::fs::read_to_string(user_custom.join("plugin.json")).unwrap();
+    assert!(custom_manifest.contains(r#""version": "1.0.1""#));
+
+    let _ = std::fs::remove_dir_all(&test_root);
+}
